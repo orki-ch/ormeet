@@ -38,7 +38,10 @@ export default {
     </div>
   `,
   data() {
-    return { updateStand, laeuft: false, schritt: '', ergebnis: null, quelle: 'ormeet.ch/updates' }
+    return { updateStand, laeuft: false, schritt: '', ergebnis: null, quelle: 'GitHub (orki-ch/ormeet)' }
+  },
+  created() {
+    this.pruefen()
   },
   methods: {
     async pruefen() {

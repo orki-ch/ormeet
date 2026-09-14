@@ -1,112 +1,61 @@
-# Ormeet – Sitzungsprotokolle
+# Ormeet – Sitzungen planen, vorbereiten und live protokollieren
 
-Vue 3 (Options API) · Vue Router · eigenes CSS (`css/ormeet.css`) · pdfmake · PHP-Backend (JSON-Dateien)
-Kein Build-Schritt: alle Bibliotheken liegen lokal in `lib/`.
+Ormeet ist eine schlanke Web-App für Gremien, die sich regelmässig treffen und dabei etwas beschliessen:
+Vereinsvorstände, Organisationskomitees, Kommissionen, Stiftungsräte, Genossenschaften, Kirchgemeinden,
+Elternräte, Projektteams.
 
-## Deployment
+Sie findet den Termin, bereitet die Traktanden gemeinsam mit allen Beteiligten vor und protokolliert die
+Sitzung, während sie läuft. Ohne Benutzerkonten: Jede Person bekommt einen Link und sieht genau das, was sie
+sehen und bearbeiten darf.
 
-1. Ganzen Ordner (`index.html`, `api.php`, `js/`, `lib/`) auf den Webserver kopieren (PHP 7.4+).
-2. In `api.php` das `ADMIN_PASSWORT` ändern; optional in `index.html` `window.ORMEET_KONTAKT`
-   mit einer Kontaktangabe für die Datenschutzerklärung füllen.
-3. `index.html` aufrufen – `api.php` legt den Ordner `data/` (inkl. `.htaccess`) beim ersten Aufruf
-   selbst an; das Verzeichnis muss für PHP beschreibbar sein.
+**Website:** [ormeet.ch](https://ormeet.ch) · **Anleitung:** [ormeet.ch/dokumentation.html](https://ormeet.ch/dokumentation.html)
 
-Das Routing läuft über `#/…`, es sind keine Server-Regeln nötig.
+## Was Ormeet kann
+
+- **Termin finden** – Terminvorschläge, Abstimmung mit Ja / Vielleicht / Nein, Summenzeile, Kommentare. Der gewählte Termin wird direkt zur Sitzung.
+- **Vorprotokoll & Protokoll** – Traktanden mit Unterpunkten, Vorlagen für wiederkehrende Sitzungen, Verantwortliche, Notizen. Während der Sitzung werden Informationen, Anträge mit Beschluss und Aufgaben (Pendenzen) mit Person und Frist erfasst – automatisch gespeichert, live mitlesbar.
+- **Aufgaben, die nicht verloren gehen** – Offene Pendenzen erscheinen automatisch im nächsten Vorprotokoll, bis sie erledigt sind. Zuständige Personen ändern den Stand selbst.
+- **Zugang per Link statt Konto** – Ein Passwort für die Verwaltung, Links für alle anderen: für ein ganzes Gremium mit Rechten pro Bereich, persönlich pro Mitglied, für Gäste zu einer einzelnen Sitzung, zum Mitlesen. Links lassen sich jederzeit ersetzen. Die Rechte setzt der Server durch.
+- **Themenbereiche** – Alles, was je zu einem Thema besprochen wurde, auf einen Blick; per Link teilbar.
+- **Kalender** – Sitzungen, eigene Aufgaben und mögliche Termine erscheinen im eigenen Kalender (Apple, Google, Outlook …).
+- **PDF** – Vorprotokoll und Protokoll als sauber strukturiertes PDF.
+- **Updates per Klick** – Ormeet meldet neue Versionen und installiert sie in den Einstellungen; Daten und Passwort bleiben unberührt.
+
+## Installation
+
+Ormeet braucht nur ein Webhosting oder einen eigenen Server mit **PHP 7.4 oder neuer**. Kein Build, keine Datenbank.
+
+1. Das aktuelle Paket herunterladen: [Releases](https://github.com/orki-ch/ormeet/releases/latest) → bei «Assets» auf **Source code (zip)** klicken.
+2. Entpacken und den Inhalt in einen Ordner auf dem Hosting laden, z. B. `ormeet/`.
+3. In `api.php` ganz oben das Passwort ersetzen:
+   ```php
+   const ADMIN_PASSWORT = 'mein-sicheres-passwort';
+   ```
+4. Optional in `index.html` eintragen, wer für die Installation verantwortlich ist (erscheint in der Datenschutzerklärung der App):
+   ```html
+   <script>window.ORMEET_KONTAKT = 'Verein XY, info@example.ch'</script>
+   ```
+5. Die Adresse im Browser aufrufen und mit dem Passwort anmelden. Ormeet legt den Ordner `data/` für alle Daten selbst an und schützt ihn vor fremdem Zugriff.
+
+Die ausführliche Anleitung mit Bedienung, Rechten, Sicherung und Umzug: [ormeet.ch/dokumentation.html](https://ormeet.ch/dokumentation.html)
 
 ## Updates
 
-Ormeet prüft beim Anmelden des Superadmins einmal täglich `api.github.com/repos/orki-ch/ormeet/releases/latest`
-(Konstante `GITHUB_REPO` in `api.php`). Ist die dortige Version neuer, erscheint ein Hinweis am Einstellungs-Symbol;
-«Update installieren» lädt das automatisch erzeugte Quellcode-ZIP des Releases (mit PHP-`zip`) oder holt ersatzweise
-jede Datei einzeln über die GitHub-API. `data/`, das Passwort und `window.ORMEET_KONTAKT` bleiben dabei erhalten.
+Ormeet prüft einmal täglich, ob hier ein neues Release vorliegt. Die Verwaltung sieht dann einen Hinweis am
+Zahnrad-Symbol und installiert das Update per Klick. `data/`, Passwort und Kontaktangabe bleiben erhalten.
 
-Release veröffentlichen: `version.md` erhöhen, committen/pushen, auf GitHub unter **Releases** ein Release mit
-Tag = Versionsnummer anlegen. Ein Commit ohne Release löst kein Update aus. Details: `webseite/README.md`.
+## Hilfe & Support
 
-## Zugriff & Rechte
+Für die eigene Installation gibt es **keinen Support** – die [Anleitung](https://ormeet.ch/dokumentation.html)
+ist die Selbsthilfe. Wer sich um nichts kümmern möchte, nutzt
+[Ormeet als Service](https://ormeet.ch/support.html): Betrieb, Sicherungen, Updates und Hilfe inklusive,
+gehostet in der Schweiz.
 
-| Rolle           | Wie                                              | Darf                                                |
-|-----------------|--------------------------------------------------|-----------------------------------------------------|
-| Superadmin      | Passwort auf der Login-Seite                     | alles, inkl. Gremien anlegen/löschen und teilen     |
-| Gremium-Link    | Tab «Teilen» im Gremium, beliebig viele Links    | pro Link einstellbar: Sitzungen / Mitglieder & Rollen / Protokoll-Einstellungen je nicht sichtbar, nur lesen oder bearbeiten |
-| Freigabe-Link   | Allgemeiner Link im Vorprotokoll                 | Anwesenheit, Gäste und Traktanden dieses Vorprotokolls |
-| Persönlicher Link | Link pro Mitglied / Gast im Vorprotokoll       | Traktanden / Unterpunkte, bei denen die Person verantwortlich oder als Bearbeiter eingetragen ist, plus eigene Anwesenheit |
-| Verfolger-Link  | «⋯» im Protokoll                                 | Live-Ansicht des Protokolls, nur lesen (aktualisiert alle 5 s) |
+## Technik
 
-Jeder Link kann jederzeit erneuert werden (alter Link wird ungültig). Ein früherer Einzel-Zugangslink wird
-beim ersten Laden in einen Link «Vollzugriff» überführt.
-Das Token wird im Browser gespeichert; «Abmelden» löscht es.
+Vue 3 (Options API) ohne Build-Schritt, alle Bibliotheken liegen lokal in `lib/`. Backend `api.php` mit einer
+JSON-Datei pro Gremium in `data/`. Läuft per FTP-Upload auf jedem PHP-Hosting.
 
-## Struktur
+## Lizenz
 
-```
-index.html                    Lädt lib/-Bibliotheken, css/ormeet.css, startet js/main.js
-api.php                       Backend: laden / speichern / löschen, eine JSON-Datei pro Gremium in data/
-lib/                          Vue, Vue Router, pdfmake (lokal, ohne CDN)
-js/
-  main.js, App.js             App-Bootstrap, Rahmen mit Speicherstatus und Abmelden
-  router.js                   Routen + Zugriffsprüfung (Login, Zugangs-/Freigabe-Links)
-  api.js                      HTTP-Client (Token im Header X-Token)
-  stores/
-    gremien.js                Gremien, Rollen, Themenbereiche, Mitglieder, Vorlagen
-    sitzungen.js              Sitzungen, Vorprotokolle, Protokolle, Pendenzen-Übertrag
-    sync.js                   Abgleich mit dem Server (nur geänderte Datensätze, alle 30 s Abholen)
-    migration.js              Ergänzt ältere Datenbestände um neue Felder
-  views/
-    Login.js                  Superadmin-Login
-    GremiumListe.js           Dashboard aller Gremien
-    GremiumDetail.js          Gremium pflegen: Mitglieder, Rollen, Themenbereiche, Vorlagen, Sitzungen
-    VorprotokollEditor.js     Kopfdaten, Anwesenheit, Gäste, Traktanden, Freigabe-Link
-    ProtokollEditor.js        Live-Protokoll mit Auto-Save / Ctrl+S, nächster Termin
-    ThemenbereichSummary.js   Historische Aggregation pro Themenbereich
-    ProtokollAnsicht.js       Live-Ansicht über den Verfolger-Link (nur lesen)
-    Hilfe.js                  Dokumentation in einfacher Sprache
-    Datenschutz.js            Datenschutzerklärung nach DSG (erkennt Domain / Speicherort automatisch)
-  components/
-    TraktandenListe.js        Traktanden mit Unterpunkten (zwei Ebenen), Person, Notiz
-    EintragListe.js           Einträge (Information / Antrag / Pendenz) pro Traktandum
-    SitzungKopfdaten.js       Titel, Datum, Zeit, Ort, Leitung, Protokollführung, Bemerkungen
-    PersonInput.js            Einzelperson (Pendenz-Zuweisung): freie Eingabe oder Auswahl
-    PersonenInput.js          Mehrere Personen als Chips (Verantwortliche, Bearbeiter)
-    GaesteListe.js            Gäste als Chips mit Kurzformular
-    MenuDropdown.js           «⋯»-Menü für seltene Aktionen
-    Modal.js                  Dialog (Mitglied bearbeiten, Sitzung erfassen)
-    PdfExportButton.js        PDF-Export (Vorprotokoll / Protokoll)
-    ThemenbereichSelect.js    Auswahl eines Themenbereichs
-  pdf/dokumente.js            pdfmake-Dokumentdefinitionen
-  utils/                      Labels/Datumsformat, Zufalls-Keys, Traktanden-Struktur, Vorschau-/Bearbeiten-Mixin
-```
-
-## Workflow
-
-1. Gremium anlegen → Rollen (inkl. «an Sitzungen erwartet»), Mitglieder (mit Stimmrecht), Themenbereiche, Fusstext pflegen.
-   Mitglieder nicht erwarteter Rollen sind standardmässig nicht anwesend und zählen nicht als entschuldigt.
-2. Vorlage(n) erstellen: Titel, Sitzungsleitung, Protokollführung, Traktanden mit Unterpunkten.
-3. Sitzung erfassen (mit oder ohne Vorlage) → «Vorprotokoll» öffnen. Offene / in Bearbeitung
-   befindliche Pendenzen früherer Sitzungen werden automatisch als Traktanden angehängt.
-4. Freigabe-Links verschicken: der allgemeine Link für das ganze Vorprotokoll, die persönlichen
-   Links für einzelne Personen (sie sehen alles, bearbeiten aber nur ihre Traktanden und Anwesenheit).
-   Pro Traktandum und Unterpunkt gibt es «Verantwortlich» (frei oder aus der Liste, mehrere möglich) und
-   «Dürfen zusätzlich bearbeiten» (Personen, Rollen oder die Gruppen Alle / Stimmberechtigte / Ohne Stimmrecht).
-   Ein Unterpunkt ohne eigene Einträge erbt die Rechte des Traktandums.
-   Wer berechtigt ist, sieht seine Traktanden mit blauem Rahmen und kann sich selbst als verantwortlich eintragen.
-5. «Sitzung starten» → Live-Protokoll. Pro Traktandum oder Unterpunkt Einträge erfassen.
-   Unterpunkte erben den Themenbereich des Traktandums. Übertragene Pendenzen werden direkt am
-   Original aktualisiert, damit sie überall denselben Stand haben.
-6. Nächsten Termin (mit Vorlage) erfassen, Sitzung abschliessen, PDF exportieren.
-
-## Bedienprinzip
-
-Listen (Traktanden, Einträge, Rollen, Themenbereiche, Kopfdaten) zeigen eine ruhige Vorschau.
-Ein Klick öffnet genau dieses Element zur Bearbeitung; Klick daneben, «Fertig» oder Escape schliesst es.
-Seltene Aktionen (Löschen, Verschieben, Links, PDF) liegen in «⋯»/«⋮»-Menüs; Mitglieder und neue Sitzungen werden im Dialog erfasst.
-Die Gremium-Seite ist in die Tabs Sitzungen / Mitglieder & Rollen / Protokoll-Einstellungen / Teilen gegliedert.
-Oben rechts «Hilfe», im Footer «Datenschutz».
-
-## Hinweise
-
-- Gleichzeitiges Bearbeiten: Änderungen werden pro Datensatz (Gremium, Sitzung, Vorprotokoll,
-  Protokoll) übertragen. Zwei Personen können parallel an verschiedenen Dingen arbeiten; bearbeiten
-  beide denselben Datensatz, gewinnt die zuletzt gespeicherte Version.
-- `data/` wird per `.htaccess` gegen direkten Zugriff geschützt (Apache). Bei nginx muss der Ordner
-  separat gesperrt werden.
+MIT – siehe [LICENSE](LICENSE). Ein Projekt von [Orki](https://orki.ch).
