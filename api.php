@@ -588,32 +588,37 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   };
 
   $protokoll = [];
+  $zipFertig = false;
   if (class_exists('ZipArchive')) {
-    // Variante 1: Gesamtpaket (automatisch von GitHub erzeugtes Quellcode-ZIP des Releases)
-    $zipDaten = holen($release['zipball_url'] ?? '');
-    if ($zipDaten === null) antwort(['fehler' => 'Paket konnte nicht von GitHub geladen werden'], 502);
-    $zipDatei = tempnam(sys_get_temp_dir(), 'ormeet');
-    file_put_contents($zipDatei, $zipDaten);
-    $zip = new ZipArchive();
-    if ($zip->open($zipDatei) !== true) { unlink($zipDatei); antwort(['fehler' => 'Paket ist kein gültiges ZIP'], 502); }
-    for ($i = 0; $i < $zip->numFiles; $i++) {
-      $pfad = $zip->getNameIndex($i);
-      // GitHub verpackt alles in einen Wurzelordner (z. B. orki-ch-ormeet-<hash>/) – den entfernen wir
-      $schraegstrich = strpos($pfad, '/');
-      $ohneWurzel = $schraegstrich === false ? '' : substr($pfad, $schraegstrich + 1);
-      $ergebnis = $schreiben($ohneWurzel, $zip->getFromIndex($i));
-      if ($ergebnis !== null) $protokoll[] = $ergebnis;
+    // Variante 1: Quellcode-ZIP des Releases, direkt ohne Umleitung (Umleitungen scheitern auf vielen Hostings)
+    $zipDaten = holen('https://codeload.github.com/' . GITHUB_REPO . '/zip/refs/tags/' . rawurlencode($tag));
+    if ($zipDaten !== null && substr($zipDaten, 0, 2) === 'PK') {
+      $zipDatei = DATEN_ORDNER . '/update.zip';
+      file_put_contents($zipDatei, $zipDaten);
+      $zip = new ZipArchive();
+      if ($zip->open($zipDatei) === true) {
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+          $pfad = $zip->getNameIndex($i);
+          // GitHub verpackt alles in einen Wurzelordner (z. B. ormeet-1.0.2/) – den entfernen wir
+          $schraegstrich = strpos($pfad, '/');
+          $ohneWurzel = $schraegstrich === false ? '' : substr($pfad, $schraegstrich + 1);
+          $ergebnis = $schreiben($ohneWurzel, $zip->getFromIndex($i));
+          if ($ergebnis !== null) $protokoll[] = $ergebnis;
+        }
+        $zip->close();
+        $zipFertig = true;
+      }
+      unlink($zipDatei);
     }
-    $zip->close();
-    unlink($zipDatei);
-  } else {
-    // Variante 2: Einzeldateien über die GitHub-API (für Server ohne zip-Erweiterung)
-    $baum = json_decode(holen('https://api.github.com/repos/' . GITHUB_REPO . '/git/trees/' . $tag . '?recursive=1') ?? '', true);
+  }
+  if (!$zipFertig) {
+    // Variante 2: Einzeldateien über die GitHub-API (ohne zip-Erweiterung oder wenn das ZIP nicht geladen werden konnte)
+    $baum = json_decode(holen('https://api.github.com/repos/' . GITHUB_REPO . '/git/trees/' . rawurlencode($tag) . '?recursive=1') ?? '', true);
     if (!is_array($baum['tree'] ?? null)) antwort(['fehler' => 'Dateiliste konnte nicht von GitHub geladen werden'], 502);
     foreach ($baum['tree'] as $eintrag) {
       if (($eintrag['type'] ?? '') !== 'blob') continue;
       $name = $eintrag['path'];
-      $url = 'https://raw.githubusercontent.com/' . GITHUB_REPO . '/' . $tag . '/' . implode('/', array_map('rawurlencode', explode('/', $name)));
+      $url = 'https://raw.githubusercontent.com/' . GITHUB_REPO . '/' . rawurlencode($tag) . '/' . implode('/', array_map('rawurlencode', explode('/', $name)));
       $inhalt = holen($url);
       if ($inhalt === null) { $protokoll[] = "Fehler: $name konnte nicht geladen werden"; continue; }
       $ergebnis = $schreiben($name, $inhalt);
