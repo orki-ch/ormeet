@@ -1,0 +1,72 @@
+import { sync, abmelden } from './stores/sync.js'
+import { updateStand, updatePruefen } from './stores/updates.js'
+
+const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', freigabe: 'Freigabe-Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
+
+export default {
+  name: 'App',
+  template: `
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-inner">
+          <router-link :to="startPfad" class="brand"><img src="omeet_logo.svg" alt="Ormeet" /></router-link>
+          <nav class="topbar-nav">
+            <template v-if="sync.zugriff">
+              <span v-if="!['verfolger', 'themenbereich'].includes(sync.zugriff.rolle)" class="status" :class="statusKlasse" :data-tip="statusText"></span>
+              <span class="rolle">{{ rolleText }}</span>
+            </template>
+            <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="sync.zugriff.rolle === 'person' ? 'Meine Übersicht' : 'Gremien'">
+              <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
+            </router-link>
+            <router-link v-if="sync.zugriff?.rolle === 'admin'" to="/einstellungen" class="icon-btn" :class="{ hinweis: updateStand.verfuegbar }" :data-tip="updateStand.verfuegbar ? 'Update verfügbar' : 'Einstellungen'">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
+            </router-link>
+            <router-link to="/hilfe" class="icon-btn" data-tip="Hilfe & Dokumentation">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
+            </router-link>
+            <button v-if="sync.zugriff" class="icon-btn" data-tip="Abmelden" @click="abmelden">
+              <svg viewBox="0 0 24 24"><path d="M10 4H5v16h5"/><path d="M14 8l4 4-4 4"/><path d="M18 12H9"/></svg>
+            </button>
+          </nav>
+        </div>
+      </header>
+      <main class="page">
+        <router-view />
+      </main>
+      <footer class="footer">
+        <span>Ormeet · Sitzungsprotokolle</span>
+        <router-link to="/datenschutz">Datenschutz</router-link>
+        <router-link to="/hilfe">Hilfe & Dokumentation</router-link>
+        <span class="ml-auto">{{ domain }}</span>
+      </footer>
+    </div>
+  `,
+  data() {
+    return { sync, ROLLEN, updateStand, domain: location.hostname }
+  },
+  watch: {
+    // Nach der Anmeldung als Superadmin einmal täglich auf Updates prüfen
+    'sync.zugriff.rolle': { immediate: true, handler: () => updatePruefen() },
+  },
+  computed: {
+    startPfad() {
+      return sync.zugriff?.rolle === 'person' ? '/meine' : '/'
+    },
+    rolleText() {
+      if (sync.zugriff.personName) return sync.zugriff.personName
+      if (sync.zugriff.zugangName) return `Zugang: ${sync.zugriff.zugangName}`
+      return ROLLEN[sync.zugriff.rolle]
+    },
+    statusText() {
+      if (sync.status === 'fehler') return `Fehler beim Speichern: ${sync.fehler}`
+      if (sync.ausstehend || sync.status === 'speichert') return 'Speichert …'
+      return 'Gespeichert'
+    },
+    statusKlasse() {
+      if (sync.status === 'fehler') return 'err'
+      if (sync.ausstehend || sync.status === 'speichert') return 'warn'
+      return 'ok'
+    },
+  },
+  methods: { abmelden },
+}
