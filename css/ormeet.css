@@ -722,14 +722,14 @@ details > summary::-webkit-details-marker {
   background-color: var(--wald);
   background-image: linear-gradient(to right, var(--wald) 0%, var(--wald-2) 45%, var(--brand) 100%);
   background-size: 200% auto;
-  background-position: left center;
+  background-position: 5% center;
   border-color: transparent;
   color: var(--bg);
   transition: background-position 0.4s ease, color 0.4s ease, box-shadow 0.3s, transform 0.3s;
   &:hover {
     background-color: var(--brand);
-    background-position: right center;
-    color: var(--auf-brand);
+    background-position: 90% center;
+    color: white;
     box-shadow: var(--schatten-hover);
   }
 }
