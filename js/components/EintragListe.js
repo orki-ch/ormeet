@@ -22,7 +22,7 @@ export default {
   },
   template: `
     <div>
-      <div v-for="e in eigene" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
+      <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
         <!-- Bearbeitung -->
         <div v-if="aktiv === e.id" class="block-soft editing stack-sm">
           <div class="row">
@@ -45,7 +45,7 @@ export default {
               <select v-model="e.antragStatus" class="input w-sm" title="Vertagt: kommt als neuer Antrag ins nächste Vorprotokoll">
                 <option v-for="(label, wert) in ANTRAG_STATUS" :key="wert" :value="wert">{{ label }}</option>
               </select>
-              <span class="stimmen">
+              <span v-if="mitStimmen(e)" class="stimmen">
                 <span class="dauer" title="Ja-Stimmen"><input v-model.number="e.stimmen.ja" type="number" min="0" class="input" placeholder="–" /> Ja</span>
                 <span class="dauer" title="Nein-Stimmen"><input v-model.number="e.stimmen.nein" type="number" min="0" class="input" placeholder="–" /> Nein</span>
                 <span class="dauer" title="Enthaltungen"><input v-model.number="e.stimmen.enthaltung" type="number" min="0" class="input" placeholder="–" /> Enth.</span>
@@ -111,6 +111,10 @@ export default {
   methods: {
     eigenePendenz(e) {
       return e.typ === 'pendenz' && this.personId && e.zugewiesenAn === this.personId
+    },
+    // Stimmen gibt es nur bei einem Entscheid
+    mitStimmen(e) {
+      return e.antragStatus === 'angenommen' || e.antragStatus === 'abgelehnt'
     },
     meta(e) {
       if (e.typ === 'antrag') return [ANTRAG_STATUS[e.antragStatus], stimmenText(e)].filter(Boolean).join(' · ')

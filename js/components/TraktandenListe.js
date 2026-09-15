@@ -82,7 +82,7 @@ export default {
         </section>
 
         <!-- Vorschau (Karte wie im Protokoll) -->
-        <section v-else class="card" :class="{ editierbar: hauptEditierbar(t) }" @click="hauptEditierbar(t) && (aktiv = t.id)">
+        <section v-else :id="t.id" class="card" :class="{ editierbar: hauptEditierbar(t) }" @click="hauptEditierbar(t) && (aktiv = t.id)">
           <div class="traktandum-kopf">
             <span class="nr">{{ i + 1 }}.</span>
             <h2 :class="{ leer: !t.titel }">{{ t.titel || 'Ohne Titel' }}</h2>
@@ -110,7 +110,7 @@ export default {
                   <button class="btn" @click="aktiv = null">Fertig</button>
                 </div>
               </div>
-              <div v-else class="sub" :class="{ editierbar: subEditierbar(t, u) && !hauptEditierbar(t) }" :style="subEditierbar(t, u) && !hauptEditierbar(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''" @click.stop="subKlick(t, u)">
+              <div v-else :id="u.id" class="sub" :class="{ editierbar: subEditierbar(t, u) && !hauptEditierbar(t) }" :style="subEditierbar(t, u) && !hauptEditierbar(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''" @click.stop="subKlick(t, u)">
                 <div class="sub-kopf">
                   <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
                   <h3>{{ u.titel }}</h3>

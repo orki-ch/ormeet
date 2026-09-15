@@ -1339,6 +1339,19 @@ input[type="color"].input, .farbe {
   color: var(--text-muted);
 }
 
+/* Ziel eines Sprungs (Suchtreffer) kurz hervorheben */
+.hervorgehoben {
+  animation: hervorheben 2.5s ease-out;
+}
+@keyframes hervorheben {
+  0%, 60% {
+    box-shadow: 0 0 0 3px var(--brand);
+  }
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+
 /* Suche über Sitzungen, Traktanden und Einträge */
 .suche {
   padding: 1rem 1.25rem;

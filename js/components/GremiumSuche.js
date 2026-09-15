@@ -53,15 +53,15 @@ export default {
         }
         const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(sitzung.id)
         vorprotokoll?.traktanden.forEach((t, i) => {
-          if (passt(t.titel, t.notiz)) treffer.push({ id: t.id, sitzung, art: 'Traktandum', badge: 'brand', titel: `${i + 1}. ${t.titel}`, text: t.notiz, meta: this.themenbereich(t.themenbereichId), pfad: this.sitzungPfad(sitzung) })
+          if (passt(t.titel, t.notiz)) treffer.push({ id: t.id, sitzung, art: 'Traktandum', badge: 'brand', titel: `${i + 1}. ${t.titel}`, text: t.notiz, meta: this.themenbereich(t.themenbereichId), pfad: this.sitzungPfad(sitzung, t.id) })
           t.untertraktanden.forEach((u, j) => {
-            if (passt(u.titel, u.notiz)) treffer.push({ id: u.id, sitzung, art: 'Unterpunkt', badge: 'brand', titel: `${i + 1}.${j + 1} ${u.titel}`, text: u.notiz, meta: `Traktandum ${t.titel}`, pfad: this.sitzungPfad(sitzung) })
+            if (passt(u.titel, u.notiz)) treffer.push({ id: u.id, sitzung, art: 'Unterpunkt', badge: 'brand', titel: `${i + 1}.${j + 1} ${u.titel}`, text: u.notiz, meta: `Traktandum ${t.titel}`, pfad: this.sitzungPfad(sitzung, u.id) })
           })
         })
         const protokoll = sitzungenStore.protokollVonSitzung(sitzung.id)
         protokoll?.eintraege.forEach((e) => {
           if (!passt(e.titel, e.inhalt, e.zugewiesenAnName, TYP_LABELS[e.typ], this.status(e))) return
-          treffer.push({ id: e.id, sitzung, art: TYP_LABELS[e.typ], badge: TYP_BADGE[e.typ], titel: e.titel, text: e.inhalt, meta: this.status(e), pfad: '/sitzung/' + sitzung.id + '/protokoll' })
+          treffer.push({ id: e.id, sitzung, art: TYP_LABELS[e.typ], badge: TYP_BADGE[e.typ], titel: e.titel, text: e.inhalt, meta: this.status(e), pfad: { path: '/sitzung/' + sitzung.id + '/protokoll', query: { zu: e.id } } })
         })
       }
       return treffer.slice(0, this.MAX)
@@ -69,9 +69,11 @@ export default {
   },
   methods: {
     formatDatum,
-    sitzungPfad(sitzung) {
+    // Ziel-ID (Traktandum / Unterpunkt / Eintrag): der Editor scrollt beim Öffnen dorthin
+    sitzungPfad(sitzung, zu = '') {
       const protokoll = sitzung.datum && sitzungenStore.protokollVonSitzung(sitzung.id)
-      return '/sitzung/' + sitzung.id + (protokoll ? '/protokoll' : '/vorprotokoll')
+      const path = '/sitzung/' + sitzung.id + (protokoll ? '/protokoll' : '/vorprotokoll')
+      return zu ? { path, query: { zu } } : path
     },
     themenbereich(id) {
       return this.gremium.themenbereiche.find((tb) => tb.id === id)?.name || ''

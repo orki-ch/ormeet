@@ -82,7 +82,7 @@ function fusstextBlock(gremium) {
 
 function traktandumTitel(nummer, traktandum, themenbereichName, dauerIst = null) {
   const teile = [`${nummer} ${traktandum.titel}`]
-  const dauer = [traktandum.dauer && `geplant ${formatDauer(traktandum.dauer)}`, dauerIst && `tatsächlich ${formatDauer(dauerIst)}`].filter(Boolean).join(', ')
+  const dauer = traktandum.dauer ? [`geplant ${formatDauer(traktandum.dauer)}`, dauerIst && `tatsächlich ${formatDauer(dauerIst)}`].filter(Boolean).join(', ') : ''
   const zusatz = [TYP_LABELS[traktandum.typ], themenbereichName(traktandum.themenbereichId), personenText(traktandum.verantwortliche), dauer].filter(Boolean).join(' · ')
   if (zusatz) teile.push({ text: `   ${zusatz}`, style: 'klein', bold: false })
   return teile
@@ -179,7 +179,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
 
   const geplant = dauerSumme(vorprotokoll.traktanden)
   const tatsaechlich = vorprotokoll.traktanden.reduce((summe, t) => summe + (Number(dauern[t.id]) || 0), 0)
-  const dauerBlock = geplant || tatsaechlich ? [{ text: `Dauer insgesamt: geplant ${formatDauer(geplant) || '–'} · tatsächlich ${formatDauer(tatsaechlich) || '–'}`, style: 'klein', margin: [0, 6, 0, 0] }] : []
+  const dauerBlock = geplant ? [{ text: `Dauer insgesamt: geplant ${formatDauer(geplant) || '–'} · tatsächlich ${formatDauer(tatsaechlich) || '–'}`, style: 'klein', margin: [0, 6, 0, 0] }] : []
 
   const allePendenzen = [
     ...uebertragenePendenzen,

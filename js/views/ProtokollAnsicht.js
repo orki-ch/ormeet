@@ -128,7 +128,8 @@ export default {
     },
     dauerText(t) {
       const ist = this.protokoll.dauern?.[t.id]
-      return [t.dauer && 'geplant ' + formatDauer(t.dauer), ist && 'tatsächlich ' + formatDauer(ist)].filter(Boolean).join(' · ')
+      if (!t.dauer) return ''
+      return ['geplant ' + formatDauer(t.dauer), ist && 'tatsächlich ' + formatDauer(ist)].filter(Boolean).join(' · ')
     },
     eintraegeVon(traktandumId) {
       return this.protokoll.eintraege.filter((e) => e.traktandumId === traktandumId)

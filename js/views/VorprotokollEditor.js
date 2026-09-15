@@ -4,6 +4,7 @@ import { sync, recht } from '../stores/sync.js'
 import { aktuellePerson, darfEigene, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
+import { springeZu } from '../utils/springen.js'
 import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import PdfExportButton from '../components/PdfExportButton.js'
@@ -144,6 +145,9 @@ export default {
         })
       },
     },
+  },
+  mounted() {
+    springeZu(this.$route.query.zu) // Treffer aus der Suche
   },
   created() {
     if (!this.vorprotokoll && this.sitzungId && this.sitzungenStoreDarfAnlegen()) sitzungenStore.erstelleVorprotokoll(this.sitzungId)

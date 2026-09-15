@@ -4,6 +4,7 @@ import { sync, speichern as serverSpeichern } from '../stores/sync.js'
 import { aktuellePerson, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { dauerSumme, istBerechtigt, neuesTraktandum, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
+import { springeZu } from '../utils/springen.js'
 import EintragListe from '../components/EintragListe.js'
 import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
@@ -81,15 +82,15 @@ export default {
       </section>
 
       <!-- Traktanden mit Einträgen -->
-      <section v-for="(t, i) in traktanden" :key="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
+      <section v-for="(t, i) in traktanden" :id="t.id" :key="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
         <div class="traktandum-kopf">
           <span class="nr">{{ i + 1 }}.</span>
           <h2>{{ t.titel }}</h2>
           <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
-          <span class="dauer-zeile small">
-            <span v-if="t.dauer" class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
+          <span v-if="t.dauer" class="dauer-zeile small">
+            <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
             <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
           </span>
         </div>
@@ -121,7 +122,7 @@ export default {
 
           <EintragListe :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
 
-          <div v-for="(u, j) in t.untertraktanden" :key="u.id" class="sub" :class="{ bearbeitbar: darfSub(t, u) && !darfTraktandum(t) }" :style="darfSub(t, u) && !darfTraktandum(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''">
+          <div v-for="(u, j) in t.untertraktanden" :id="u.id" :key="u.id" class="sub" :class="{ bearbeitbar: darfSub(t, u) && !darfTraktandum(t) }" :style="darfSub(t, u) && !darfTraktandum(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''">
             <div class="sub-kopf">
               <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
               <h3>{{ u.titel }}</h3>
@@ -136,7 +137,7 @@ export default {
         </div>
       </section>
 
-      <p v-if="geplanteDauer || tatsaechlicheDauer" class="muted small">
+      <p v-if="geplanteDauer" class="muted small">
         Dauer insgesamt: geplant {{ formatDauer(geplanteDauer) || '–' }} · tatsächlich {{ formatDauer(tatsaechlicheDauer) || '–' }}
         <span v-if="geplanteDauer && tatsaechlicheDauer" :class="tatsaechlicheDauer > geplanteDauer ? 'text-warn' : 'text-ok'">({{ tatsaechlicheDauer > geplanteDauer ? '+' : '' }}{{ tatsaechlicheDauer - geplanteDauer }} Min.)</span>
       </p>
@@ -307,6 +308,7 @@ export default {
   },
   mounted() {
     window.addEventListener('keydown', this.tastendruck)
+    springeZu(this.$route.query.zu) // Treffer aus der Suche
   },
   beforeUnmount() {
     window.removeEventListener('keydown', this.tastendruck)

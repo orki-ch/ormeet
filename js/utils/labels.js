@@ -2,10 +2,10 @@ export const TYP_LABELS = { information: 'Information', antrag: 'Antrag', penden
 
 export const ANTRAG_STATUS = { offen: 'Offen', angenommen: 'Angenommen', abgelehnt: 'Abgelehnt', vertagt: 'Vertagt', sistiert: 'Sistiert' }
 
-// Abstimmungsergebnis eines Antrags: «5 Ja · 2 Nein · 1 Enthaltung» (leer, wenn nichts erfasst)
+// Abstimmungsergebnis eines Antrags: «5 Ja · 2 Nein · 1 Enthaltung» – nur bei angenommen / abgelehnt
 export function stimmenText(eintrag) {
   const st = eintrag.stimmen
-  if (!st) return ''
+  if (!st || !['angenommen', 'abgelehnt'].includes(eintrag.antragStatus)) return ''
   const teile = [
     st.ja != null && st.ja !== '' && `${st.ja} Ja`,
     st.nein != null && st.nein !== '' && `${st.nein} Nein`,
