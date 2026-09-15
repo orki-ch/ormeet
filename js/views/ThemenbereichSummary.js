@@ -2,6 +2,7 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
 import { neuerKey } from '../utils/keys.js'
+import { rolleIm, zurueckZu } from '../utils/rechte.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, formatDatum } from '../utils/labels.js'
 
@@ -104,16 +105,14 @@ export default {
       return this.gremium?.themenbereiche.find((tb) => tb.id === this.ids.themenbereichId)
     },
     darfTeilen() {
-      return sync.zugriff?.rolle === 'admin' || (sync.zugriff?.rolle === 'gremium' && recht('einstellungen') === 'bearbeiten')
+      const rolle = rolleIm(this.gremium.id)
+      return rolle === 'admin' || (rolle === 'gremium' && recht('einstellungen', this.gremium.id) === 'bearbeiten')
     },
     zurueck() {
-      const rolle = sync.zugriff?.rolle
-      if (rolle === 'person') return '/meine'
-      if (rolle === 'admin' || rolle === 'gremium') return '/gremium/' + this.gremium.id
-      return ''
+      return zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
-      return sync.zugriff?.rolle === 'person' ? 'Meine Übersicht' : this.gremium.name
+      return zurueckZu(this.gremium.id).text
     },
     // Alle Einträge dieses Themenbereichs über sämtliche Protokolle, neueste Sitzung zuerst
     eintraege() {

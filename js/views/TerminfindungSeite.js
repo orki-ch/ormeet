@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync } from '../stores/sync.js'
-import { aktuellePerson, vollzugriff } from '../utils/rechte.js'
+import { aktuellePerson, vollzugriff, zurueckZu } from '../utils/rechte.js'
 import { STIMME, formatDatum } from '../utils/labels.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 
@@ -191,10 +191,10 @@ export default {
       return new Set(max > 0 ? this.tf.optionen.filter((o) => this.summe(o.id).ja === max).map((o) => o.id) : [])
     },
     zurueck() {
-      return sync.zugriff?.rolle === 'person' ? '/meine' : sync.zugriff?.rolle === 'freigabe' ? `/sitzung/${this.sitzungId}/vorprotokoll` : `/gremium/${this.gremium.id}`
+      return sync.zugriff?.rolle === 'freigabe' ? `/sitzung/${this.sitzungId}/vorprotokoll` : zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
-      return sync.zugriff?.rolle === 'person' ? 'Meine Übersicht' : sync.zugriff?.rolle === 'freigabe' ? 'Vorprotokoll' : this.gremium.name
+      return sync.zugriff?.rolle === 'freigabe' ? 'Vorprotokoll' : zurueckZu(this.gremium.id).text
     },
   },
   methods: {

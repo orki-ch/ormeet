@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
-import { aktuellePerson, vollzugriff } from '../utils/rechte.js'
+import { aktuellePerson, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
 import GaesteListe from '../components/GaesteListe.js'
@@ -125,20 +125,17 @@ export default {
     },
     // Gremium-Zugang mit Leserecht auf Sitzungen
     nurLesen() {
-      return sync.zugriff?.rolle === 'gremium' && recht('sitzungen') !== 'bearbeiten'
+      return rolleIm(this.gremium.id) === 'gremium' && recht('sitzungen', this.gremium.id) !== 'bearbeiten'
     },
     // Links (Schlüssel) sind nur für Admin / Gremium-Zugang sichtbar
     linksSichtbar() {
-      return ['admin', 'gremium'].includes(sync.zugriff?.rolle) && !this.nurLesen
+      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id)) && !this.nurLesen
     },
     zurueck() {
-      const rolle = sync.zugriff?.rolle
-      if (rolle === 'person') return '/meine'
-      if (rolle === 'admin' || rolle === 'gremium') return '/gremium/' + this.gremium.id
-      return ''
+      return zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
-      return sync.zugriff?.rolle === 'person' ? 'Meine Übersicht' : this.gremium.name
+      return zurueckZu(this.gremium.id).text
     },
     personen() {
       return gremienStore.personen(this.gremium.id, this.vorprotokoll.gaeste)

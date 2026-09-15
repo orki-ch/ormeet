@@ -1,10 +1,13 @@
 import { sync, abmelden } from './stores/sync.js'
 import { updateStand, updatePruefen } from './stores/updates.js'
+import { startPfad } from './router.js'
+import Benachrichtigungen from './components/Benachrichtigungen.js'
 
-const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', freigabe: 'Freigabe-Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
+const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', benutzer: 'Konto', freigabe: 'Freigabe-Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
 
 export default {
   name: 'App',
+  components: { Benachrichtigungen },
   template: `
     <div class="app">
       <header class="topbar">
@@ -15,13 +18,20 @@ export default {
               <span v-if="!['verfolger', 'themenbereich'].includes(sync.zugriff.rolle)" class="status" :class="statusKlasse" :data-tip="statusText"></span>
               <span class="rolle">{{ rolleText }}</span>
             </template>
-            <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="sync.zugriff.rolle === 'person' ? 'Meine Übersicht' : 'Gremien'">
+            <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="startPfad.startsWith('/meine') ? 'Meine Übersicht' : 'Gremien'">
               <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
+            </router-link>
+            <Benachrichtigungen v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" />
+            <router-link v-if="sync.zugriff?.rolle === 'admin'" to="/benutzer" class="icon-btn" data-tip="Benutzer & Links">
+              <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/></svg>
+            </router-link>
+            <router-link v-if="sync.zugriff?.rolle === 'benutzer'" to="/konto" class="icon-btn" data-tip="Mein Konto">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 20.5a8 8 0 0 1 16 0"/></svg>
             </router-link>
             <router-link v-if="sync.zugriff?.rolle === 'admin'" to="/einstellungen" class="icon-btn" :class="{ hinweis: updateStand.verfuegbar }" :data-tip="updateStand.verfuegbar ? 'Update verfügbar' : 'Einstellungen'">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>
             </router-link>
-            <router-link to="/hilfe" class="icon-btn" data-tip="Hilfe & Dokumentation">
+            <router-link to="/hilfe" class="icon-btn hilfe" data-tip="Hilfe & Dokumentation">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
             </router-link>
             <button v-if="sync.zugriff" class="icon-btn" data-tip="Abmelden" @click="abmelden">
@@ -50,9 +60,10 @@ export default {
   },
   computed: {
     startPfad() {
-      return sync.zugriff?.rolle === 'person' ? '/meine' : '/'
+      return startPfad()
     },
     rolleText() {
+      if (sync.zugriff.rolle === 'benutzer') return sync.zugriff.name
       if (sync.zugriff.personName) return sync.zugriff.personName
       if (sync.zugriff.zugangName) return `Zugang: ${sync.zugriff.zugangName}`
       return ROLLEN[sync.zugriff.rolle]

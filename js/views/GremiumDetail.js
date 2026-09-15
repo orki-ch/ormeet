@@ -1,6 +1,7 @@
 import { BEREICHE, ROLLEN_TYPEN, gremienStore, neuerZugang } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht, gremiumLoeschen } from '../stores/sync.js'
+import { rolleIm } from '../utils/rechte.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { neuerKey } from '../utils/keys.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
@@ -21,7 +22,7 @@ export default {
   template: `
     <div v-if="gremium" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
-        <router-link to="/" class="rueck">← Alle Gremien</router-link>
+        <router-link v-if="sync.zugriff?.rolle !== 'gremium'" to="/" class="rueck">← Alle Gremien</router-link>
         <div class="row-nowrap top between">
           <div class="grow" style="max-width: 40rem">
             <input v-model.trim="gremium.name" class="input-inline title" :disabled="!darf('einstellungen')" />
@@ -210,6 +211,15 @@ export default {
             </select>
           </div>
           <label class="check"><input v-model="mitglied.hatStimmrecht" type="checkbox" /> Stimmberechtigt</label>
+          <div v-if="istSuperadmin" class="block-soft stack-sm">
+            <span class="label" style="margin: 0">Konto</span>
+            <select v-model="mitglied.benutzerId" class="input">
+              <option :value="null">Kein Konto verknüpft</option>
+              <option v-for="k in sync.konten" :key="k.id" :value="k.id">{{ k.name }} · {{ k.email }}</option>
+            </select>
+            <p class="small muted">Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link.</p>
+          </div>
+          <p v-else-if="mitglied.benutzerId" class="small muted">Mit einem Konto verknüpft ({{ kontoName(mitglied.benutzerId) }}).</p>
           <div v-if="mitglied.id && mitglied.zugangsKey" class="block-soft stack-sm">
             <span class="label" style="margin: 0">Persönlicher Link</span>
             <p class="small muted">Zeigt dieser Person ihre Sitzungen, Terminfindungen und Pendenzen; bearbeiten kann sie, was ihr zugewiesen ist – als Sitzungsleitung / Protokollführung alles.</p>
@@ -271,6 +281,7 @@ export default {
       ROLLEN_TYPEN,
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
+      sync,
     }
   },
   computed: {
@@ -286,13 +297,17 @@ export default {
     bearbeiterAuswahl() {
       return gremienStore.bearbeiterAuswahl(this.gremiumId)
     },
+    // Superadmin oder Eigentümer (Konto, das dieses Gremium angelegt hat)
     istAdmin() {
+      return rolleIm(this.gremiumId) === 'admin'
+    },
+    istSuperadmin() {
       return sync.zugriff?.rolle === 'admin'
     },
     sichtbareTabs() {
       const tabs = {}
       for (const [id, label] of Object.entries(TABS)) {
-        if (id === 'teilen' ? this.istAdmin : recht(id) !== 'keine') tabs[id] = label
+        if (id === 'teilen' ? this.istAdmin : recht(id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
     },
@@ -310,7 +325,10 @@ export default {
       return gremienStore.rolleName(this.gremiumId, rolleId)
     },
     darf(bereich) {
-      return recht(bereich) === 'bearbeiten'
+      return recht(bereich, this.gremiumId) === 'bearbeiten'
+    },
+    kontoName(benutzerId) {
+      return sync.konten.find((k) => k.id === benutzerId)?.name || 'Konto'
     },
     zugangsLink(zugang) {
       return location.href.split('#')[0] + '#/zugang/' + zugang.key
@@ -328,7 +346,7 @@ export default {
       this.neuerZugangName = ''
     },
     mitgliedBearbeiten(m) {
-      this.mitglied = m ? { ...m } : { id: null, name: '', email: '', rolleId: this.gremium.rollen[0]?.id || '', hatStimmrecht: true }
+      this.mitglied = m ? { ...m } : { id: null, name: '', email: '', rolleId: this.gremium.rollen[0]?.id || '', hatStimmrecht: true, benutzerId: null }
     },
     mitgliedLinkKopieren() {
       navigator.clipboard.writeText(location.href.split('#')[0] + '#/zugang/' + this.mitglied.zugangsKey)
@@ -393,6 +411,7 @@ export default {
       await gremiumLoeschen(this.gremiumId)
       sitzungenStore.loescheSitzungenVonGremium(this.gremiumId)
       gremienStore.loesche(this.gremiumId)
+      if (sync.zugriff.rolle === 'benutzer') sync.zugriff.gremien = sync.zugriff.gremien.filter((g) => g.gremiumId !== this.gremiumId)
       this.$router.push('/')
     },
   },

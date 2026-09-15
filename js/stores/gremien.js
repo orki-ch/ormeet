@@ -63,6 +63,7 @@ export const gremienStore = {
       id: crypto.randomUUID(),
       name,
       beschreibung,
+      eigentuemerId: null, // setzt der Server, wenn ein Konto das Gremium anlegt
       zugaenge: [], // Teilen-Links mit Rechten pro Bereich
       fusstext:
         'Rückmeldungen, Korrekturen und Ergänzungen zum Protokoll können innert 30 Tagen an die Protokollführung erfolgen. Danach gilt das Protokoll als angenommen.',

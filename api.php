@@ -3,7 +3,9 @@
 // Ormeet API – speichert die Daten pro Gremium als JSON-Datei in data/
 //
 // Zugriff über den Header X-Token:
-//   Superadmin-Passwort      -> alle Gremien, anlegen/löschen
+//   Superadmin-Passwort      -> alle Gremien, anlegen/löschen, Konten verwalten
+//   benutzer[].anmeldungen[] -> Konto (E-Mail/Passwort oder SSO): pro Gremium Eigentümer (wie Superadmin, nur dort)
+//                               oder Mitglied (wie persönlicher Link); Daten in data/benutzer.json
 //   zugaenge[].key           -> Gremium-Zugang mit Rechten pro Bereich (sitzungen / mitglieder / einstellungen: keine|lesen|bearbeiten)
 //   mitglieder[].zugangsKey  -> zentraler persönlicher Link eines Mitglieds: Rechte gemäss Traktanden-Zuweisungen;
 //                               als Sitzungsleitung / Protokollführung einer Sitzung voller Zugriff auf deren Dokumente
@@ -15,6 +17,13 @@
 
 const ADMIN_PASSWORT = 'bitte-aendern';   // <- unbedingt ändern!
 const DATEN_ORDNER = __DIR__ . '/data';
+const BENUTZER_DATEI = DATEN_ORDNER . '/benutzer.json';
+const EINSTELLUNGEN_DATEI = DATEN_ORDNER . '/einstellungen.json';
+// SSO-Anbieter (OpenID Connect): Server-URL, Client-ID und Client-Secret werden in den Einstellungen gepflegt (data/einstellungen.json)
+const SSO_ANBIETER = [
+  'sublevia' => ['name' => 'Sublevia', 'authorize' => '/application/o/authorize/', 'token' => '/application/o/token/', 'userinfo' => '/application/o/userinfo/'],
+  'orki' => ['name' => 'Orki', 'authorize' => '/_/call/oidc/authorize', 'token' => '/_/call/oidc/token', 'userinfo' => '/_/call/oidc/userinfo'],
+];
 const GITHUB_REPO = 'orki-ch/ormeet'; // Herkunft für automatische Updates (GitHub-Releases)
 const VOLLE_RECHTE = ['sitzungen' => 'bearbeiten', 'mitglieder' => 'bearbeiten', 'einstellungen' => 'bearbeiten'];
 
@@ -53,10 +62,134 @@ function lesen($datei) {
 function alleBundles() {
   $bundles = [];
   foreach (glob(DATEN_ORDNER . '/*.json') as $datei) {
+    if (!preg_match('/[0-9a-f-]{36}\.json$/', $datei)) continue; // benutzer.json, einstellungen.json
     $bundle = lesen($datei);
     if ($bundle) $bundles[] = $bundle;
   }
   return $bundles;
+}
+
+// --- Konten, Einstellungen -----------------------------------------
+function jsonLesen($datei, array $standard) {
+  $daten = file_exists($datei) ? json_decode(file_get_contents($datei), true) : null;
+  return is_array($daten) ? $daten + $standard : $standard;
+}
+
+function jsonSchreiben($datei, array $daten) {
+  file_put_contents($datei, json_encode($daten, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+}
+
+function benutzerLesen() {
+  return jsonLesen(BENUTZER_DATEI, ['benutzer' => []])['benutzer'];
+}
+
+function benutzerSchreiben(array $benutzer) {
+  jsonSchreiben(BENUTZER_DATEI, ['benutzer' => array_values($benutzer)]);
+}
+
+function benutzerById(array $benutzer, $id) {
+  foreach ($benutzer as $i => $b) if ($b['id'] === $id) return $i;
+  return null;
+}
+
+function benutzerByEmail(array $benutzer, $email) {
+  foreach ($benutzer as $i => $b) if (strcasecmp($b['email'], $email) === 0) return $i;
+  return null;
+}
+
+function neuerBenutzer($name, $email) {
+  return ['id' => uuid(), 'name' => $name, 'email' => $email, 'passwortHash' => '', 'sso' => [], 'darfGremienAnlegen' => false,
+          'erstelltAm' => date('c'), 'letzteAnmeldung' => '', 'anmeldungen' => []];
+}
+
+function uuid() {
+  $b = random_bytes(16);
+  $b[6] = chr((ord($b[6]) & 0x0f) | 0x40);
+  $b[8] = chr((ord($b[8]) & 0x3f) | 0x80);
+  return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($b), 4));
+}
+
+// Neue Anmeldung (Token) für ein Konto; liefert den Token
+function anmeldungAnlegen(array &$b) {
+  $token = bin2hex(random_bytes(24));
+  $b['anmeldungen'][] = ['token' => $token, 'seit' => date('c')];
+  $b['anmeldungen'] = array_slice($b['anmeldungen'], -10); // höchstens 10 Geräte
+  $b['letzteAnmeldung'] = date('c');
+  return $token;
+}
+
+// Konto ohne Geheimnisse (für Superadmin und Kontoinhaber)
+function benutzerOeffentlich(array $b) {
+  return ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'], 'hatPasswort' => $b['passwortHash'] !== '',
+          'sso' => array_keys($b['sso']), 'erstelltAm' => $b['erstelltAm'], 'letzteAnmeldung' => $b['letzteAnmeldung'], 'geraete' => count($b['anmeldungen'])];
+}
+
+function einstellungenLesen() {
+  return jsonLesen(EINSTELLUNGEN_DATEI, ['sso' => []]);
+}
+
+// Aktive SSO-Anbieter (URL und Client-ID gesetzt)
+function ssoAktiv() {
+  $aktiv = [];
+  foreach (SSO_ANBIETER as $id => $anbieter) {
+    $konfig = einstellungenLesen()['sso'][$id] ?? [];
+    if (!empty($konfig['url']) && !empty($konfig['clientId'])) $aktiv[$id] = $anbieter + $konfig;
+  }
+  return $aktiv;
+}
+
+// Gremien eines Kontos: eigene (Eigentümer) und solche, in denen ein Mitglied mit dem Konto verknüpft ist
+function benutzerGremien($benutzerId) {
+  $liste = [];
+  foreach (alleBundles() as $bundle) {
+    $g = $bundle['gremium'];
+    if (($g['eigentuemerId'] ?? null) === $benutzerId) {
+      $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'eigentuemer'];
+      continue;
+    }
+    foreach ($g['mitglieder'] as $m) {
+      if (($m['benutzerId'] ?? null) === $benutzerId) {
+        $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'mitglied', 'personId' => $m['id'], 'personName' => $m['name']];
+        break;
+      }
+    }
+  }
+  return $liste;
+}
+
+// Konto -> Zugriff wie Superadmin (Eigentümer) bzw. persönlicher Link (Mitglied) für ein bestimmtes Gremium
+function effektiverZugriff(array $zugriff, $gremiumId) {
+  if ($zugriff['rolle'] !== 'benutzer') return $zugriff;
+  foreach ($zugriff['gremien'] as $g) {
+    if ($g['gremiumId'] !== $gremiumId) continue;
+    if ($g['rolle'] === 'eigentuemer') return ['rolle' => 'admin', 'gremiumId' => $gremiumId, 'benutzerId' => $zugriff['benutzerId'], 'eigentuemer' => true];
+    return ['rolle' => 'person', 'gremiumId' => $gremiumId, 'personId' => $g['personId'], 'personName' => $g['personName'], 'benutzerId' => $zugriff['benutzerId']];
+  }
+  return ['rolle' => 'keine', 'gremiumId' => $gremiumId];
+}
+
+// Mitglied eines Gremiums mit einem Konto verknüpfen (Datei mit Sperre bearbeiten)
+function mitgliedVerknuepfen($gremiumId, $personId, $benutzerId) {
+  $datei = dateiVon($gremiumId);
+  $handle = fopen($datei, 'c+');
+  flock($handle, LOCK_EX);
+  $bundle = json_decode(stream_get_contents($handle), true);
+  if ($bundle) {
+    foreach ($bundle['gremium']['mitglieder'] as &$m) {
+      if ($m['id'] === $personId) $m['benutzerId'] = $benutzerId;
+      elseif (($m['benutzerId'] ?? null) === $benutzerId) $m['benutzerId'] = null; // ein Konto pro Gremium nur einmal
+    }
+    ftruncate($handle, 0);
+    rewind($handle);
+    fwrite($handle, json_encode($bundle, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+  }
+  flock($handle, LOCK_UN);
+  fclose($handle);
+}
+
+function basisUrl() {
+  $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+  return ($https ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/';
 }
 
 function indexById(array $liste) {
@@ -325,65 +458,174 @@ function bereinigen(array $bundle, array $zugriff) {
   return $bundle;
 }
 
-// --- Zugriff anhand des Tokens bestimmen ------------------------
+// --- Token und Aktion ----------------------------------------------
 $token = $_SERVER['HTTP_X_TOKEN'] ?? '';
 if ($token === '' && ($_GET['aktion'] ?? '') === 'ical') $token = $_GET['token'] ?? ''; // Kalender-Abo: Token als Parameter
-$zugriff = null;
-if ($token !== '' && hash_equals(ADMIN_PASSWORT, $token)) {
-  $zugriff = ['rolle' => 'admin'];
-} elseif ($token !== '') {
+$aktion = $_GET['aktion'] ?? '';
+$eingabe = $_SERVER['REQUEST_METHOD'] === 'POST' ? json_decode(file_get_contents('php://input'), true) : null;
+
+// Zugriff für einen Link-Token (Gremium-Zugang, persönlicher Link, Freigabe, Verfolger, Übersicht)
+function linkZugriff($token) {
   foreach (alleBundles() as $bundle) {
     $gremiumId = $bundle['gremium']['id'];
     foreach ($bundle['gremium']['zugaenge'] ?? [] as $zugang) {
-      if (hash_equals($zugang['key'], $token)) {
-        $zugriff = ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'rechte' => $zugang['rechte'], 'zugangName' => $zugang['name']];
-        break 2;
-      }
+      if (hash_equals($zugang['key'], $token)) return ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'rechte' => $zugang['rechte'], 'zugangName' => $zugang['name']];
     }
     if (hash_equals($bundle['gremium']['zugangsKey'] ?? '', $token)) {
-      $zugriff = ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'zugangName' => 'Vollzugriff', 'rechte' => VOLLE_RECHTE];
-      break;
+      return ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'zugangName' => 'Vollzugriff', 'rechte' => VOLLE_RECHTE];
     }
     foreach ($bundle['gremium']['mitglieder'] as $m) {
       if (hash_equals($m['zugangsKey'] ?? '', $token)) {
-        $zugriff = ['rolle' => 'person', 'gremiumId' => $gremiumId, 'personId' => $m['id'], 'personName' => $m['name']];
-        break 2;
+        return ['rolle' => 'person', 'gremiumId' => $gremiumId, 'personId' => $m['id'], 'personName' => $m['name'], 'personEmail' => $m['email'] ?? '', 'benutzerId' => $m['benutzerId'] ?? null];
       }
     }
     foreach ($bundle['gremium']['themenbereiche'] as $tb) {
-      if (hash_equals($tb['freigabeKey'] ?? '', $token)) {
-        $zugriff = ['rolle' => 'themenbereich', 'gremiumId' => $gremiumId, 'themenbereichId' => $tb['id']];
-        break 2;
-      }
+      if (hash_equals($tb['freigabeKey'] ?? '', $token)) return ['rolle' => 'themenbereich', 'gremiumId' => $gremiumId, 'themenbereichId' => $tb['id']];
     }
     foreach ($bundle['protokolle'] as $protokoll) {
-      if (hash_equals($protokoll['verfolgerKey'] ?? '', $token)) {
-        $zugriff = ['rolle' => 'verfolger', 'gremiumId' => $gremiumId, 'protokollId' => $protokoll['id']];
-        break 2;
-      }
+      if (hash_equals($protokoll['verfolgerKey'] ?? '', $token)) return ['rolle' => 'verfolger', 'gremiumId' => $gremiumId, 'protokollId' => $protokoll['id']];
     }
     foreach ($bundle['vorprotokolle'] as $vorprotokoll) {
-      if (hash_equals($vorprotokoll['freigabeLinkKey'], $token)) {
-        $zugriff = ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id']];
-        break 2;
-      }
+      if (hash_equals($vorprotokoll['freigabeLinkKey'], $token)) return ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id']];
       foreach ($vorprotokoll['personenKeys'] ?? [] as $personId => $key) {
         if (hash_equals($key, $token)) {
-          $zugriff = ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id'],
-                      'personId' => $personId, 'personName' => personDaten($bundle, $personId)['name']];
-          break 3;
+          return ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id'],
+                  'personId' => $personId, 'personName' => personDaten($bundle, $personId)['name']];
         }
       }
     }
   }
+  return null;
 }
+
+// Zugriff für einen Konto-Token
+function kontoZugriff($token, array $benutzer) {
+  foreach ($benutzer as $b) {
+    foreach ($b['anmeldungen'] as $a) {
+      if (hash_equals($a['token'], $token)) {
+        return ['rolle' => 'benutzer', 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
+                'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'gremien' => benutzerGremien($b['id'])];
+      }
+    }
+  }
+  return null;
+}
+
+$zugriff = null;
+if ($token !== '' && hash_equals(ADMIN_PASSWORT, $token)) $zugriff = ['rolle' => 'admin'];
+elseif ($token !== '') $zugriff = kontoZugriff($token, benutzerLesen()) ?? linkZugriff($token);
+
+// --- Konto: Anmelden, Registrieren, SSO (ohne gültigen Token erreichbar) ---------------
+function tokenAntwort(array $benutzer, $i) {
+  $token = anmeldungAnlegen($benutzer[$i]);
+  benutzerSchreiben($benutzer);
+  antwort(['token' => $token]);
+}
+
+// Persönlicher Link als Token: dieses Mitglied mit dem Konto verknüpfen
+function linkVerknuepfen($zugriff, $benutzerId) {
+  if ($zugriff && $zugriff['rolle'] === 'person') mitgliedVerknuepfen($zugriff['gremiumId'], $zugriff['personId'], $benutzerId);
+}
+
+if ($aktion === 'sso_anbieter') {
+  antwort(['anbieter' => array_map(fn($a) => $a['name'], ssoAktiv())]);
+}
+
+if ($aktion === 'anmelden') {
+  $email = trim($eingabe['email'] ?? '');
+  $benutzer = benutzerLesen();
+  $i = benutzerByEmail($benutzer, $email);
+  if ($i === null || $benutzer[$i]['passwortHash'] === '' || !password_verify($eingabe['passwort'] ?? '', $benutzer[$i]['passwortHash'])) {
+    usleep(300000);
+    antwort(['fehler' => 'E-Mail oder Passwort stimmt nicht'], 401);
+  }
+  linkVerknuepfen($zugriff, $benutzer[$i]['id']);
+  tokenAntwort($benutzer, $i);
+}
+
+if ($aktion === 'registrieren') {
+  // Nur über einen persönlichen Link (oder durch den Superadmin) – so gehört jedes Konto zu einer bekannten Person
+  if (!$zugriff || !in_array($zugriff['rolle'], ['person', 'admin'], true)) antwort(['fehler' => 'Ein Konto kann nur über einen persönlichen Link erstellt werden'], 403);
+  $email = trim($eingabe['email'] ?? '');
+  $name = trim($eingabe['name'] ?? '');
+  $passwort = $eingabe['passwort'] ?? '';
+  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) antwort(['fehler' => 'Bitte eine gültige E-Mail-Adresse angeben'], 400);
+  if ($name === '') antwort(['fehler' => 'Bitte einen Namen angeben'], 400);
+  if (strlen($passwort) < 8) antwort(['fehler' => 'Das Passwort braucht mindestens 8 Zeichen'], 400);
+  $benutzer = benutzerLesen();
+  if (benutzerByEmail($benutzer, $email) !== null) antwort(['fehler' => 'Mit dieser E-Mail gibt es schon ein Konto – bitte anmelden'], 409);
+  $neu = neuerBenutzer($name, $email);
+  $neu['passwortHash'] = password_hash($passwort, PASSWORD_DEFAULT);
+  $benutzer[] = $neu;
+  linkVerknuepfen($zugriff, $neu['id']);
+  if ($zugriff['rolle'] === 'admin') {
+    benutzerSchreiben($benutzer);
+    antwort(['ok' => true, 'benutzer' => benutzerOeffentlich($neu)]);
+  }
+  tokenAntwort($benutzer, count($benutzer) - 1);
+}
+
+// SSO: Weiterleitung zum Anbieter; Zustand signiert im state-Parameter (kein Sitzungsspeicher nötig)
+function ssoSignatur($daten) {
+  return hash_hmac('sha256', $daten, hash('sha256', ADMIN_PASSWORT . '|sso'));
+}
+
+if ($aktion === 'sso_start') {
+  $id = $_GET['anbieter'] ?? '';
+  $anbieter = ssoAktiv()[$id] ?? null;
+  if (!$anbieter) antwort(['fehler' => 'Dieser Anbieter ist nicht eingerichtet'], 400);
+  $daten = base64_encode(json_encode(['anbieter' => $id, 'verknuepfen' => $_GET['verknuepfen'] ?? '', 'weiter' => $_GET['weiter'] ?? '', 'zeit' => time(), 'nonce' => bin2hex(random_bytes(8))]));
+  $state = $daten . '.' . ssoSignatur($daten);
+  $url = rtrim($anbieter['url'], '/') . $anbieter['authorize'] . '?' . http_build_query([
+    'response_type' => 'code', 'client_id' => $anbieter['clientId'], 'redirect_uri' => basisUrl() . 'api.php?aktion=sso_callback',
+    'scope' => 'openid email profile', 'state' => $state,
+  ]);
+  header('Location: ' . $url, true, 302);
+  exit;
+}
+
+if ($aktion === 'sso_callback') {
+  $fehlerSeite = fn($text) => header('Location: ' . basisUrl() . '#/login?fehler=' . rawurlencode($text), true, 302);
+  [$daten, $signatur] = array_pad(explode('.', $_GET['state'] ?? '', 2), 2, '');
+  $state = json_decode(base64_decode($daten), true);
+  if (!$state || !hash_equals(ssoSignatur($daten), $signatur) || time() - $state['zeit'] > 600) { $fehlerSeite('Die Anmeldung ist abgelaufen – bitte erneut versuchen'); exit; }
+  $anbieter = ssoAktiv()[$state['anbieter']] ?? null;
+  if (!$anbieter || empty($_GET['code'])) { $fehlerSeite('Anmeldung beim Anbieter fehlgeschlagen'); exit; }
+  $basis = rtrim($anbieter['url'], '/');
+  $tokenDaten = json_decode(holen($basis . $anbieter['token'], [
+    'grant_type' => 'authorization_code', 'code' => $_GET['code'], 'redirect_uri' => basisUrl() . 'api.php?aktion=sso_callback',
+    'client_id' => $anbieter['clientId'], 'client_secret' => $anbieter['clientSecret'] ?? '',
+  ]) ?? '', true);
+  $info = empty($tokenDaten['access_token']) ? null : json_decode(holen($basis . $anbieter['userinfo'], null, ['Authorization: Bearer ' . $tokenDaten['access_token']]) ?? '', true);
+  if (empty($info['sub']) || empty($info['email'])) { $fehlerSeite('Der Anbieter hat keine Benutzerdaten geliefert'); exit; }
+
+  $benutzer = benutzerLesen();
+  $i = null;
+  foreach ($benutzer as $k => $b) if (($b['sso'][$state['anbieter']] ?? null) === $info['sub']) $i = $k;
+  if ($i === null) $i = benutzerByEmail($benutzer, $info['email']); // gleiche E-Mail: bestehendes Konto verknüpfen
+  if ($i === null) {
+    $name = trim($info['name'] ?? trim(($info['given_name'] ?? '') . ' ' . ($info['family_name'] ?? ''))) ?: ($info['preferred_username'] ?? $info['email']);
+    $benutzer[] = neuerBenutzer($name, $info['email']);
+    $i = count($benutzer) - 1;
+  }
+  $benutzer[$i]['sso'][$state['anbieter']] = $info['sub'];
+  if ($state['verknuepfen'] !== '') linkVerknuepfen(linkZugriff($state['verknuepfen']), $benutzer[$i]['id']);
+  $neuerToken = anmeldungAnlegen($benutzer[$i]);
+  benutzerSchreiben($benutzer);
+  $weiter = $state['weiter'] !== '' && $state['weiter'][0] === '/' ? '?weiter=' . rawurlencode($state['weiter']) : '';
+  header('Location: ' . basisUrl() . '#/zugang/' . $neuerToken . $weiter, true, 302);
+  exit;
+}
+
 if (!$zugriff) antwort(['fehler' => 'Passwort oder Link ungültig'], 401);
 
-$aktion = $_GET['aktion'] ?? '';
 $gremiumId = $_GET['gremium'] ?? '';
+$konto = $zugriff['rolle'] === 'benutzer' ? $zugriff : null; // Konto: für das angefragte Gremium gilt die dortige Rolle
+if ($konto && $gremiumId !== '') $zugriff = effektiverZugriff($konto, $gremiumId);
 $rolle = $zugriff['rolle'];
 $istAdmin = $rolle === 'admin';
-$eigenes = $istAdmin || $zugriff['gremiumId'] === $gremiumId;
+$istSuperadmin = $istAdmin && !$konto;
+$eigenes = $istSuperadmin || ($zugriff['gremiumId'] ?? null) === $gremiumId;
 
 // --- Kalender-Abo (iCal) für persönliche Zugänge -----------------
 function icalText($wert) {
@@ -424,9 +666,8 @@ if ($aktion === 'ical') {
   if ($rolle !== 'person') antwort(['fehler' => 'Kalender-Abo nur für persönliche Zugänge'], 403);
   $bundle = lesen(dateiVon($zugriff['gremiumId']));
   $personId = $zugriff['personId'];
-  $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
-  $basis = ($https ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/';
-  $link = fn($pfad) => $basis . '#/zugang/' . $token . '?weiter=' . rawurlencode($pfad); // öffnet direkt über den persönlichen Link
+  $basis = basisUrl();
+  $link = fn($pfad) => $basis . '#/zugang/' . $token . '?weiter=' . rawurlencode($pfad); // öffnet direkt über den persönlichen Link bzw. das Konto
   $gremiumName = $bundle['gremium']['name'];
   $events = '';
 
@@ -468,6 +709,15 @@ if ($aktion === 'ical') {
 
 // --- Laden ------------------------------------------------------
 if ($aktion === 'laden') {
+  if ($konto) {
+    // Konto: alle eigenen Gremien, je nach dortiger Rolle bereinigt
+    $bundles = [];
+    foreach ($konto['gremien'] as $g) {
+      $bundle = lesen(dateiVon($g['gremiumId']));
+      if ($bundle) $bundles[] = bereinigen($bundle, effektiverZugriff($konto, $g['gremiumId']));
+    }
+    antwort(['zugriff' => $konto, 'gremien' => $bundles]);
+  }
   $bundles = $istAdmin ? alleBundles() : [bereinigen(lesen(dateiVon($zugriff['gremiumId'])), $zugriff)];
   if ($rolle === 'gremium' && ($zugriff['rechte']['sitzungen'] ?? 'keine') === 'keine') {
     $bundles[0]['sitzungen'] = [];
@@ -487,18 +737,27 @@ if ($aktion === 'laden') {
       $protokoll['eintraege'] = array_values(array_filter($protokoll['eintraege'], fn($e) => $e['themenbereichId'] === $zugriff['themenbereichId']));
     }
   }
-  antwort(['zugriff' => $zugriff, 'gremien' => $bundles]);
+  $antwort = ['zugriff' => $zugriff, 'gremien' => $bundles];
+  if ($istSuperadmin) $antwort['konten'] = array_map('benutzerOeffentlich', benutzerLesen());
+  antwort($antwort);
 }
 
 // --- Speichern --------------------------------------------------
 if ($aktion === 'speichern') {
-  if (!$eigenes || in_array($rolle, ['verfolger', 'themenbereich'], true)) antwort(['fehler' => 'Kein Zugriff auf dieses Gremium'], 403);
-  $aenderungen = json_decode(file_get_contents('php://input'), true);
+  $aenderungen = $eingabe;
   if (!is_array($aenderungen)) antwort(['fehler' => 'Ungültige Daten'], 400);
   if (isset($aenderungen['gremium']) && $aenderungen['gremium']['id'] !== $gremiumId) antwort(['fehler' => 'Gremium-ID stimmt nicht'], 400);
 
   $datei = dateiVon($gremiumId);
   $neu = !file_exists($datei);
+  if ($neu && $konto && !empty($konto['darfGremienAnlegen']) && isset($aenderungen['gremium'])) {
+    // Konto mit Freigabe legt ein eigenes Gremium an
+    $zugriff = ['rolle' => 'admin', 'gremiumId' => $gremiumId, 'eigentuemer' => true];
+    $rolle = 'admin';
+    $istAdmin = true;
+    $eigenes = true;
+  }
+  if (!$eigenes || in_array($rolle, ['verfolger', 'themenbereich', 'keine'], true)) antwort(['fehler' => 'Kein Zugriff auf dieses Gremium'], 403);
   if ($neu && (!$istAdmin || !isset($aenderungen['gremium']))) antwort(['fehler' => 'Gremium nicht gefunden'], 404);
 
   $handle = fopen($datei, 'c+');
@@ -506,6 +765,16 @@ if ($aktion === 'speichern') {
   $bundle = $neu ? null : json_decode(stream_get_contents($handle), true);
   $bundle = $bundle ?: ['gremium' => null, 'sitzungen' => [], 'vorprotokolle' => [], 'protokolle' => []];
 
+  if (isset($aenderungen['gremium'])) {
+    // Eigentümer und Konto-Verknüpfungen setzt nur der Superadmin; ein Eigentümer behält sein eigenes Gremium
+    if ($neu) $aenderungen['gremium']['eigentuemerId'] = $konto['benutzerId'] ?? null;
+    elseif (!$istSuperadmin) {
+      $aenderungen['gremium']['eigentuemerId'] = $bundle['gremium']['eigentuemerId'] ?? null;
+      $alteKonten = array_column($bundle['gremium']['mitglieder'], 'benutzerId', 'id');
+      foreach ($aenderungen['gremium']['mitglieder'] as &$m) $m['benutzerId'] = $alteKonten[$m['id']] ?? null;
+      unset($m);
+    }
+  }
   if ($rolle === 'gremium') $aenderungen = gremiumRechteAnwenden($bundle, $aenderungen, $zugriff['rechte']);
   if ($rolle === 'person' || ($rolle === 'freigabe' && isset($zugriff['personId']))) $aenderungen = personRechteAnwenden($bundle, $aenderungen, $zugriff);
   if ($rolle === 'freigabe' && !isset($zugriff['personId'])) {
@@ -537,12 +806,19 @@ if ($aktion === 'speichern') {
 }
 
 // --- Updates (nur Superadmin) -----------------------------------
-function holen($url) {
-  $kontext = stream_context_create(['http' => ['timeout' => 20, 'user_agent' => 'Ormeet-Update', 'follow_location' => 1], 'ssl' => ['verify_peer' => true]]);
-  $inhalt = @file_get_contents($url, false, $kontext);
+// HTTP-Abruf (GET, oder POST mit Formulardaten); zuerst über Streams, ersatzweise über curl
+function holen($url, array $post = null, array $header = []) {
+  $http = ['timeout' => 20, 'user_agent' => 'Ormeet', 'follow_location' => 1, 'ignore_errors' => true];
+  if ($post !== null) {
+    $http += ['method' => 'POST', 'content' => http_build_query($post)];
+    $header[] = 'Content-Type: application/x-www-form-urlencoded';
+  }
+  if ($header) $http['header'] = implode("\r\n", $header);
+  $inhalt = @file_get_contents($url, false, stream_context_create(['http' => $http, 'ssl' => ['verify_peer' => true]]));
   if ($inhalt === false && function_exists('curl_init')) {
     $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => true, CURLOPT_USERAGENT => 'Ormeet-Update']);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => true, CURLOPT_USERAGENT => 'Ormeet', CURLOPT_HTTPHEADER => $header]);
+    if ($post !== null) curl_setopt_array($ch, [CURLOPT_POST => true, CURLOPT_POSTFIELDS => http_build_query($post)]);
     $inhalt = curl_exec($ch);
     curl_close($ch);
   }
@@ -554,7 +830,7 @@ function lokaleVersion() {
 }
 
 if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
-  if (!$istAdmin) antwort(['fehler' => 'Nur der Superadmin kann Updates verwalten'], 403);
+  if (!$istSuperadmin) antwort(['fehler' => 'Nur der Superadmin kann Updates verwalten'], 403);
   $lokal = lokaleVersion();
   $releaseText = holen('https://api.github.com/repos/' . GITHUB_REPO . '/releases/latest');
   if ($releaseText === null) antwort(['fehler' => 'GitHub ist nicht erreichbar'], 502);
@@ -571,13 +847,13 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   // Eigene Einstellungen bewahren
   $altesApi = file_get_contents(__DIR__ . '/api.php');
   $altesIndex = file_exists(__DIR__ . '/index.html') ? file_get_contents(__DIR__ . '/index.html') : '';
-  $passwort = preg_match("/const ADMIN_PASSWORT = '([^']*)'/", $altesApi, $m) ? $m[1] : null;
+  $passwort = preg_match("/const ADMIN_PASSWORT = 'bitte-aendern']*)'/", $altesApi, $m) ? $m[1] : null;
   $kontakt = preg_match("/window\.ORMEET_KONTAKT = '([^']*)'/", $altesIndex, $m) ? $m[1] : null;
 
   $schreiben = function ($name, $inhalt) use ($passwort, $kontakt) {
     if ($name === '' || substr($name, -1) === '/' || strpos($name, 'data/') === 0 || strpos($name, '..') !== false) return null;
     if ($name === 'api.php' && $passwort !== null) {
-      $inhalt = preg_replace_callback("/const ADMIN_PASSWORT = '[^']*'/", fn() => "const ADMIN_PASSWORT = '" . addcslashes($passwort, "'\\") . "'", $inhalt, 1);
+      $inhalt = preg_replace_callback("/const ADMIN_PASSWORT = 'bitte-aendern']*'/", fn() => "const ADMIN_PASSWORT = '" . addcslashes($passwort, "'\\") . "'", $inhalt, 1);
     }
     if ($name === 'index.html' && $kontakt !== null) {
       $inhalt = preg_replace_callback("/window\.ORMEET_KONTAKT = '[^']*'/", fn() => "window.ORMEET_KONTAKT = '" . addcslashes($kontakt, "'\\") . "'", $inhalt, 1);
@@ -633,9 +909,104 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
 
 // --- Gremium löschen --------------------------------------------
 if ($aktion === 'loeschen') {
-  if (!$istAdmin) antwort(['fehler' => 'Nur der Superadmin kann Gremien löschen'], 403);
+  if (!$istAdmin) antwort(['fehler' => 'Nur der Superadmin oder der Eigentümer kann Gremien löschen'], 403);
   $datei = dateiVon($gremiumId);
   if (file_exists($datei)) unlink($datei);
+  antwort(['ok' => true]);
+}
+
+// --- Konto des angemeldeten Benutzers ------------------------------
+if ($aktion === 'abmelden') {
+  if ($konto) {
+    $benutzer = benutzerLesen();
+    $i = benutzerById($benutzer, $konto['benutzerId']);
+    $benutzer[$i]['anmeldungen'] = array_values(array_filter($benutzer[$i]['anmeldungen'], fn($a) => !hash_equals($a['token'], $token)));
+    benutzerSchreiben($benutzer);
+  }
+  antwort(['ok' => true]);
+}
+
+if ($aktion === 'konto_aendern') {
+  if (!$konto) antwort(['fehler' => 'Kein Konto angemeldet'], 403);
+  $benutzer = benutzerLesen();
+  $i = benutzerById($benutzer, $konto['benutzerId']);
+  $b = &$benutzer[$i];
+  if (isset($eingabe['name']) && trim($eingabe['name']) !== '') $b['name'] = trim($eingabe['name']);
+  if (isset($eingabe['passwortNeu'])) {
+    if ($b['passwortHash'] !== '' && !password_verify($eingabe['passwortAlt'] ?? '', $b['passwortHash'])) antwort(['fehler' => 'Das bisherige Passwort stimmt nicht'], 400);
+    if (strlen($eingabe['passwortNeu']) < 8) antwort(['fehler' => 'Das Passwort braucht mindestens 8 Zeichen'], 400);
+    $b['passwortHash'] = password_hash($eingabe['passwortNeu'], PASSWORD_DEFAULT);
+  }
+  if (!empty($eingabe['alleAbmelden'])) $b['anmeldungen'] = array_values(array_filter($b['anmeldungen'], fn($a) => hash_equals($a['token'], $token)));
+  if (!empty($eingabe['ssoLoesen']) && ($b['passwortHash'] !== '' || count($b['sso']) > 1)) unset($b['sso'][$eingabe['ssoLoesen']]);
+  unset($b);
+  benutzerSchreiben($benutzer);
+  antwort(['ok' => true, 'benutzer' => benutzerOeffentlich($benutzer[$i])]);
+}
+
+// Angemeldetes Konto mit dem Mitglied hinter einem persönlichen Link verknüpfen
+if ($aktion === 'verknuepfen') {
+  if (!$konto) antwort(['fehler' => 'Kein Konto angemeldet'], 403);
+  $link = linkZugriff($eingabe['key'] ?? '');
+  if (!$link || $link['rolle'] !== 'person') antwort(['fehler' => 'Das ist kein persönlicher Link'], 400);
+  mitgliedVerknuepfen($link['gremiumId'], $link['personId'], $konto['benutzerId']);
+  antwort(['ok' => true, 'gremiumId' => $link['gremiumId']]);
+}
+
+// --- Benutzerverwaltung und Einstellungen (nur Superadmin) --------
+if (in_array($aktion, ['benutzer_aendern', 'benutzer_loeschen', 'einstellungen_lesen', 'einstellungen_speichern'], true) && !$istSuperadmin) {
+  antwort(['fehler' => 'Nur der Superadmin kann Konten und Einstellungen verwalten'], 403);
+}
+
+if ($aktion === 'benutzer_aendern') {
+  $benutzer = benutzerLesen();
+  $i = benutzerById($benutzer, $eingabe['id'] ?? '');
+  if ($i === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
+  $b = &$benutzer[$i];
+  if (isset($eingabe['darfGremienAnlegen'])) $b['darfGremienAnlegen'] = (bool) $eingabe['darfGremienAnlegen'];
+  if (isset($eingabe['name']) && trim($eingabe['name']) !== '') $b['name'] = trim($eingabe['name']);
+  if (isset($eingabe['passwortNeu'])) {
+    if (strlen($eingabe['passwortNeu']) < 8) antwort(['fehler' => 'Das Passwort braucht mindestens 8 Zeichen'], 400);
+    $b['passwortHash'] = password_hash($eingabe['passwortNeu'], PASSWORD_DEFAULT);
+  }
+  if (!empty($eingabe['alleAbmelden'])) $b['anmeldungen'] = [];
+  unset($b);
+  benutzerSchreiben($benutzer);
+  antwort(['ok' => true, 'benutzer' => benutzerOeffentlich($benutzer[$i])]);
+}
+
+if ($aktion === 'benutzer_loeschen') {
+  $benutzer = benutzerLesen();
+  $i = benutzerById($benutzer, $eingabe['id'] ?? '');
+  if ($i === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
+  $id = $benutzer[$i]['id'];
+  array_splice($benutzer, $i, 1);
+  benutzerSchreiben($benutzer);
+  // Verknüpfungen lösen; eigene Gremien gehen an den Superadmin über
+  foreach (benutzerGremien($id) as $g) {
+    if ($g['rolle'] === 'mitglied') mitgliedVerknuepfen($g['gremiumId'], $g['personId'], null);
+    else {
+      $bundle = lesen(dateiVon($g['gremiumId']));
+      $bundle['gremium']['eigentuemerId'] = null;
+      file_put_contents(dateiVon($g['gremiumId']), json_encode($bundle, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+    }
+  }
+  antwort(['ok' => true]);
+}
+
+if ($aktion === 'einstellungen_lesen') {
+  $e = einstellungenLesen();
+  $e['sso'] = (object) $e['sso']; // leer als {} statt []
+  antwort($e + ['callback' => basisUrl() . 'api.php?aktion=sso_callback', 'anbieter' => array_map(fn($a) => $a['name'], SSO_ANBIETER)]);
+}
+
+if ($aktion === 'einstellungen_speichern') {
+  $sso = [];
+  foreach (SSO_ANBIETER as $id => $anbieter) {
+    $k = $eingabe['sso'][$id] ?? [];
+    $sso[$id] = ['url' => trim($k['url'] ?? ''), 'clientId' => trim($k['clientId'] ?? ''), 'clientSecret' => trim($k['clientSecret'] ?? '')];
+  }
+  jsonSchreiben(EINSTELLUNGEN_DATEI, ['sso' => $sso]);
   antwort(['ok' => true]);
 }
 

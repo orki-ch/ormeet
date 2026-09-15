@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { aktuellePerson, vollzugriff } from '../utils/rechte.js'
+import { aktuellePerson, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { istBerechtigt, neuesTraktandum, personenText } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 import EintragListe from '../components/EintragListe.js'
@@ -174,13 +174,13 @@ export default {
       return vollzugriff(this.sitzung, 'protokoll')
     },
     linksSichtbar() {
-      return ['admin', 'gremium'].includes(sync.zugriff?.rolle)
+      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id))
     },
     zurueck() {
-      return sync.zugriff?.rolle === 'person' ? '/meine' : '/gremium/' + this.gremium.id
+      return zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
-      return sync.zugriff?.rolle === 'person' ? 'Meine Übersicht' : this.gremium.name
+      return zurueckZu(this.gremium.id).text
     },
     personen() {
       return gremienStore.personen(this.gremium.id, this.protokoll.gaeste)

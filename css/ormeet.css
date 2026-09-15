@@ -496,6 +496,80 @@ details > summary::-webkit-details-marker {
   }
 }
 
+/* Glocke mit Benachrichtigungen */
+.glocke {
+  .icon-btn {
+    position: relative;
+  }
+  .icon-btn.hinweis::before {
+    display: none;
+  }
+  .zaehler {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.2rem;
+    min-width: 1.1rem;
+    height: 1.1rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: var(--err);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    text-align: center;
+    box-sizing: border-box;
+  }
+  .liste-menu {
+    width: min(24rem, calc(100vw - 2rem));
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+    text-align: left;
+    font-size: var(--fs-sm);
+  }
+  .kopf {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.4rem 0.85rem;
+    border-bottom: 1px solid var(--linie-leise);
+    margin-bottom: 0.25rem;
+  }
+  .meldung {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+  .meldung .punkt {
+    flex: none;
+    width: 0.5rem;
+    height: 0.5rem;
+    margin-top: 0.4rem;
+    border-radius: 50%;
+    background: var(--linie);
+  }
+  .meldung.neu {
+    color: var(--text);
+    font-weight: 500;
+  }
+  .meldung.neu .punkt {
+    background: var(--brand);
+  }
+}
+@media (max-width: 700px) {
+  /* Kopfleiste (backdrop-filter) ist der Bezugsrahmen: Menü über die ganze Leistenbreite */
+  .topbar .glocke .liste-menu {
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: calc(100% + 0.5rem);
+    width: auto;
+  }
+}
+
 /* Tooltip über data-tip (erscheint beim Hover / Fokus) */
 [data-tip] {
   position: relative;
@@ -535,6 +609,10 @@ details > summary::-webkit-details-marker {
 
 @media (max-width: 700px) {
   .topbar .rolle {
+    display: none;
+  }
+  /* Platz für Glocke und Konto; die Hilfe bleibt im Fussbereich erreichbar */
+  .topbar .hilfe {
     display: none;
   }
 }
@@ -1402,6 +1480,15 @@ input[type="color"].input, .farbe {
 .login {
   max-width: 24rem;
   margin: 3rem auto 0;
+}
+
+/* Gremium-Wechsel in der persönlichen Übersicht */
+.wechsel {
+  display: block;
+  min-width: 14rem;
+  .label {
+    margin-bottom: 0.25rem;
+  }
 }
 
 /* ---------- Kleinteile ---------- */

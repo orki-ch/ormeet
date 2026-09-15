@@ -14,6 +14,7 @@ export function ergaenzeFelder(bundle) {
   }
   gremium.fusstext ??= ''
   gremium.vorlagen ??= []
+  gremium.eigentuemerId ??= null // Konto, das dieses Gremium selbst angelegt hat
 
   // Feste Rollen: Präsidium (Sitzungsleitung) und Aktuariat (Protokollführung)
   gremium.rollen.forEach((r) => {
@@ -24,7 +25,10 @@ export function ergaenzeFelder(bundle) {
     if (!gremium.rollen.some((r) => r.typ === typ)) gremium.rollen.push({ id: crypto.randomUUID(), name, typ, sollAnwesend: true })
   }
 
-  gremium.mitglieder.forEach((m) => (m.zugangsKey ??= neuerKey())) // zentraler persönlicher Link
+  gremium.mitglieder.forEach((m) => {
+    m.zugangsKey ??= neuerKey() // zentraler persönlicher Link
+    m.benutzerId ??= null // verknüpftes Konto
+  })
   gremium.themenbereiche.forEach((tb) => (tb.freigabeKey ??= neuerKey())) // Übersicht teilen
 
   const personen = gremium.mitglieder

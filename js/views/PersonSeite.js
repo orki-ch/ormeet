@@ -1,21 +1,61 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
-import { sync } from '../stores/sync.js'
+import { sync, laden } from '../stores/sync.js'
 import { api } from '../api.js'
-import { istLeitung } from '../utils/rechte.js'
+import { istLeitung, personIdIm } from '../utils/rechte.js'
+import SsoButtons from '../components/SsoButtons.js'
 import { istBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 
-// Persönliche Übersicht über den zentralen Link eines Mitglieds
+const AKTIV_KEY = 'ormeet-aktives-gremium'
+
+// Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
 export default {
   name: 'PersonSeite',
+  components: { SsoButtons },
+  props: {
+    gremiumId: { type: String, default: '' },
+  },
   template: `
     <div v-if="person" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
-        <p class="kicker">{{ gremium.name }} · {{ rolleName }}</p>
-        <h1 class="title">Hallo {{ person.name }}</h1>
+        <div class="row between top">
+          <div>
+            <p class="kicker">{{ gremium.name }} · {{ rolleName }}</p>
+            <h1 class="title">Hallo {{ person.name }}</h1>
+          </div>
+          <label v-if="konto && konto.gremien.length > 1" class="wechsel">
+            <span class="label">Gremium</span>
+            <select class="input" :value="gremium.id" @change="wechseln($event.target.value)">
+              <option v-for="g in konto.gremien" :key="g.gremiumId" :value="g.gremiumId">{{ g.name }}{{ g.rolle === 'eigentuemer' ? ' (verwalten)' : '' }}</option>
+            </select>
+          </label>
+        </div>
         <p class="muted small mt-1">Deine Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kannst du, was dir zugewiesen ist – als Sitzungsleitung oder Protokollführung das ganze Dokument.</p>
       </header>
+
+      <section v-if="!konto" class="card konto">
+        <h2 class="card-title">Eigenes Konto</h2>
+        <template v-if="sync.zugriff.benutzerId">
+          <p class="hint">Dieser Link ist mit einem Konto verknüpft. Mit dem Konto siehst du alle deine Gremien an einem Ort.</p>
+          <router-link to="/login" class="btn">Mit Konto anmelden</router-link>
+        </template>
+        <template v-else>
+          <p class="hint">Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto kannst du dich aber mit E-Mail und Passwort anmelden und alle Gremien, in denen du mitarbeitest, an einem Ort sehen.</p>
+          <div class="row" style="gap: 0.5rem 1.5rem">
+            <label class="check small"><input v-model="kontoModus" type="radio" value="neu" /> Konto erstellen</label>
+            <label class="check small"><input v-model="kontoModus" type="radio" value="bestehend" /> Ich habe schon ein Konto</label>
+          </div>
+          <form class="stack" style="max-width: 24rem" @submit.prevent="kontoSenden">
+            <input v-if="kontoModus === 'neu'" v-model.trim="kontoForm.name" class="input" placeholder="Name" required />
+            <input v-model.trim="kontoForm.email" class="input" type="email" placeholder="E-Mail" required autocomplete="username" />
+            <input v-model="kontoForm.passwort" class="input" type="password" :placeholder="kontoModus === 'neu' ? 'Passwort (mindestens 8 Zeichen)' : 'Passwort'" required :autocomplete="kontoModus === 'neu' ? 'new-password' : 'current-password'" />
+            <p v-if="kontoFehler" class="small text-err">{{ kontoFehler }}</p>
+            <button class="btn btn-primary" :disabled="kontoLaeuft">{{ kontoModus === 'neu' ? 'Konto erstellen und verknüpfen' : 'Anmelden und verknüpfen' }}</button>
+            <SsoButtons :verknuepfen="api.token" :text="kontoModus === 'neu' ? 'registrieren' : 'anmelden'" />
+          </form>
+        </template>
+      </section>
 
       <section v-if="terminfindungen.length" class="card">
         <h2 class="card-title">Offene Terminfindungen</h2>
@@ -82,20 +122,44 @@ export default {
         </div>
       </section>
     </div>
-    <p v-else class="muted">Dieser Zugang ist keinem Mitglied zugeordnet.</p>
+    <p v-else class="muted">{{ konto ? 'Du bist in keinem Gremium als Mitglied hinterlegt.' : 'Dieser Zugang ist keinem Mitglied zugeordnet.' }}</p>
   `,
   data() {
-    return { kalenderKopiert: false, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PENDENZ_STATUS, PENDENZ_STATUS_KLASSE }
+    const email = sync.zugriff.personEmail || ''
+    return {
+      sync,
+      api,
+      kalenderKopiert: false,
+      kontoModus: 'neu',
+      kontoForm: { name: sync.zugriff.personName || '', email, passwort: '' },
+      kontoFehler: '',
+      kontoLaeuft: false,
+      SITZUNG_STATUS,
+      SITZUNG_STATUS_KLASSE,
+      PENDENZ_STATUS,
+      PENDENZ_STATUS_KLASSE,
+    }
   },
   computed: {
+    konto() {
+      return sync.zugriff?.rolle === 'benutzer' ? sync.zugriff : null
+    },
+    // Konto: gewünschtes, zuletzt gewähltes oder erstes Gremium mit Mitgliedschaft
+    aktivesGremiumId() {
+      if (!this.konto) return sync.zugriff?.gremiumId
+      const mitglied = this.konto.gremien.filter((g) => g.rolle === 'mitglied').map((g) => g.gremiumId)
+      const gewuenscht = this.gremiumId || localStorage.getItem(AKTIV_KEY)
+      return mitglied.includes(gewuenscht) ? gewuenscht : mitglied[0]
+    },
     kalenderLink() {
-      return location.origin + location.pathname.replace(/[^/]*$/, '') + 'api.php?aktion=ical&token=' + api.token
+      const gremium = this.konto ? '&gremium=' + this.gremium.id : ''
+      return location.origin + location.pathname.replace(/[^/]*$/, '') + 'api.php?aktion=ical&token=' + api.token + gremium
     },
     gremium() {
-      return gremienStore.byId(sync.zugriff.gremiumId)
+      return gremienStore.byId(this.aktivesGremiumId)
     },
     person() {
-      return this.gremium?.mitglieder.find((m) => m.id === sync.zugriff.personId)
+      return this.gremium?.mitglieder.find((m) => m.id === personIdIm(this.gremium.id))
     },
     rolleName() {
       return gremienStore.rolleName(this.gremium.id, this.person.rolleId)
@@ -113,10 +177,38 @@ export default {
         .sort((a, b) => (a.eintrag.pendenzStatus === 'erfuellt') - (b.eintrag.pendenzStatus === 'erfuellt') || (b.sitzung.datum || '').localeCompare(a.sitzung.datum || ''))
     },
   },
+  watch: {
+    aktivesGremiumId: {
+      immediate: true,
+      handler(id) {
+        if (this.konto && id) localStorage.setItem(AKTIV_KEY, id)
+      },
+    },
+  },
   methods: {
     formatDatum,
     sitzungStatus,
     istLeitung,
+    wechseln(gremiumId) {
+      const g = this.konto.gremien.find((g) => g.gremiumId === gremiumId)
+      this.$router.push(g.rolle === 'eigentuemer' ? '/gremium/' + gremiumId : '/meine/' + gremiumId)
+    },
+    // Konto über den persönlichen Link erstellen bzw. bestehendes Konto anmelden – der Link wird mit dem Konto verknüpft
+    async kontoSenden() {
+      this.kontoLaeuft = true
+      this.kontoFehler = ''
+      const gremiumId = this.gremium.id
+      try {
+        const daten = await api.anfrage(this.kontoModus === 'neu' ? 'registrieren' : 'anmelden', '', this.kontoForm)
+        api.setToken(daten.token)
+        sync.zugriff = null
+        await laden()
+        this.$router.push('/meine/' + gremiumId)
+      } catch (fehler) {
+        this.kontoFehler = fehler.message
+      }
+      this.kontoLaeuft = false
+    },
     kalenderKopieren() {
       navigator.clipboard.writeText(this.kalenderLink)
       this.kalenderKopiert = true

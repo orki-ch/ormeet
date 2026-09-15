@@ -35,15 +35,47 @@ export default {
         </details>
         <p class="hint" style="margin: 0">Vor einem Update empfiehlt sich eine Sicherung des Ordners <code>data/</code>. Nach der Installation lädt die Seite neu.</p>
       </section>
+
+      <form v-if="sso" class="card stack" @submit.prevent="ssoSpeichern">
+        <div class="card-head">
+          <h2 class="card-title">Anmeldung über Anbieter (SSO)</h2>
+          <button class="btn btn-primary" :disabled="laeuft">Speichern</button>
+        </div>
+        <p class="hint">Personen mit Konto können sich über Sublevia oder Orki anmelden und registrieren. Dazu beim Anbieter eine Anwendung mit dieser Rückruf-Adresse anlegen und Client-ID und Client-Secret hier eintragen. Leer lassen, wenn nicht gewünscht.</p>
+        <div class="row"><span class="label" style="margin: 0">Rückruf-Adresse (Redirect URI)</span><code class="input grow truncate" style="line-height: 1.5">{{ sso.callback }}</code></div>
+        <div v-for="(name, id) in sso.anbieter" :key="id" class="block-soft stack-sm">
+          <strong>{{ name }}</strong>
+          <div class="grid-3">
+            <div><span class="label">Server-URL</span><input v-model.trim="sso.sso[id].url" class="input" :placeholder="id === 'sublevia' ? 'https://orki-auth.sublevia.ch' : 'https://meine-organisation.orki.ch'" /></div>
+            <div><span class="label">Client-ID</span><input v-model.trim="sso.sso[id].clientId" class="input" /></div>
+            <div><span class="label">Client-Secret</span><input v-model.trim="sso.sso[id].clientSecret" class="input" type="password" autocomplete="off" /></div>
+          </div>
+        </div>
+        <p v-if="ssoMeldung" class="small" :class="ssoFehler ? 'text-err' : 'text-ok'">{{ ssoMeldung }}</p>
+      </form>
     </div>
   `,
   data() {
-    return { updateStand, laeuft: false, schritt: '', ergebnis: null, quelle: 'GitHub (orki-ch/ormeet)' }
+    return { updateStand, laeuft: false, schritt: '', ergebnis: null, quelle: 'GitHub (orki-ch/ormeet)', sso: null, ssoMeldung: '', ssoFehler: false }
   },
-  created() {
+  async created() {
     this.pruefen()
+    const sso = await api.anfrage('einstellungen_lesen')
+    for (const id of Object.keys(sso.anbieter)) sso.sso[id] = { url: '', clientId: '', clientSecret: '', ...sso.sso[id] }
+    this.sso = sso
   },
   methods: {
+    async ssoSpeichern() {
+      this.ssoMeldung = ''
+      try {
+        await api.anfrage('einstellungen_speichern', '', { sso: this.sso.sso })
+        this.ssoFehler = false
+        this.ssoMeldung = 'Gespeichert.'
+      } catch (fehler) {
+        this.ssoFehler = true
+        this.ssoMeldung = fehler.message
+      }
+    },
     async pruefen() {
       this.laeuft = true
       this.schritt = 'Prüfe auf Updates …'

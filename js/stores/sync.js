@@ -6,8 +6,8 @@ import { ergaenzeFelder } from './migration.js'
 const { reactive, watch } = Vue
 const TYPEN = ['gremien', 'sitzungen', 'vorprotokolle', 'protokolle']
 
-// Sichtbarer Zustand für Navigation und Editoren
-export const sync = reactive({ zugriff: null, ausstehend: false, status: 'gespeichert', fehler: '' })
+// Sichtbarer Zustand für Navigation und Editoren; konten: alle Konten (nur Superadmin)
+export const sync = reactive({ zugriff: null, konten: [], ausstehend: false, status: 'gespeichert', fehler: '' })
 
 // Zuletzt mit dem Server abgeglichener Stand pro Datensatz: { [typ]: { [id]: { gremiumId, json } } }
 let zuletzt = leererStand()
@@ -64,18 +64,20 @@ function uebernehmen(bundles) {
   }
 }
 
-// Recht des angemeldeten Zugangs auf einen Bereich: 'keine' | 'lesen' | 'bearbeiten'
-export function recht(bereich) {
+// Recht des angemeldeten Zugangs auf einen Bereich eines Gremiums: 'keine' | 'lesen' | 'bearbeiten'
+export function recht(bereich, gremiumId) {
   const zugriff = sync.zugriff
   if (!zugriff) return 'keine'
   if (zugriff.rolle === 'admin') return 'bearbeiten'
   if (zugriff.rolle === 'gremium') return zugriff.rechte?.[bereich] || 'keine'
+  if (zugriff.rolle === 'benutzer' && zugriff.gremien.some((g) => g.gremiumId === gremiumId && g.rolle === 'eigentuemer')) return 'bearbeiten'
   return 'keine'
 }
 
 export async function laden() {
   const daten = await api.anfrage('laden')
   sync.zugriff = daten.zugriff
+  sync.konten = daten.konten || []
   uebernehmen(daten.gremien)
   speichern()
 }
@@ -158,6 +160,7 @@ export async function gremiumLoeschen(gremiumId) {
 
 export function abmelden() {
   clearTimeout(timer)
+  if (sync.zugriff?.rolle === 'benutzer') api.anfrage('abmelden', '', {}).catch(() => {}) // Anmeldung auf dem Server löschen
   api.setToken('')
   sync.zugriff = null
   sync.status = 'gespeichert'
@@ -174,6 +177,8 @@ export async function abgleichen() {
   if (!sync.zugriff || laeuft || sync.ausstehend || document.hidden) return
   try {
     const daten = await api.anfrage('laden')
+    sync.zugriff = daten.zugriff // Gremien und Rechte eines Kontos können sich ändern
+    sync.konten = daten.konten || []
     uebernehmen(daten.gremien)
     speichern()
   } catch (fehler) {

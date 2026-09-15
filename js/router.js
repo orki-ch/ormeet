@@ -1,6 +1,7 @@
 import { api } from './api.js'
 import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
+import { rolleIm } from './utils/rechte.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
 import GremiumDetail from './views/GremiumDetail.js'
@@ -12,6 +13,8 @@ import TerminfindungSeite from './views/TerminfindungSeite.js'
 import PersonSeite from './views/PersonSeite.js'
 import Hilfe from './views/Hilfe.js'
 import Einstellungen from './views/Einstellungen.js'
+import Benutzer from './views/Benutzer.js'
+import Konto from './views/Konto.js'
 import Datenschutz from './views/Datenschutz.js'
 
 // Hash-History: läuft auf jedem Webserver ohne Rewrite-Regeln
@@ -22,8 +25,10 @@ const router = VueRouter.createRouter({
     { path: '/hilfe', component: Hilfe },
     { path: '/datenschutz', component: Datenschutz },
     { path: '/', component: GremiumListe },
-    { path: '/meine', component: PersonSeite },
+    { path: '/meine/:gremiumId?', component: PersonSeite, props: true },
+    { path: '/konto', component: Konto },
     { path: '/einstellungen', component: Einstellungen },
+    { path: '/benutzer', component: Benutzer },
     { path: '/gremium/:gremiumId', component: GremiumDetail, props: true },
     { path: '/gremium/:gremiumId/themenbereich/:themenbereichId', component: ThemenbereichSummary, props: true },
     { path: '/sitzung/:sitzungId/vorprotokoll', component: VorprotokollEditor, props: true },
@@ -67,11 +72,23 @@ router.beforeEach(async (to) => {
   if (['/login', '/hilfe', '/datenschutz'].includes(to.path)) return true
 
   if (to.name === 'zugang') {
-    api.setToken(to.params.zugangsKey)
+    const key = to.params.zugangsKey
+    // Angemeldetes Konto öffnet einen persönlichen Link (16 Zeichen; Konto-Tokens sind länger): Mitglied mit dem Konto verknüpfen
+    if (key.length === 16 && api.token && api.token !== key && (await angemeldet()) && sync.zugriff.rolle === 'benutzer') {
+      if (confirm(`Du bist mit dem Konto ${sync.zugriff.email} angemeldet. Persönlichen Link mit diesem Konto verknüpfen? «Abbrechen» öffnet den Link ohne Konto.`)) {
+        const verknuepft = await api.anfrage('verknuepfen', '', { key }).catch(() => null)
+        if (verknuepft) {
+          sync.zugriff = null
+          await angemeldet()
+          return `/meine/${verknuepft.gremiumId}`
+        }
+      }
+    }
+    api.setToken(key)
     sync.zugriff = null
     if (!(await angemeldet())) return '/login'
     if (to.query.weiter?.startsWith('/')) return to.query.weiter // z. B. aus dem Kalender direkt ins Vorprotokoll
-    return sync.zugriff.rolle === 'person' ? '/meine' : `/gremium/${sync.zugriff.gremiumId}`
+    return startPfad()
   }
   if (to.name === 'freigabe') {
     const key = to.params.freigabeLinkKey
@@ -87,12 +104,10 @@ router.beforeEach(async (to) => {
   if (!(await angemeldet())) return '/login'
   const zugriff = sync.zugriff
   const sitzungsPfad = to.path.startsWith('/sitzung/')
+  const sitzung = sitzungsPfad ? sitzungenStore.sitzungById(to.params.sitzungId) : null
 
   // Ohne festen Termin gibt es kein Protokoll
-  if (sitzungsPfad && to.path.endsWith('/protokoll')) {
-    const sitzung = sitzungenStore.sitzungById(to.params.sitzungId)
-    if (sitzung && !sitzung.datum) return `/sitzung/${sitzung.id}/vorprotokoll`
-  }
+  if (sitzung && to.path.endsWith('/protokoll') && !sitzung.datum) return `/sitzung/${sitzung.id}/vorprotokoll`
 
   if (zugriff.rolle === 'verfolger') return `/verfolgen/${api.token}`
   if (zugriff.rolle === 'themenbereich') return `/themenbereich/${api.token}`
@@ -102,26 +117,47 @@ router.beforeEach(async (to) => {
     if (to.path === `/sitzung/${vp?.sitzungId}/terminfindung`) return true
     return `/freigabe/${api.token}`
   }
-  if (zugriff.rolle === 'person') {
-    if (to.path === '/meine' || to.path.includes('/themenbereich/')) return true
-    if (!sitzungsPfad) return '/meine'
-    // Persönlicher Link darf kein Protokoll eröffnen
+  if (['/einstellungen', '/benutzer'].includes(to.path) && zugriff.rolle !== 'admin') return startPfad()
+  if (to.path === '/konto') return zugriff.rolle === 'benutzer' ? true : startPfad()
+
+  // Wirksame Rolle im betroffenen Gremium (Konto: je Gremium Eigentümer oder Mitglied)
+  const gremiumId = sitzung?.gremiumId || to.params.gremiumId || zugriff.gremiumId
+  const rolle = rolleIm(gremiumId)
+  if (zugriff.rolle === 'person' && to.path === '/meine') return true
+  if (zugriff.rolle === 'benutzer' && (to.path === '/' || to.path.startsWith('/meine'))) return to.params.gremiumId && rolle !== 'person' ? '/' : true
+  if (rolle === 'person') {
+    if (to.path.includes('/themenbereich/')) return true
+    if (!sitzungsPfad) return startPfad()
+    // Persönlicher Zugang darf kein Protokoll eröffnen
     if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId)) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
     return true
   }
-
-  if (to.path === '/einstellungen' && zugriff.rolle !== 'admin') return '/'
+  if (!rolle) return startPfad()
 
   // Gremium-Zugang: Rechte auf Sitzungen beachten
-  if (zugriff.rolle === 'gremium' && sitzungsPfad) {
+  if (rolle === 'gremium' && sitzungsPfad) {
     const gremiumPfad = `/gremium/${zugriff.gremiumId}`
-    if (recht('sitzungen') === 'keine') return gremiumPfad
-    if (recht('sitzungen') === 'lesen' && to.path.endsWith('/protokoll')) {
+    if (recht('sitzungen', gremiumId) === 'keine') return gremiumPfad
+    if (recht('sitzungen', gremiumId) === 'lesen' && to.path.endsWith('/protokoll')) {
       const protokoll = sitzungenStore.protokollVonSitzung(to.params.sitzungId)
       return protokoll ? `/verfolgen/${protokoll.verfolgerKey}` : gremiumPfad
     }
   }
   return true
 })
+
+// Einstieg je nach Zugang
+export function startPfad() {
+  const zugriff = sync.zugriff
+  if (!zugriff) return '/login'
+  if (zugriff.rolle === 'person') return '/meine'
+  if (zugriff.rolle === 'benutzer') {
+    const mitglied = zugriff.gremien.filter((g) => g.rolle === 'mitglied')
+    if (mitglied.length === zugriff.gremien.length && mitglied.length === 1 && !zugriff.darfGremienAnlegen) return `/meine/${mitglied[0].gremiumId}`
+    return '/'
+  }
+  if (zugriff.rolle === 'gremium') return `/gremium/${zugriff.gremiumId}`
+  return '/'
+}
 
 export default router
