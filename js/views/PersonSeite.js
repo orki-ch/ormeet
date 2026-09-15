@@ -71,7 +71,7 @@ export default {
       <section class="card">
         <h2 class="card-title">Sitzungen</h2>
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen.</p>
-        <div v-else class="zeilen" style="--spalten: auto 1fr auto auto">
+        <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
             <span class="nowrap"><strong>{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
             <span>{{ s.titel }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span>

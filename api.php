@@ -847,13 +847,13 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   // Eigene Einstellungen bewahren
   $altesApi = file_get_contents(__DIR__ . '/api.php');
   $altesIndex = file_exists(__DIR__ . '/index.html') ? file_get_contents(__DIR__ . '/index.html') : '';
-  $passwort = preg_match("/const ADMIN_PASSWORT = 'bitte-aendern']*)'/", $altesApi, $m) ? $m[1] : null;
+  $passwort = preg_match("/const ADMIN_PASSWORT = '([^']*)'/", $altesApi, $m) ? $m[1] : null;
   $kontakt = preg_match("/window\.ORMEET_KONTAKT = '([^']*)'/", $altesIndex, $m) ? $m[1] : null;
 
   $schreiben = function ($name, $inhalt) use ($passwort, $kontakt) {
     if ($name === '' || substr($name, -1) === '/' || strpos($name, 'data/') === 0 || strpos($name, '..') !== false) return null;
     if ($name === 'api.php' && $passwort !== null) {
-      $inhalt = preg_replace_callback("/const ADMIN_PASSWORT = 'bitte-aendern']*'/", fn() => "const ADMIN_PASSWORT = '" . addcslashes($passwort, "'\\") . "'", $inhalt, 1);
+      $inhalt = preg_replace_callback("/const ADMIN_PASSWORT = '[^']*'/", fn() => "const ADMIN_PASSWORT = '" . addcslashes($passwort, "'\\") . "'", $inhalt, 1);
     }
     if ($name === 'index.html' && $kontakt !== null) {
       $inhalt = preg_replace_callback("/window\.ORMEET_KONTAKT = '[^']*'/", fn() => "window.ORMEET_KONTAKT = '" . addcslashes($kontakt, "'\\") . "'", $inhalt, 1);

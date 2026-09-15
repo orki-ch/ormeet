@@ -45,7 +45,7 @@ export default {
           <button v-if="darf('sitzungen')" class="btn btn-primary" @click="sitzungDialog = true">+ Sitzung</button>
         </div>
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen erfasst.</p>
-        <div v-else class="zeilen" style="--spalten: auto 1fr auto auto">
+        <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
             <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
             <span>{{ s.titel }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span></span>
