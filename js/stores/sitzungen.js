@@ -175,6 +175,32 @@ export const sitzungenStore = {
     return vorprotokoll
   },
 
+  // Sitzungen ohne Protokoll: dort kann das Vorprotokoll noch aus einer Vorlage neu aufgebaut werden
+  sitzungenOhneProtokoll(gremiumId) {
+    return sitzungenStore.sitzungenVonGremium(gremiumId).filter((s) => !sitzungenStore.protokollVonSitzung(s.id))
+  },
+
+  // Vorlage (nachträglich) auf eine Sitzung anwenden: Kopfdaten aus der Vorlage, Traktanden werden ersetzt –
+  // automatisch übernommene Pendenzen / vertagte Anträge bleiben am Ende erhalten
+  wendeVorlageAn(sitzungId, vorlageId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    const vorlage = gremienStore.byId(sitzung.gremiumId).vorlagen.find((v) => v.id === vorlageId)
+    if (!vorlage) return
+    const kopie = (liste) => (liste || []).map((p) => ({ ...p }))
+    sitzung.vorlageId = vorlage.id
+    if (vorlage.titel) sitzung.titel = vorlage.titel
+    if (vorlage.sitzungsleitung?.length) sitzung.sitzungsleitung = kopie(vorlage.sitzungsleitung)
+    if (vorlage.protokollfuehrung?.length) sitzung.protokollfuehrung = kopie(vorlage.protokollfuehrung)
+    if (vorlage.bemerkungen) sitzung.bemerkungen = vorlage.bemerkungen
+    const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(sitzungId)
+    if (!vorprotokoll) {
+      sitzungenStore.erstelleVorprotokoll(sitzungId) // übernimmt die Traktanden der (nun gesetzten) Vorlage
+      return
+    }
+    const uebernommene = vorprotokoll.traktanden.filter((t) => t.istAutomatischUebernommen)
+    vorprotokoll.traktanden = [...vorlage.traktanden.map(kopiereTraktandum), ...uebernommene].map((t, i) => ({ ...t, reihenfolge: i + 1 }))
+  },
+
   // Übernimmt noch nicht enthaltene offene Pendenzen und vertagte Anträge früherer Sitzungen als Traktanden (idempotent)
   uebernimmPendenzen(vorprotokollId) {
     const vorprotokoll = sitzungenStore.vorprotokollById(vorprotokollId)

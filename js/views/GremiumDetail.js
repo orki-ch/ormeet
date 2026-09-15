@@ -8,6 +8,7 @@ import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } fro
 import GremiumSuche from '../components/GremiumSuche.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import Modal from '../components/Modal.js'
+import PersonenInput from '../components/PersonenInput.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 
@@ -16,7 +17,7 @@ const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearb
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, MenuDropdown, Modal, ThemenbereichLinks, TraktandenListe },
+  components: { GremiumSuche, MenuDropdown, Modal, PersonenInput, ThemenbereichLinks, TraktandenListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -148,12 +149,28 @@ export default {
               <div class="grid-2">
                 <div><span class="label">Name der Vorlage</span><input v-model.trim="v.name" class="input" /></div>
                 <div><span class="label">Titel / Sitzungsgrund</span><input v-model.trim="v.titel" class="input" /></div>
-                <div><span class="label">Sitzungsleitung</span><input v-model.trim="v.sitzungsleitung" class="input" /></div>
-                <div><span class="label">Protokollführung</span><input v-model.trim="v.protokollfuehrung" class="input" /></div>
+                <div><span class="label">Sitzungsleitung</span><PersonenInput v-model="v.sitzungsleitung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Präsidium)" /></div>
+                <div><span class="label">Protokollführung</span><PersonenInput v-model="v.protokollfuehrung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Aktuariat)" /></div>
                 <div class="span-alle"><span class="label">Spezielles / Bemerkungen</span><input v-model.trim="v.bemerkungen" class="input" /></div>
               </div>
               <h3>Traktanden</h3>
               <TraktandenListe :traktanden="v.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-lesen="!darf('einstellungen')" />
+
+              <div v-if="darf('einstellungen') && sitzungenOhneProtokoll.length" class="block-soft stack-sm">
+                <h3 style="margin: 0">Auf bestehende Sitzungen anwenden</h3>
+                <p class="small muted">Hat sich die Vorlage geändert, kannst du sie auf Sitzungen übertragen, die noch kein Protokoll haben. Kopfdaten und Traktanden des Vorprotokolls werden dabei durch die Vorlage ersetzt; automatisch übernommene Pendenzen und vertagte Anträge bleiben.</p>
+                <div class="row" style="gap: 0.25rem 1.5rem">
+                  <label v-for="s in sitzungenOhneProtokoll" :key="s.id" class="check small">
+                    <input v-model="anwendenAuf[v.id]" type="checkbox" :value="s.id" /> {{ formatDatum(s.datum) }}<span class="leise"> {{ s.titel }}{{ s.vorlageId === v.id ? ' · mit dieser Vorlage erfasst' : '' }}</span>
+                  </label>
+                </div>
+                <div class="row">
+                  <button class="btn btn-ghost" @click="alleWaehlen(v)">{{ anwendenAuf[v.id].length === sitzungenOhneProtokoll.length ? 'Keine' : 'Alle' }} wählen</button>
+                  <button class="btn btn-primary" :disabled="!anwendenAuf[v.id].length" @click="vorlageAnwenden(v)">Vorlage auf {{ anwendenAuf[v.id].length }} {{ anwendenAuf[v.id].length === 1 ? 'Sitzung' : 'Sitzungen' }} anwenden</button>
+                  <span v-if="angewendet === v.id" class="small text-ok">Angewendet ✓</span>
+                </div>
+              </div>
+
               <div v-if="darf('einstellungen')"><button class="btn btn-danger" @click="entfernen(gremium.vorlagen, v)">Vorlage löschen</button></div>
             </div>
           </details>
@@ -281,6 +298,8 @@ export default {
       neueRolle: '',
       neuerThemenbereich: { name: '', farbe: '#b4c410' },
       neueVorlage: '',
+      anwendenAuf: {}, // pro Vorlage: gewählte Sitzungs-IDs
+      angewendet: '',
       neueSitzung: { datum: '', zeit: '', ort: '', vorlageId: '', terminfindung: false },
       ROLLEN_TYPEN,
       SITZUNG_STATUS,
@@ -294,6 +313,9 @@ export default {
     },
     sitzungen() {
       return sitzungenStore.sitzungenVonGremium(this.gremiumId)
+    },
+    sitzungenOhneProtokoll() {
+      return sitzungenStore.sitzungenOhneProtokoll(this.gremiumId)
     },
     personen() {
       return gremienStore.personen(this.gremiumId)
@@ -314,6 +336,15 @@ export default {
         if (id === 'teilen' ? this.istAdmin : recht(id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
+    },
+  },
+  watch: {
+    // Auswahl «auf Sitzungen anwenden» pro Vorlage als Liste bereithalten
+    'gremium.vorlagen': {
+      immediate: true,
+      handler(vorlagen) {
+        vorlagen?.forEach((v) => (this.anwendenAuf[v.id] ??= []))
+      },
     },
   },
   created() {
@@ -397,6 +428,18 @@ export default {
         traktanden: [],
       })
       this.neueVorlage = ''
+    },
+    alleWaehlen(vorlage) {
+      const alle = this.sitzungenOhneProtokoll.map((s) => s.id)
+      this.anwendenAuf[vorlage.id] = this.anwendenAuf[vorlage.id].length === alle.length ? [] : alle
+    },
+    vorlageAnwenden(vorlage) {
+      const ids = this.anwendenAuf[vorlage.id]
+      if (!confirm(`Vorlage «${vorlage.name}» auf ${ids.length} ${ids.length === 1 ? 'Sitzung' : 'Sitzungen'} anwenden? Bestehende Traktanden dieser Vorprotokolle werden ersetzt.`)) return
+      ids.forEach((id) => sitzungenStore.wendeVorlageAn(id, vorlage.id))
+      this.anwendenAuf[vorlage.id] = []
+      this.angewendet = vorlage.id
+      setTimeout(() => (this.angewendet = ''), 3000)
     },
     sitzungHinzufuegen() {
       const sitzung = sitzungenStore.erstelleSitzung(this.gremiumId, this.neueSitzung)
