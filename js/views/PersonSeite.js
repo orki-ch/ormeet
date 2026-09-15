@@ -3,7 +3,9 @@ import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, laden } from '../stores/sync.js'
 import { api } from '../api.js'
 import { istLeitung, personIdIm } from '../utils/rechte.js'
+import GremiumSuche from '../components/GremiumSuche.js'
 import SsoButtons from '../components/SsoButtons.js'
+import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import { istBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 
@@ -12,7 +14,7 @@ const AKTIV_KEY = 'ormeet-aktives-gremium'
 // Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
 export default {
   name: 'PersonSeite',
-  components: { SsoButtons },
+  components: { GremiumSuche, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
   },
@@ -68,6 +70,8 @@ export default {
         </div>
       </section>
 
+      <GremiumSuche :gremium-id="gremium.id" />
+
       <section class="card">
         <h2 class="card-title">Sitzungen</h2>
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen.</p>
@@ -113,14 +117,7 @@ export default {
         </div>
       </section>
 
-      <section v-if="gremium.themenbereiche.length" class="card">
-        <h2 class="card-title">Themenbereiche</h2>
-        <div class="row">
-          <router-link v-for="tb in gremium.themenbereiche" :key="tb.id" :to="'/gremium/' + gremium.id + '/themenbereich/' + tb.id" class="btn">
-            <span class="farbpunkt" :style="{ backgroundColor: tb.farbe }"></span> {{ tb.name }}
-          </router-link>
-        </div>
-      </section>
+      <ThemenbereichLinks :gremium="gremium" />
     </div>
     <p v-else class="muted">{{ konto ? 'Du bist in keinem Gremium als Mitglied hinterlegt.' : 'Dieser Zugang ist keinem Mitglied zugeordnet.' }}</p>
   `,

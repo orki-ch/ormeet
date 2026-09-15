@@ -8,16 +8,29 @@ export function neuesTraktandum(daten) {
     verantwortliche: [],
     bearbeiter: [], // dürfen zusätzlich bearbeiten (persönlicher Freigabe-Link)
     notiz: '',
+    typ: '', // '' (frei) | information | antrag | pendenz – gilt für alle Einträge und Unterpunkte darunter
+    dauer: null, // geplante Dauer in Minuten
     reihenfolge: 0,
     istAutomatischUebernommen: false,
-    pendenzId: null,
+    pendenzId: null, // übertragene Pendenz (wird am Original nachgeführt)
+    antragId: null, // vertagter Antrag (wird im neuen Protokoll als neuer Antrag entschieden)
     untertraktanden: [], // erben Themenbereich und Bearbeitungsrechte des Traktandums
     ...daten,
   }
 }
 
 export function neuesUntertraktandum(titel) {
-  return { id: crypto.randomUUID(), titel, notiz: '', verantwortliche: [], bearbeiter: [] }
+  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [] }
+}
+
+// Wirksamer Typ eines Unterpunkts: der des Traktandums, sonst der eigene
+export function wirksamerTyp(traktandum, untertraktandum = null) {
+  return traktandum.typ || untertraktandum?.typ || ''
+}
+
+// Summe der geplanten Dauern in Minuten
+export function dauerSumme(traktanden) {
+  return traktanden.reduce((summe, t) => summe + (Number(t.dauer) || 0), 0)
 }
 
 // Kopie mit neuen IDs (Vorlage -> Vorprotokoll)
@@ -28,6 +41,7 @@ export function kopiereTraktandum(traktandum, index) {
     reihenfolge: index + 1,
     istAutomatischUebernommen: false,
     pendenzId: null,
+    antragId: null,
     verantwortliche: traktandum.verantwortliche.map((p) => ({ ...p })),
     bearbeiter: traktandum.bearbeiter.map((p) => ({ ...p })),
     untertraktanden: traktandum.untertraktanden.map((u) => ({

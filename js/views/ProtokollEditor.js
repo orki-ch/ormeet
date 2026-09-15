@@ -1,19 +1,20 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { aktuellePerson, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
-import { istBerechtigt, neuesTraktandum, personenText } from '../utils/traktanden.js'
-import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
+import { aktuellePerson, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { dauerSumme, istBerechtigt, neuesTraktandum, personenText, wirksamerTyp } from '../utils/traktanden.js'
+import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import EintragListe from '../components/EintragListe.js'
 import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import PdfExportButton from '../components/PdfExportButton.js'
 import PersonInput from '../components/PersonInput.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
+import TeilenKarte from '../components/TeilenKarte.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PersonInput, SitzungKopfdaten },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PersonInput, SitzungKopfdaten, TeilenKarte },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -29,6 +30,8 @@ export default {
             </p>
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
             <p v-if="linkKopiert" class="small text-ok mt-1">Verfolger-Link kopiert – wer ihn öffnet, sieht das Protokoll live (nur lesen).</p>
+            <p v-else-if="genehmigt" class="small text-ok mt-1">Genehmigt an der Sitzung vom {{ formatDatum(sitzung.genehmigt.datum) }} – dieses Protokoll kann nicht mehr bearbeitet werden.</p>
+            <p v-else-if="person && !voll && !eigene" class="muted small mt-1">Dieses Protokoll ist für dich nur zum Lesen freigegeben.</p>
             <p v-else-if="person && !voll" class="muted small mt-1">Bereiche mit farbigem Rahmen kannst du bearbeiten; alles andere ist nur lesbar.</p>
           </div>
           <div class="actions">
@@ -40,6 +43,7 @@ export default {
               <button v-if="linksSichtbar" class="menu-item" @click="verfolgerLinkKopieren">Verfolger-Link kopieren</button>
               <button class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
               <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">Sitzung wieder öffnen</button>
+              <span v-if="genehmigt" class="menu-item leise">Genehmigt – nur lesbar</span>
             </MenuDropdown>
           </div>
         </div>
@@ -61,15 +65,35 @@ export default {
         </div>
       </section>
 
+      <!-- Letztes Protokoll genehmigen -->
+      <section v-if="vorherige" class="card" :class="{ bearbeitbar: voll && !vorherige.genehmigt }">
+        <h2 class="card-title">Letztes Protokoll</h2>
+        <div class="row">
+          <span class="grow small">
+            <strong>{{ vorherige.titel || 'Sitzung' }}</strong> vom {{ formatDatum(vorherige.datum) }}
+            <span v-if="vorherige.genehmigt" class="badge gruen" style="margin-left: 0.4rem">Genehmigt</span>
+            <span v-if="vorherige.genehmigt" class="muted"> an der Sitzung vom {{ formatDatum(vorherige.genehmigt.datum) }}</span>
+          </span>
+          <router-link :to="'/sitzung/' + vorherige.id + '/protokoll'" class="btn btn-ghost">Protokoll öffnen</router-link>
+          <button v-if="voll && !vorherige.genehmigt" class="btn btn-primary" @click="genehmigen">Protokoll genehmigen</button>
+        </div>
+        <p v-if="!vorherige.genehmigt" class="muted small mt-2">Genehmigt heisst: Das Protokoll wird eingefroren und kann von niemandem mehr geändert werden – nur der Stand der Pendenzen wird weiter nachgeführt. Aufheben lässt sich das nur, indem diese Sitzung gelöscht wird.</p>
+      </section>
+
       <!-- Traktanden mit Einträgen -->
       <section v-for="(t, i) in traktanden" :key="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
         <div class="traktandum-kopf">
           <span class="nr">{{ i + 1 }}.</span>
           <h2>{{ t.titel }}</h2>
+          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
+          <span class="dauer-zeile small">
+            <span v-if="t.dauer" class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
+            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
+          </span>
         </div>
-        <p v-if="t.notiz" class="notiz eingerueckt">{{ t.notiz }}</p>
+        <p v-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
 
         <div class="eingerueckt mt-2 stack-sm">
           <!-- Übertragene Pendenz aus früherer Sitzung (Status wird am Original aktualisiert) -->
@@ -89,23 +113,35 @@ export default {
             </div>
           </div>
 
-          <EintragListe :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" />
+          <!-- Vertagter Antrag aus früherer Sitzung: wird hier als neuer Antrag entschieden -->
+          <p v-if="uebertrageneAntraege[t.antragId]" class="pendenz-uebertragen">
+            <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
+            an der Sitzung vom {{ formatDatum(uebertrageneAntraege[t.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
+          </p>
+
+          <EintragListe :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
 
           <div v-for="(u, j) in t.untertraktanden" :key="u.id" class="sub" :class="{ bearbeitbar: darfSub(t, u) && !darfTraktandum(t) }" :style="darfSub(t, u) && !darfTraktandum(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''">
             <div class="sub-kopf">
               <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
               <h3>{{ u.titel }}</h3>
-              <span v-if="u.notiz" class="muted small">– {{ u.notiz }}</span>
+              <span v-if="!t.typ && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ TYP_LABELS[u.typ] }}</span>
               <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
             </div>
+            <p v-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
             <div class="mt-1">
-              <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfSub(t, u)" :person-id="person?.id" />
+              <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfSub(t, u)" :person-id="person?.id" :typ="wirksamerTyp(t, u)" />
             </div>
           </div>
         </div>
       </section>
 
-      <form v-if="voll || person" class="row" @submit.prevent="traktandumHinzufuegen">
+      <p v-if="geplanteDauer || tatsaechlicheDauer" class="muted small">
+        Dauer insgesamt: geplant {{ formatDauer(geplanteDauer) || '–' }} · tatsächlich {{ formatDauer(tatsaechlicheDauer) || '–' }}
+        <span v-if="geplanteDauer && tatsaechlicheDauer" :class="tatsaechlicheDauer > geplanteDauer ? 'text-warn' : 'text-ok'">({{ tatsaechlicheDauer > geplanteDauer ? '+' : '' }}{{ tatsaechlicheDauer - geplanteDauer }} Min.)</span>
+      </p>
+
+      <form v-if="voll || (person && eigene)" class="row" @submit.prevent="traktandumHinzufuegen">
         <input v-model.trim="neuesTraktandum" class="input grow" :placeholder="voll ? 'Weiteres Traktandum (z. B. Varia) …' : 'Eigenes Traktandum hinzufügen …'" required />
         <button class="btn">Hinzufügen</button>
       </form>
@@ -140,6 +176,8 @@ export default {
           </form>
         </div>
       </section>
+
+      <TeilenKarte :sitzung="sitzung" dokument="protokoll" :vorprotokoll="vorprotokollDokument" :protokoll="protokoll" :darf-setzen="voll" :links-sichtbar="linksSichtbar" />
     </div>
     <p v-else class="muted">Zu dieser Sitzung gibt es noch kein Protokoll.</p>
   `,
@@ -155,9 +193,17 @@ export default {
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
       PENDENZ_STATUS,
+      TYP_BADGE,
+      TYP_LABELS,
     }
   },
   computed: {
+    geplanteDauer() {
+      return dauerSumme(this.traktanden)
+    },
+    tatsaechlicheDauer() {
+      return this.traktanden.reduce((summe, t) => summe + (Number(this.protokoll.dauern[t.id]) || 0), 0)
+    },
     sitzung() {
       return sitzungenStore.sitzungById(this.sitzungId)
     },
@@ -172,6 +218,19 @@ export default {
     },
     voll() {
       return vollzugriff(this.sitzung, 'protokoll')
+    },
+    genehmigt() {
+      return istGenehmigt(this.sitzung)
+    },
+    vorherige() {
+      return sitzungenStore.vorherigeSitzung(this.sitzungId)
+    },
+    // Eigene Traktanden bearbeiten (false bei Freigabe «Lesen»)
+    eigene() {
+      return darfEigene(this.sitzung, 'protokoll')
+    },
+    vorprotokollDokument() {
+      return sitzungenStore.vorprotokollVonSitzung(this.sitzungId)
     },
     linksSichtbar() {
       return ['admin', 'gremium'].includes(rolleIm(this.gremium.id))
@@ -195,6 +254,16 @@ export default {
         .forEach((t) => {
           const treffer = sitzungenStore.eintragById(t.pendenzId)
           if (treffer) map[t.pendenzId] = treffer
+        })
+      return map
+    },
+    uebertrageneAntraege() {
+      const map = {}
+      this.traktanden
+        .filter((t) => t.antragId)
+        .forEach((t) => {
+          const treffer = sitzungenStore.eintragById(t.antragId)
+          if (treffer) map[t.antragId] = treffer
         })
       return map
     },
@@ -232,6 +301,7 @@ export default {
       if (!sitzungenStore.protokollVonSitzung(this.sitzungId)) sitzungenStore.starteProtokoll(this.sitzungId)
     }
     const protokoll = sitzungenStore.protokollVonSitzung(this.sitzungId)
+    if (protokoll && this.voll) sitzungenStore.ergaenzeAntraege(protokoll.id) // später übernommene vertagte Anträge nachziehen
     if (protokoll) this.protokoll = JSON.parse(JSON.stringify(protokoll))
     this.gespeichertUm = this.uhrzeit()
   },
@@ -244,16 +314,24 @@ export default {
   },
   methods: {
     formatDatum,
+    formatDauer,
     personenText,
     sitzungStatus,
+    wirksamerTyp,
+    // Leeres oder ungültiges Feld -> keine Dauer
+    dauerBereinigen(traktandumId) {
+      const wert = this.protokoll.dauern[traktandumId]
+      if (Number.isFinite(wert) && wert > 0) this.protokoll.dauern[traktandumId] = Math.round(wert)
+      else delete this.protokoll.dauern[traktandumId]
+    },
     darfTraktandum(t) {
-      return this.voll || (this.person && istBerechtigt(t, this.person))
+      return this.voll || (this.eigene && this.person && istBerechtigt(t, this.person))
     },
     darfSub(t, u) {
-      return this.darfTraktandum(t) || (this.person && istBerechtigt(u, this.person))
+      return this.darfTraktandum(t) || (this.eigene && this.person && istBerechtigt(u, this.person))
     },
     darfAnwesenheit(m) {
-      return this.voll || (this.person && m.id === this.person.id)
+      return this.voll || (this.eigene && this.person && m.id === this.person.id)
     },
     uhrzeit() {
       return new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
@@ -280,6 +358,11 @@ export default {
     abschliessen() {
       this.sitzung.status = 'abgeschlossen'
       this.speichern()
+    },
+    genehmigen() {
+      if (!confirm('Protokoll vom ' + formatDatum(this.vorherige.datum) + ' genehmigen? Es kann danach von niemandem mehr geändert werden.')) return
+      sitzungenStore.genehmigen(this.vorherige.id, this.sitzungId)
+      serverSpeichern()
     },
     namen(ids) {
       return ids.map((id) => gremienStore.mitgliedName(this.gremium.id, id)).join(', ') || '–'

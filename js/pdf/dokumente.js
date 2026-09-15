@@ -1,5 +1,5 @@
-import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_LABELS, formatDatum } from '../utils/labels.js'
-import { personenText } from '../utils/traktanden.js'
+import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
+import { dauerSumme, personenText } from '../utils/traktanden.js'
 
 const STYLES = {
   titel: { fontSize: 18, bold: true, margin: [0, 0, 0, 2] },
@@ -33,6 +33,7 @@ function kopfdaten(art, gremium, sitzung) {
     ['Protokollführung', personenText(sitzung.protokollfuehrung) || '–'],
   ]
   if (sitzung.bemerkungen) zeilen.push(['Spezielles', sitzung.bemerkungen])
+  if (art === 'Protokoll' && sitzung.genehmigt) zeilen.push(['Genehmigt', `an der Sitzung vom ${formatDatum(sitzung.genehmigt.datum)}`])
   return [
     { text: `${art} – ${gremium.name}`, style: 'titel' },
     { text: sitzung.titel || ' ', style: 'untertitel' },
@@ -79,16 +80,23 @@ function fusstextBlock(gremium) {
   return gremium.fusstext ? [{ text: gremium.fusstext, style: 'klein', margin: [0, 24, 0, 0] }] : []
 }
 
-function traktandumTitel(nummer, traktandum, themenbereichName) {
+function traktandumTitel(nummer, traktandum, themenbereichName, dauerIst = null) {
   const teile = [`${nummer} ${traktandum.titel}`]
-  const zusatz = [themenbereichName(traktandum.themenbereichId), personenText(traktandum.verantwortliche)].filter(Boolean).join(' · ')
+  const dauer = [traktandum.dauer && `geplant ${formatDauer(traktandum.dauer)}`, dauerIst && `tatsächlich ${formatDauer(dauerIst)}`].filter(Boolean).join(', ')
+  const zusatz = [TYP_LABELS[traktandum.typ], themenbereichName(traktandum.themenbereichId), personenText(traktandum.verantwortliche), dauer].filter(Boolean).join(' · ')
   if (zusatz) teile.push({ text: `   ${zusatz}`, style: 'klein', bold: false })
   return teile
 }
 
+// Unterpunkt-Zeile: Nummer, Titel, optional Typ und Verantwortliche
+function unterpunktText(nummer, t, u) {
+  const zusatz = [!t.typ && TYP_LABELS[u.typ], personenText(u.verantwortliche)].filter(Boolean).join(' · ')
+  return [`${nummer} ${u.titel}`, ...(zusatz ? [{ text: `   ${zusatz}`, style: 'klein', bold: false }] : [])]
+}
+
 function eintragBlock(eintrag, label = TYP_LABELS[eintrag.typ]) {
   let status = ''
-  if (eintrag.typ === 'antrag') status = `Beschluss: ${ANTRAG_STATUS[eintrag.antragStatus]}`
+  if (eintrag.typ === 'antrag') status = [`Beschluss: ${ANTRAG_STATUS[eintrag.antragStatus]}`, stimmenText(eintrag)].filter(Boolean).join(' · ')
   if (eintrag.typ === 'pendenz') {
     status = [PENDENZ_STATUS[eintrag.pendenzStatus], eintrag.zugewiesenAnName, eintrag.faelligBis && `bis ${formatDatum(eintrag.faelligBis)}`]
       .filter(Boolean)
@@ -118,27 +126,30 @@ export function vorprotokollDokument({ gremium, sitzung, vorprotokoll, erwartete
   const anwesend = gremium.mitglieder.filter((m) => vorprotokoll.anwesendeMitgliederIds.includes(m.id))
   const abwesend = erwartete.filter((m) => !vorprotokoll.anwesendeMitgliederIds.includes(m.id))
 
+  const mitDauer = vorprotokoll.traktanden.some((t) => t.dauer)
   const traktandenZeilen = vorprotokoll.traktanden.map((t, i) => [
     `${i + 1}`,
     {
       stack: [
-        { text: t.titel, bold: true },
+        { text: [{ text: t.titel, bold: true }, ...(t.typ ? [{ text: `   ${TYP_LABELS[t.typ]}`, style: 'klein' }] : [])] },
         ...(t.notiz ? [{ text: t.notiz, style: 'klein' }] : []),
         ...t.untertraktanden.flatMap((u, j) => [
-          { text: [`${i + 1}.${j + 1} ${u.titel}`, ...(u.verantwortliche.length ? [{ text: `   ${personenText(u.verantwortliche)}`, style: 'klein' }] : [])], margin: [10, 2, 0, 0] },
+          { text: unterpunktText(`${i + 1}.${j + 1}`, t, u), margin: [10, 2, 0, 0] },
           ...(u.notiz ? [{ text: u.notiz, style: 'klein', margin: [10, 0, 0, 0] }] : []),
         ]),
       ],
     },
     themenbereichName(t.themenbereichId),
     personenText(t.verantwortliche),
+    ...(mitDauer ? [formatDauer(t.dauer) || '–'] : []),
   ])
 
   return dokument(`Vorprotokoll ${gremium.name}`, [
     ...kopfdaten('Vorprotokoll', gremium, sitzung),
     ...anwesenheiten(anwesend, abwesend, vorprotokoll.gaeste, rolleName),
     { text: 'Traktanden', style: 'h2' },
-    tabelle(['Nr', 'Traktandum', 'Themenbereich', 'Person'], traktandenZeilen, ['auto', '*', 'auto', 'auto']),
+    tabelle(['Nr', 'Traktandum', 'Themenbereich', 'Person', ...(mitDauer ? ['Dauer'] : [])], traktandenZeilen, ['auto', '*', 'auto', 'auto', ...(mitDauer ? ['auto'] : [])]),
+    ...(mitDauer ? [{ text: `Geplante Dauer insgesamt: ${formatDauer(dauerSumme(vorprotokoll.traktanden))}`, style: 'klein', margin: [0, 0, 0, 8] }] : []),
     ...(uebertragenePendenzen.length
       ? [{ text: 'Offene Pendenzen aus früheren Sitzungen', style: 'h2' }, pendenzenTabelle(uebertragenePendenzen)]
       : []),
@@ -151,19 +162,24 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
   const mitglieder = (ids) => gremium.mitglieder.filter((m) => ids.includes(m.id))
   const eintraegeVon = (traktandumId) => protokoll.eintraege.filter((e) => e.traktandumId === traktandumId).map((e) => eintragBlock(e))
 
+  const dauern = protokoll.dauern || {}
   const traktandenBloecke = vorprotokoll.traktanden.flatMap((t, i) => {
-    const bloecke = [{ text: traktandumTitel(`${i + 1}.`, t, themenbereichName), style: 'h3' }]
+    const bloecke = [{ text: traktandumTitel(`${i + 1}.`, t, themenbereichName, dauern[t.id]), style: 'h3' }]
     if (t.notiz) bloecke.push({ text: t.notiz, style: 'notiz' })
     const uebertragen = uebertragenePendenzen.find((p) => p.eintrag.id === t.pendenzId)
     if (uebertragen) bloecke.push(eintragBlock(uebertragen.eintrag, 'Übertragene Pendenz'))
     bloecke.push(...eintraegeVon(t.id))
     t.untertraktanden.forEach((u, j) => {
-      bloecke.push({ text: [`${i + 1}.${j + 1} ${u.titel}`, ...(u.verantwortliche.length ? [{ text: `   ${personenText(u.verantwortliche)}`, style: 'klein', bold: false }] : [])], style: 'h4' })
+      bloecke.push({ text: unterpunktText(`${i + 1}.${j + 1}`, t, u), style: 'h4' })
       if (u.notiz) bloecke.push({ text: u.notiz, style: 'notiz', margin: [20, 0, 0, 2] })
       bloecke.push(...eintraegeVon(u.id).map((b) => ({ ...b, margin: [20, 0, 0, 6] })))
     })
     return bloecke
   })
+
+  const geplant = dauerSumme(vorprotokoll.traktanden)
+  const tatsaechlich = vorprotokoll.traktanden.reduce((summe, t) => summe + (Number(dauern[t.id]) || 0), 0)
+  const dauerBlock = geplant || tatsaechlich ? [{ text: `Dauer insgesamt: geplant ${formatDauer(geplant) || '–'} · tatsächlich ${formatDauer(tatsaechlich) || '–'}`, style: 'klein', margin: [0, 6, 0, 0] }] : []
 
   const allePendenzen = [
     ...uebertragenePendenzen,
@@ -175,6 +191,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
     ...anwesenheiten(mitglieder(protokoll.anwesende), mitglieder(protokoll.abwesende), protokoll.gaeste, rolleName),
     { text: 'Traktanden', style: 'h2' },
     ...traktandenBloecke,
+    ...dauerBlock,
     ...(allePendenzen.length ? [{ text: 'Pendenzenliste', style: 'h2' }, pendenzenTabelle(allePendenzen)] : []),
     ...naechsterTerminBlock(naechsterTermin),
     ...fusstextBlock(gremium),

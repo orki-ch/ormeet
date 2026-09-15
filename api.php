@@ -8,7 +8,8 @@
 //                               oder Mitglied (wie persönlicher Link); Daten in data/benutzer.json
 //   zugaenge[].key           -> Gremium-Zugang mit Rechten pro Bereich (sitzungen / mitglieder / einstellungen: keine|lesen|bearbeiten)
 //   mitglieder[].zugangsKey  -> zentraler persönlicher Link eines Mitglieds: Rechte gemäss Traktanden-Zuweisungen;
-//                               als Sitzungsleitung / Protokollführung einer Sitzung voller Zugriff auf deren Dokumente
+//                               als Sitzungsleitung / Protokollführung einer Sitzung voller Zugriff auf deren Dokumente;
+//                               sitzungen[].freigaben[vorprotokoll|protokoll][personId] = lesen|eigene|alles überschreibt das
 //   freigabeLinkKey          -> ganzes Vorprotokoll bearbeiten
 //   personenKeys[gastId]     -> Gast: wie persönlicher Link, beschränkt auf dieses Vorprotokoll
 //   verfolgerKey             -> Live-Ansicht eines Protokolls (nur lesen)
@@ -199,6 +200,52 @@ function indexById(array $liste) {
 }
 
 // Änderungen (ganze Datensätze + gelöschte IDs) in ein Bundle einarbeiten
+// Genehmigte Protokolle sind eingefroren: Sitzung, Vorprotokoll und Protokoll bleiben, wie sie sind, und lassen sich
+// nicht löschen – ausser Status / Person / Frist der Pendenzen (werden von späteren Sitzungen nachgeführt).
+// Die Sperre gilt, solange die genehmigende Sitzung existiert; wird sie (in dieser Anfrage) gelöscht, ist alles wieder frei.
+function genehmigungSchuetzen(array $bundle, array $aenderungen) {
+  $geloeschteSitzungen = array_flip($aenderungen['geloescht']['sitzungen'] ?? []);
+  $gesperrt = []; // sitzungId => alte Sitzung
+  foreach ($bundle['sitzungen'] as $s) {
+    $in = $s['genehmigt']['sitzungId'] ?? null;
+    if (!$in || isset($geloeschteSitzungen[$in])) continue;
+    foreach ($bundle['sitzungen'] as $g) if ($g['id'] === $in) $gesperrt[$s['id']] = $s;
+  }
+  if (!$gesperrt) return $aenderungen;
+
+  $aenderungen['geloescht']['sitzungen'] = array_values(array_filter($aenderungen['geloescht']['sitzungen'] ?? [], fn($id) => !isset($gesperrt[$id])));
+  $liste = [];
+  foreach ($aenderungen['sitzungen'] ?? [] as $neu) $liste[] = $gesperrt[$neu['id']] ?? $neu;
+  $aenderungen['sitzungen'] = $liste;
+
+  foreach (['vorprotokolle', 'protokolle'] as $typ) {
+    $alt = indexById($bundle[$typ]);
+    $gesperrteIds = [];
+    foreach ($alt as $id => $dokument) if (isset($gesperrt[$dokument['sitzungId']])) $gesperrteIds[$id] = true;
+    $aenderungen['geloescht'][$typ] = array_values(array_filter($aenderungen['geloescht'][$typ] ?? [], fn($id) => !isset($gesperrteIds[$id])));
+    $liste = [];
+    foreach ($aenderungen[$typ] ?? [] as $neu) {
+      if (!isset($gesperrteIds[$neu['id']])) { $liste[] = $neu; continue; }
+      $liste[] = $typ === 'protokolle' ? pendenzenNachfuehren($alt[$neu['id']], $neu) : $alt[$neu['id']];
+    }
+    $aenderungen[$typ] = $liste;
+  }
+  return $aenderungen;
+}
+
+// Eingefrorenes Protokoll: nur Status, Person und Frist bestehender Pendenzen übernehmen
+function pendenzenNachfuehren(array $alt, array $neu) {
+  $neuById = indexById($neu['eintraege'] ?? []);
+  foreach ($alt['eintraege'] as &$e) {
+    if ($e['typ'] !== 'pendenz' || !isset($neuById[$e['id']])) continue;
+    foreach (['pendenzStatus', 'zugewiesenAn', 'zugewiesenAnName', 'faelligBis'] as $feld) {
+      if (array_key_exists($feld, $neuById[$e['id']])) $e[$feld] = $neuById[$e['id']][$feld];
+    }
+  }
+  unset($e);
+  return $alt;
+}
+
 function einarbeiten(array $bundle, array $aenderungen) {
   if (isset($aenderungen['gremium'])) $bundle['gremium'] = $aenderungen['gremium'];
   foreach (['sitzungen', 'vorprotokolle', 'protokolle'] as $typ) {
@@ -241,6 +288,14 @@ function istLeitung(array $sitzung, $personId) {
     if (($p['id'] ?? null) === $personId) return true;
   }
   return false;
+}
+
+// Freigabestufe einer Person für ein Dokument (vorprotokoll / protokoll): in der Sitzung gesetzte Freigabe,
+// sonst Standard – Leitung «alles», alle anderen «eigene» (zugewiesene Traktanden). «lesen» sperrt alles.
+function freigabeStufe(array $sitzung, string $dokument, $personId) {
+  $stufe = $sitzung['freigaben'][$dokument][$personId] ?? null;
+  if (in_array($stufe, ['lesen', 'eigene', 'alles'], true)) return $stufe;
+  return istLeitung($sitzung, $personId) ? 'alles' : 'eigene';
 }
 
 // Vorprotokoll: nur berechtigte Traktanden / Unterpunkte (Reihenfolge bleibt) und eigene Anwesenheit übernehmen
@@ -299,7 +354,9 @@ function protokollMerge(array $alt, array $neu, array $person, array $bundle) {
   foreach ($bundle['vorprotokolle'] as $vp) {
     $sitzung = null;
     foreach ($bundle['sitzungen'] as $s) if ($s['id'] === $vp['sitzungId']) $sitzung = $s;
-    $voll = $sitzung && istLeitung($sitzung, $personId);
+    $stufe = $sitzung ? freigabeStufe($sitzung, 'protokoll', $personId) : 'eigene';
+    if ($stufe === 'lesen') continue; // Freigabe «Lesen»: keine Einträge, keine übertragenen Pendenzen
+    $voll = $stufe === 'alles';
     foreach ($vp['traktanden'] as $t) {
       $haupt = $voll || istBerechtigt($t, $person);
       if ($haupt && !empty($t['pendenzId'])) $pendenzIds[$t['pendenzId']] = true;
@@ -327,6 +384,14 @@ function protokollMerge(array $alt, array $neu, array $person, array $bundle) {
   }
   foreach ($neu['eintraege'] ?? [] as $e) if (!isset($altIds[$e['id']]) && $darf($e)) $eintraege[] = $e;
   $alt['eintraege'] = $eintraege;
+
+  // Tatsächliche Dauer: nur bei berechtigten Traktanden
+  $dauern = is_array($alt['dauern'] ?? null) ? $alt['dauern'] : [];
+  foreach ($erlaubt as $id => $_) {
+    if (isset($neu['dauern'][$id])) $dauern[$id] = $neu['dauern'][$id];
+    else unset($dauern[$id]);
+  }
+  $alt['dauern'] = $dauern;
 
   $anwesend = array_values(array_diff($alt['anwesende'], [$personId]));
   if (in_array($personId, $neu['anwesende'] ?? [], true)) $anwesend[] = $personId;
@@ -406,8 +471,9 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
     if ($nurVorprotokollId && $neu['id'] !== $nurVorprotokollId) continue;
     foreach ($bundle['vorprotokolle'] as $alt) {
       if ($alt['id'] !== $neu['id']) continue;
-      $voll = isset($sitzungen[$alt['sitzungId']]) && istLeitung($sitzungen[$alt['sitzungId']], $person['id']);
-      $vorprotokolle[] = schluesselBewahren($alt, $voll ? $neu : vorprotokollMerge($alt, $neu, $person));
+      $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'vorprotokoll', $person['id']) : 'eigene';
+      if ($stufe === 'lesen') { $vorprotokolle[] = $alt; continue; }
+      $vorprotokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : vorprotokollMerge($alt, $neu, $person));
     }
   }
   $aenderungen['vorprotokolle'] = $vorprotokolle;
@@ -416,8 +482,8 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   foreach ($aenderungen['protokolle'] ?? [] as $neu) {
     foreach ($bundle['protokolle'] as $alt) {
       if ($alt['id'] !== $neu['id']) continue;
-      $voll = isset($sitzungen[$alt['sitzungId']]) && istLeitung($sitzungen[$alt['sitzungId']], $person['id']);
-      $protokolle[] = schluesselBewahren($alt, $voll ? $neu : protokollMerge($alt, $neu, $person, $bundle));
+      $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'protokoll', $person['id']) : 'eigene';
+      $protokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : protokollMerge($alt, $neu, $person, $bundle));
     }
   }
   $aenderungen['protokolle'] = $protokolle;
@@ -431,7 +497,15 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
       foreach ($bundle['vorprotokolle'] as $vp) if ($vp['id'] === $nurVorprotokollId && $vp['sitzungId'] === $alt['id']) $gehoert = true;
       if (!$gehoert) continue;
     }
-    $liste[] = istLeitung($alt, $person['id']) ? $neu : sitzungMerge($alt, $neu, $person);
+    // Leitung oder Freigabe «alles» auf einem Dokument darf die Sitzung (Kopfdaten, Freigaben) ändern
+    $voll = istLeitung($alt, $person['id']) || freigabeStufe($alt, 'vorprotokoll', $person['id']) === 'alles' || freigabeStufe($alt, 'protokoll', $person['id']) === 'alles';
+    $sitzung = $voll ? $neu : sitzungMerge($alt, $neu, $person);
+    // Letztes Protokoll genehmigen: wer das Protokoll der genehmigenden Sitzung ganz bearbeiten darf
+    $in = $neu['genehmigt']['sitzungId'] ?? null;
+    if (!$voll && $in && empty($alt['genehmigt']) && isset($sitzungen[$in]) && freigabeStufe($sitzungen[$in], 'protokoll', $person['id']) === 'alles') {
+      $sitzung['genehmigt'] = $neu['genehmigt'];
+    }
+    $liste[] = $sitzung;
   }
   $aenderungen['sitzungen'] = $liste;
   return $aenderungen;
@@ -725,9 +799,9 @@ if ($aktion === 'laden') {
     $bundles[0]['protokolle'] = [];
   }
   if ($rolle === 'freigabe') {
-    // Vorprotokoll-Link: aus den Protokollen nur die Pendenzen mitgeben (für den Übertrag)
+    // Vorprotokoll-Link: aus den Protokollen nur Pendenzen und vertagte / neu behandelte Anträge mitgeben (für den Übertrag)
     foreach ($bundles[0]['protokolle'] as &$protokoll) {
-      $protokoll['eintraege'] = array_values(array_filter($protokoll['eintraege'], fn($e) => $e['typ'] === 'pendenz'));
+      $protokoll['eintraege'] = array_values(array_filter($protokoll['eintraege'], fn($e) => $e['typ'] === 'pendenz' || ($e['typ'] === 'antrag' && (($e['antragStatus'] ?? '') === 'vertagt' || !empty($e['vorherigerAntragId'])))));
     }
   }
   if ($rolle === 'themenbereich') {
@@ -796,6 +870,7 @@ if ($aktion === 'speichern') {
     $aenderungen = ['vorprotokolle' => $erlaubt, 'sitzungen' => $sitzungen];
   }
 
+  $aenderungen = genehmigungSchuetzen($bundle, $aenderungen);
   $bundle = einarbeiten($bundle, $aenderungen);
   ftruncate($handle, 0);
   rewind($handle);

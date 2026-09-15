@@ -71,9 +71,11 @@ export default {
           <li>Tab <strong>Sitzungen</strong> → <em>+ Sitzung</em>: Datum, Zeit, Ort und Vorlage wählen – oder <em>Termin per Abstimmung finden</em> (siehe Kapitel 7).</li>
           <li><em>Vorprotokoll</em> öffnen. Kopfdaten (Titel, Leitung, Protokollführung, Bemerkungen) per Klick bearbeiten.</li>
           <li>Anwesenheit anhaken, Gäste hinzufügen.</li>
-          <li>Traktanden: Klick auf ein Traktandum öffnet die Bearbeitung – Titel, Themenbereich, Notiz, Unterpunkte (2.1, 2.2 …), verantwortliche Personen und wer zusätzlich bearbeiten darf. Verschieben und Löschen findest du im ⋮-Menü.</li>
-          <li>Offene Pendenzen aus früheren Sitzungen werden automatisch als Traktanden angehängt (gelb markiert «Pendenz»).</li>
-          <li>Unter <em>Freigabe-Links</em> die Links kopieren und verteilen. Empfänger erkennen ihre bearbeitbaren Traktanden am blauen Rahmen.</li>
+          <li>Traktanden: Klick auf ein Traktandum öffnet die Bearbeitung – Titel, Themenbereich, Notiz (mehrzeilig, Zeilenumbrüche bleiben erhalten), Unterpunkte (2.1, 2.2 …), verantwortliche Personen und wer zusätzlich bearbeiten darf. Verschieben und Löschen findest du im ⋮-Menü.</li>
+          <li><strong>Typ der Einträge:</strong> Legst du bei einem Traktandum oder Unterpunkt «Information», «Antrag» oder «Pendenz» fest, sind im Protokoll alle Einträge darunter automatisch von diesem Typ (nicht änderbar). Ohne Typ wählt man ihn bei jedem Eintrag.</li>
+          <li><strong>Geplante Dauer:</strong> Pro Traktandum kannst du Minuten eintragen; unten steht die Summe. Im Protokoll ist die Planung fix, dort trägst du nur noch die tatsächliche Dauer ein – so siehst du, wo Sitzungen aus dem Ruder laufen.</li>
+          <li>Offene Pendenzen und vertagte Anträge aus früheren Sitzungen werden automatisch als Traktanden angehängt (gelb markiert).</li>
+          <li>Die Karte <strong>Vorprotokoll teilen</strong> zeigt, wer welchen Zugriff hat, und den passenden Link pro Person (Klick auf die Zeile). Pro Person kannst du die Stufe setzen: <em>Lesen</em> (nur ansehen), <em>Eigene</em> (zugewiesene Traktanden bearbeiten) oder <em>Alles</em> (ganzes Dokument). Vorbelegt ist der Standard – Leitung «Alles», alle anderen «Eigene»; <em>Auf Standardfreigabe zurücksetzen</em> löscht die Abweichungen. Das Gleiche gibt es im Protokoll (dort mit dem Verfolger-Link).</li>
         </ol>
       </section>
 
@@ -81,7 +83,8 @@ export default {
         <h2 class="card-title">6. Sitzung protokollieren</h2>
         <ol>
           <li>Im Vorprotokoll <em>Sitzung starten</em> klicken. Anwesenheit und Gäste werden übernommen und können angepasst werden.</li>
-          <li>Bei jedem Traktandum oder Unterpunkt <em>+ Eintrag</em>: Typ wählen (Information, Antrag, Pendenz), Titel eingeben, Enter. Anträge und Pendenzen öffnen sich direkt, um Beschluss bzw. Status, Person und Frist zu setzen.</li>
+          <li>Bei jedem Traktandum oder Unterpunkt <em>+ Eintrag</em>: Typ wählen (Information, Antrag, Pendenz), Titel eingeben, Enter. Anträge und Pendenzen öffnen sich direkt, um Beschluss bzw. Status, Person und Frist zu setzen. Bei Anträgen kannst du die Stimmen (Ja, Nein, Enthaltungen) eintragen; der Beschluss <em>Vertagt</em> bringt den Antrag als neuen, offenen Antrag ins nächste Vorprotokoll.</li>
+          <li><strong>Letztes Protokoll genehmigen:</strong> Die Karte oberhalb der Traktanden zeigt das Protokoll der vorherigen Sitzung. <em>Protokoll genehmigen</em> friert es ein – niemand kann es mehr ändern, nur der Stand seiner Pendenzen wird weiter nachgeführt. Aufheben lässt sich das nur, indem die Sitzung gelöscht wird, an der genehmigt wurde.</li>
           <li>Ein Klick auf einen Eintrag öffnet ihn zum Bearbeiten; er bleibt offen, bis du <em>Fertig</em> klickst oder im selben Traktandum einen anderen Eintrag öffnest.</li>
           <li>Übertragene Pendenzen zeigen den Stand aus der früheren Sitzung; Status, Person und Frist änderst du direkt dort – die Änderung gilt überall.</li>
           <li>Gespeichert wird automatisch (Anzeige oben rechts). <kbd>Ctrl+S</kbd> speichert sofort.</li>
@@ -107,7 +110,8 @@ export default {
         <ul>
           <li>Eine Pendenz hat Status (offen, in Bearbeitung, erfüllt), eine zugewiesene Person und eine Frist.</li>
           <li>Solange sie nicht erfüllt ist, wird sie in jedes neue Vorprotokoll des Gremiums übernommen.</li>
-          <li>Im Tab <em>Protokoll-Einstellungen</em> öffnet <em>Übersicht</em> bei einem Themenbereich die Historie aller Informationen, Anträge und Pendenzen aus allen Protokollen – mit Filter nach Status.</li>
+          <li>Im Tab <em>Sitzungen</em> (und in der persönlichen Übersicht) öffnet die Karte <em>Themenbereiche</em> die Historie aller Informationen, Anträge und Pendenzen aus allen Protokollen – mit Filter nach Status. <em>Ohne Themenbereich</em> sammelt alles, was keinem Thema zugeordnet ist.</li>
+          <li><strong>Suche:</strong> Das Suchfeld über den Sitzungen findet Sitzungen, Traktanden, Informationen, Anträge (auch Beschlüsse) und Pendenzen – immer nur das, worauf dein Zugang Zugriff hat. Ein Klick auf den Treffer öffnet die Sitzung.</li>
         </ul>
       </section>
 

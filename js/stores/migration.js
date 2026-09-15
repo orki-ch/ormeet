@@ -47,6 +47,12 @@ export function ergaenzeFelder(bundle) {
     s.protokollfuehrung = personenListe(s.protokollfuehrung, personen)
     s.bemerkungen ??= ''
     s.vorlageId ??= null
+    s.genehmigt ??= null
+    // Freigaben pro Dokument: { [personId]: lesen | eigene | alles }; PHP liefert leere Objekte als []
+    if (!s.freigaben || Array.isArray(s.freigaben)) s.freigaben = {}
+    for (const dokument of ['vorprotokoll', 'protokoll']) {
+      if (!s.freigaben[dokument] || Array.isArray(s.freigaben[dokument])) s.freigaben[dokument] = {}
+    }
     s.terminfindung ??= null
     if (s.terminfindung) {
       s.terminfindung.optionen ??= []
@@ -63,8 +69,13 @@ export function ergaenzeFelder(bundle) {
 
   bundle.protokolle.forEach((p) => {
     p.verfolgerKey ??= neuerKey()
+    if (!p.dauern || Array.isArray(p.dauern)) p.dauern = {} // tatsächliche Dauer pro Traktandum: { [traktandumId]: Minuten }; PHP liefert leer als []
     p.gaeste.forEach(gast)
     p.eintraege.forEach((e) => {
+      if (e.typ === 'antrag') {
+        e.stimmen ??= { ja: null, nein: null, enthaltung: null }
+        e.vorherigerAntragId ??= null // Antrag, der an einer früheren Sitzung vertagt wurde
+      }
       if (e.typ !== 'pendenz') return
       e.zugewiesenAnName ??= gremium.mitglieder.find((m) => m.id === e.zugewiesenAn)?.name || ''
       e.faelligBis ??= ''
@@ -95,10 +106,14 @@ function traktandum(t, personen) {
   }
   t.bearbeiter ??= []
   t.notiz ??= ''
+  t.typ ??= ''
+  t.dauer ??= null
   t.pendenzId ??= null
+  t.antragId ??= null
   t.untertraktanden ??= []
   t.untertraktanden.forEach((u) => {
     u.notiz ??= ''
+    u.typ ??= ''
     u.verantwortliche ??= []
     u.bearbeiter ??= []
   })

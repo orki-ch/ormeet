@@ -2,12 +2,14 @@ import ThemenbereichSelect from './ThemenbereichSelect.js'
 import PersonenInput from './PersonenInput.js'
 import MenuDropdown from './MenuDropdown.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
-import { istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
+import { TRAKTANDUM_TYP, TYP_BADGE, TYP_LABELS, formatDauer } from '../utils/labels.js'
+import { dauerSumme, istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText, wirksamerTyp } from '../utils/traktanden.js'
 
 // Traktandenliste (zwei Ebenen) im Karten-Layout des Protokolls, direkt im übergebenen Array bearbeitet.
 // Bearbeitbare Karten / Unterpunkte tragen einen Rahmen in der Ormeet-Farbe; Klick öffnet die Bearbeitung.
 // nurPerson (persönlicher Freigabe-Link): bearbeitbar sind Traktanden, bei denen die Person verantwortlich oder
 // als Bearbeiter eingetragen ist (direkt, über ihre Rolle oder eine Gruppe); Unterpunkte erben das vom Traktandum.
+// Typ (Information / Antrag / Pendenz) und geplante Dauer werden hier festgelegt; im Protokoll sind sie fix.
 export default {
   name: 'TraktandenListe',
   components: { MenuDropdown, PersonenInput, ThemenbereichSelect },
@@ -39,19 +41,34 @@ export default {
             <div><span class="label">Verantwortlich</span><PersonenInput v-model="t.verantwortliche" :personen="personen" placeholder="Name eingeben oder wählen" :nur-eigene="nurPerson?.id" /></div>
             <div><span class="label">Dürfen zusätzlich bearbeiten</span><PersonenInput v-model="t.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Personen, Rollen oder Gruppen" nur-liste :disabled="!!nurPerson" /></div>
           </div>
+          <div class="eingerueckt row">
+            <div>
+              <span class="label">Typ der Einträge</span>
+              <select v-model="t.typ" class="input w-md" title="Gilt im Protokoll für alle Einträge und Unterpunkte dieses Traktandums">
+                <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
+              </select>
+            </div>
+            <div>
+              <span class="label">Geplante Dauer</span>
+              <span class="dauer"><input v-model.number="t.dauer" type="number" min="0" step="5" class="input" placeholder="–" @change="dauerBereinigen(t)" /> Min.</span>
+            </div>
+          </div>
           <div class="eingerueckt stack">
-            <input v-model.trim="t.notiz" class="input" placeholder="Notiz / Beschreibung" />
+            <textarea v-model.trim="t.notiz" v-wachsen class="input" rows="1" placeholder="Notiz / Beschreibung (mehrzeilig)"></textarea>
             <div v-for="(u, j) in t.untertraktanden" :key="u.id" class="sub stack-sm">
               <div class="row">
                 <span class="nr mono small leise">{{ i + 1 }}.{{ j + 1 }}</span>
                 <input v-model.trim="u.titel" class="input grow" placeholder="Unterpunkt" />
-                <input v-model.trim="u.notiz" class="input grow" placeholder="Notiz" />
+                <select v-if="!t.typ" v-model="u.typ" class="input w-sm" title="Typ der Einträge dieses Unterpunkts">
+                  <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
+                </select>
                 <span class="row-nowrap">
                   <button class="btn btn-ghost btn-icon" :disabled="j === 0" @click="verschieben(t.untertraktanden, j, -1)">↑</button>
                   <button class="btn btn-ghost btn-icon" :disabled="j === t.untertraktanden.length - 1" @click="verschieben(t.untertraktanden, j, 1)">↓</button>
                   <button class="btn btn-danger btn-icon" @click="t.untertraktanden.splice(j, 1)">✕</button>
                 </span>
               </div>
+              <textarea v-model.trim="u.notiz" v-wachsen class="input" rows="1" placeholder="Notiz (mehrzeilig)"></textarea>
               <div class="grid-2">
                 <PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Verantwortlich (sonst wie Traktandum)" :nur-eigene="nurPerson?.id" />
                 <PersonenInput v-model="u.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Dürfen zusätzlich bearbeiten" nur-liste :disabled="!!nurPerson" />
@@ -69,11 +86,13 @@ export default {
           <div class="traktandum-kopf">
             <span class="nr">{{ i + 1 }}.</span>
             <h2 :class="{ leer: !t.titel }">{{ t.titel || 'Ohne Titel' }}</h2>
-            <span v-if="t.istAutomatischUebernommen" class="badge gelb">Pendenz</span>
+            <span v-if="t.istAutomatischUebernommen" class="badge gelb">{{ t.antragId ? 'Vertagter Antrag' : 'Pendenz' }}</span>
+            <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
             <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
             <span v-if="themenbereich(t.themenbereichId)" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereich(t.themenbereichId).name }}</span>
+            <span v-if="t.dauer" class="leise small nowrap" title="Geplante Dauer">{{ formatDauer(t.dauer) }}</span>
           </div>
-          <p v-if="t.notiz" class="notiz eingerueckt">{{ t.notiz }}</p>
+          <p v-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
           <div v-if="t.untertraktanden.length" class="eingerueckt">
             <template v-for="(u, j) in t.untertraktanden" :key="u.id">
               <!-- Bearbeitung nur dieses Unterpunkts (Person mit Rechten auf dem Unterpunkt) -->
@@ -81,8 +100,11 @@ export default {
                 <div class="row">
                   <span class="nr mono small leise">{{ i + 1 }}.{{ j + 1 }}</span>
                   <input v-model.trim="u.titel" class="input grow" placeholder="Unterpunkt" />
-                  <input v-model.trim="u.notiz" class="input grow" placeholder="Notiz" />
+                  <select v-if="!t.typ" v-model="u.typ" class="input w-sm" title="Typ der Einträge dieses Unterpunkts">
+                    <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
+                  </select>
                 </div>
+                <textarea v-model.trim="u.notiz" v-wachsen class="input" rows="1" placeholder="Notiz (mehrzeilig)"></textarea>
                 <div class="row">
                   <PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Verantwortlich" :nur-eigene="nurPerson?.id" class="grow" />
                   <button class="btn" @click="aktiv = null">Fertig</button>
@@ -92,14 +114,17 @@ export default {
                 <div class="sub-kopf">
                   <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
                   <h3>{{ u.titel }}</h3>
-                  <span v-if="u.notiz" class="muted small">– {{ u.notiz }}</span>
+                  <span v-if="!t.typ && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ TYP_LABELS[u.typ] }}</span>
                   <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
                 </div>
+                <p v-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
               </div>
             </template>
           </div>
         </section>
       </template>
+
+      <p v-if="gesamtDauer" class="muted small">Geplante Dauer insgesamt: {{ formatDauer(gesamtDauer) }}</p>
 
       <form v-if="!nurLesen" class="row" @submit.prevent="hinzufuegen">
         <input v-model.trim="neu" class="input grow" placeholder="Neues Traktandum …" required />
@@ -108,11 +133,18 @@ export default {
     </div>
   `,
   data() {
-    return { neu: '' }
+    return { neu: '', TRAKTANDUM_TYP, TYP_BADGE, TYP_LABELS }
+  },
+  computed: {
+    gesamtDauer() {
+      return dauerSumme(this.traktanden)
+    },
   },
   methods: {
     neuesUntertraktandum,
     personenText,
+    formatDauer,
+    wirksamerTyp,
     hauptEditierbar(t) {
       if (this.nurLesen) return false
       return !this.nurPerson || istBerechtigt(t, this.nurPerson)
@@ -132,6 +164,10 @@ export default {
     themenbereichStil(id) {
       const tb = this.themenbereich(id)
       return { backgroundColor: tb.farbe + '1f', color: tb.farbe }
+    },
+    // Leeres oder ungültiges Feld -> keine Dauer
+    dauerBereinigen(t) {
+      t.dauer = Number.isFinite(t.dauer) && t.dauer > 0 ? Math.round(t.dauer) : null
     },
     hinzufuegen() {
       const person = this.nurPerson

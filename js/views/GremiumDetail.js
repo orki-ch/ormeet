@@ -5,8 +5,10 @@ import { rolleIm } from '../utils/rechte.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { neuerKey } from '../utils/keys.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
+import GremiumSuche from '../components/GremiumSuche.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import Modal from '../components/Modal.js'
+import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 
 const TABS = { ...BEREICHE, teilen: 'Teilen' }
@@ -14,7 +16,7 @@ const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearb
 
 export default {
   name: 'GremiumDetail',
-  components: { MenuDropdown, Modal, TraktandenListe },
+  components: { GremiumSuche, MenuDropdown, Modal, ThemenbereichLinks, TraktandenListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -39,6 +41,7 @@ export default {
       </header>
 
       <!-- Tab: Sitzungen -->
+      <GremiumSuche v-if="tab === 'sitzungen'" :gremium-id="gremiumId" />
       <fieldset v-if="tab === 'sitzungen'" :disabled="!darf('sitzungen')" class="card">
         <div class="card-head">
           <h2 class="card-title">Sitzungen</h2>
@@ -49,7 +52,7 @@ export default {
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
             <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
             <span>{{ s.titel }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span></span>
-            <span><span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(s)]">{{ SITZUNG_STATUS[sitzungStatus(s)] }}</span></span>
+            <span><span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(s)]">{{ SITZUNG_STATUS[sitzungStatus(s)] }}</span><span v-if="s.genehmigt" class="badge gruen" style="margin-left: 0.25rem" title="Protokoll genehmigt">✓</span></span>
             <div class="aktionen">
               <router-link v-if="s.terminfindung?.status === 'offen'" :to="'/sitzung/' + s.id + '/terminfindung'" class="btn btn-ghost">Terminfindung</router-link>
               <router-link :to="'/sitzung/' + s.id + '/vorprotokoll'" class="btn btn-ghost">Vorprotokoll</router-link>
@@ -61,6 +64,7 @@ export default {
           </div>
         </div>
       </fieldset>
+      <ThemenbereichLinks v-if="tab === 'sitzungen'" :gremium="gremium" />
 
       <!-- Tab: Mitglieder & Rollen -->
       <fieldset v-if="tab === 'mitglieder'" :disabled="!darf('mitglieder')" class="grid-2-1">
@@ -402,6 +406,10 @@ export default {
       if (terminfindung) this.$router.push('/sitzung/' + sitzung.id + '/terminfindung')
     },
     sitzungLoeschen(sitzung) {
+      if (sitzung.genehmigt) {
+        alert('Das Protokoll dieser Sitzung wurde an der Sitzung vom ' + formatDatum(sitzung.genehmigt.datum) + ' genehmigt. Es kann erst gelöscht werden, wenn jene Sitzung gelöscht wird.')
+        return
+      }
       if (confirm('Sitzung vom ' + formatDatum(sitzung.datum) + ' inkl. Protokoll löschen?')) {
         sitzungenStore.loescheSitzung(sitzung.id)
       }

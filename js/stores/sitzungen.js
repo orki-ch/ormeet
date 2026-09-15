@@ -82,6 +82,14 @@ export const sitzungenStore = {
       .filter(({ eintrag, sitzung }) => eintrag.typ === 'pendenz' && eintrag.pendenzStatus !== 'erfuellt' && sitzung.datum && sitzung.datum < vorDatum)
   },
 
+  // Vertagte Anträge aus Sitzungen vor dem Datum, die noch an keiner späteren Sitzung neu behandelt wurden
+  vertagteAntraege(gremiumId, vorDatum) {
+    const behandelt = new Set(state.protokolle.flatMap((p) => p.eintraege.map((e) => e.vorherigerAntragId).filter(Boolean)))
+    return sitzungenStore
+      .eintraegeVonGremium(gremiumId)
+      .filter(({ eintrag, sitzung }) => eintrag.typ === 'antrag' && eintrag.antragStatus === 'vertagt' && !behandelt.has(eintrag.id) && sitzung.datum && sitzung.datum < vorDatum)
+  },
+
   erstelleSitzung(gremiumId, { datum, zeit, ort, vorlageId, terminfindung = false }) {
     const vorlage = gremienStore.byId(gremiumId).vorlagen.find((v) => v.id === vorlageId)
     const kopie = (liste) => (liste || []).map((p) => ({ ...p }))
@@ -98,6 +106,8 @@ export const sitzungenStore = {
       protokollfuehrung: vorlage?.protokollfuehrung?.length ? kopie(vorlage.protokollfuehrung) : gremienStore.mitgliederMitRollentyp(gremiumId, 'aktuariat'),
       bemerkungen: vorlage?.bemerkungen || '',
       naechsterTerminId: null,
+      genehmigt: null, // { sitzungId, datum }: an dieser späteren Sitzung genehmigt -> Vorprotokoll und Protokoll eingefroren
+      freigaben: { vorprotokoll: {}, protokoll: {} }, // gesetzte Freigabestufen pro Person, überschreiben den Standard
       terminfindung: terminfindung ? neueTerminfindung() : null,
       status: terminfindung ? 'terminfindung' : 'geplant',
     }
@@ -116,12 +126,29 @@ export const sitzungenStore = {
     sitzung.status = sitzungenStore.protokollVonSitzung(sitzungId) ? 'laufend' : sitzungenStore.vorprotokollVonSitzung(sitzungId) ? 'vorprotokoll' : 'geplant'
   },
 
+  // Die zuletzt protokollierte Sitzung vor dieser Sitzung (zum Genehmigen des letzten Protokolls)
+  vorherigeSitzung(sitzungId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    if (!sitzung?.datum) return null
+    return sitzungenStore
+      .sitzungenVonGremium(sitzung.gremiumId)
+      .filter((s) => s.datum && (s.datum < sitzung.datum || (s.datum === sitzung.datum && s.id < sitzungId)) && sitzungenStore.protokollVonSitzung(s.id))
+      .sort((a, b) => b.datum.localeCompare(a.datum))[0]
+  },
+
+  // Protokoll einer früheren Sitzung an der angegebenen Sitzung genehmigen: danach ist es eingefroren
+  genehmigen(vorherigeId, sitzungId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    sitzungenStore.sitzungById(vorherigeId).genehmigt = { sitzungId, datum: sitzung.datum }
+  },
+
   loescheSitzung(id) {
     state.sitzungen = state.sitzungen.filter((s) => s.id !== id)
     state.vorprotokolle = state.vorprotokolle.filter((v) => v.sitzungId !== id)
     state.protokolle = state.protokolle.filter((p) => p.sitzungId !== id)
     state.sitzungen.forEach((s) => {
       if (s.naechsterTerminId === id) s.naechsterTerminId = null
+      if (s.genehmigt?.sitzungId === id) s.genehmigt = null // Genehmigung fällt mit der genehmigenden Sitzung
     })
   },
 
@@ -148,12 +175,27 @@ export const sitzungenStore = {
     return vorprotokoll
   },
 
-  // Übernimmt noch nicht enthaltene offene Pendenzen früherer Sitzungen als Traktanden (idempotent)
+  // Übernimmt noch nicht enthaltene offene Pendenzen und vertagte Anträge früherer Sitzungen als Traktanden (idempotent)
   uebernimmPendenzen(vorprotokollId) {
     const vorprotokoll = sitzungenStore.vorprotokollById(vorprotokollId)
     const sitzung = sitzungenStore.sitzungById(vorprotokoll.sitzungId)
     if (!sitzung.datum) return // Termin noch offen: erst nach der Terminfindung
-    const vorhandene = new Set(vorprotokoll.traktanden.map((t) => t.pendenzId))
+    const vorhandene = new Set(vorprotokoll.traktanden.flatMap((t) => [t.pendenzId, t.antragId]))
+
+    sitzungenStore.vertagteAntraege(sitzung.gremiumId, sitzung.datum).forEach(({ eintrag }) => {
+      if (vorhandene.has(eintrag.id)) return
+      vorprotokoll.traktanden.push(
+        neuesTraktandum({
+          titel: `Antrag: ${eintrag.titel}`,
+          themenbereichId: eintrag.themenbereichId,
+          typ: 'antrag',
+          notiz: eintrag.inhalt,
+          reihenfolge: vorprotokoll.traktanden.length + 1,
+          istAutomatischUebernommen: true,
+          antragId: eintrag.id,
+        }),
+      )
+    })
 
     sitzungenStore.offenePendenzen(sitzung.gremiumId, sitzung.datum).forEach(({ eintrag }) => {
       if (vorhandene.has(eintrag.id)) return
@@ -183,11 +225,38 @@ export const sitzungenStore = {
       abwesende: erwarteteIds.filter((id) => !vorprotokoll.anwesendeMitgliederIds.includes(id)),
       gaeste: vorprotokoll.gaeste.map((g) => ({ ...g })),
       eintraege: [],
+      dauern: {}, // tatsächliche Dauer pro Traktandum in Minuten (geplante Dauer steht im Vorprotokoll)
       verfolgerKey: neuerKey(), // Live-Ansicht (nur lesen)
     }
     state.protokolle.push(protokoll)
     sitzung.status = 'laufend'
+    sitzungenStore.ergaenzeAntraege(protokoll.id)
     return protokoll
+  },
+
+  // Für jeden vertagten Antrag im Vorprotokoll einen neuen, offenen Antrag im Protokoll anlegen (idempotent)
+  ergaenzeAntraege(protokollId) {
+    const protokoll = sitzungenStore.protokollById(protokollId)
+    const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(protokoll.sitzungId)
+    if (!vorprotokoll) return
+    const vorhandene = new Set(protokoll.eintraege.map((e) => e.vorherigerAntragId).filter(Boolean))
+    vorprotokoll.traktanden
+      .filter((t) => t.antragId && !vorhandene.has(t.antragId))
+      .forEach((t) => {
+        const original = sitzungenStore.eintragById(t.antragId)?.eintrag
+        if (!original) return
+        protokoll.eintraege.push({
+          id: crypto.randomUUID(),
+          traktandumId: t.id,
+          themenbereichId: original.themenbereichId,
+          typ: 'antrag',
+          titel: original.titel,
+          inhalt: original.inhalt,
+          antragStatus: 'offen',
+          stimmen: { ja: null, nein: null, enthaltung: null },
+          vorherigerAntragId: original.id,
+        })
+      })
   },
 
   speichereProtokoll(protokoll) {

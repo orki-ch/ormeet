@@ -4,7 +4,7 @@ import { sync, recht } from '../stores/sync.js'
 import { neuerKey } from '../utils/keys.js'
 import { rolleIm, zurueckZu } from '../utils/rechte.js'
 import MenuDropdown from '../components/MenuDropdown.js'
-import { ANTRAG_STATUS, PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, formatDatum } from '../utils/labels.js'
+import { ANTRAG_STATUS, PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, formatDatum, stimmenText } from '../utils/labels.js'
 
 export default {
   name: 'ThemenbereichSummary',
@@ -62,7 +62,7 @@ export default {
             <span class="nowrap">{{ formatDatum(sitzung.datum) }}</span>
             <strong>{{ eintrag.titel }}</strong>
             <span class="muted">{{ eintrag.inhalt }}</span>
-            <span>{{ ANTRAG_STATUS[eintrag.antragStatus] }}</span>
+            <span>{{ ANTRAG_STATUS[eintrag.antragStatus] }}<span v-if="stimmenText(eintrag)" class="leise small"> · {{ stimmenText(eintrag) }}</span></span>
           </div>
         </div>
         <p v-else class="muted small">Keine Anträge.</p>
@@ -101,10 +101,16 @@ export default {
     gremium() {
       return gremienStore.byId(this.ids.gremiumId)
     },
+    // «ohne»: alles, was keinem (bestehenden) Themenbereich zugeordnet ist
+    ohne() {
+      return this.ids.themenbereichId === 'ohne'
+    },
     themenbereich() {
+      if (this.ohne) return { id: 'ohne', name: 'Ohne Themenbereich', farbe: '#8c968f' }
       return this.gremium?.themenbereiche.find((tb) => tb.id === this.ids.themenbereichId)
     },
     darfTeilen() {
+      if (this.ohne) return false
       const rolle = rolleIm(this.gremium.id)
       return rolle === 'admin' || (rolle === 'gremium' && recht('einstellungen', this.gremium.id) === 'bearbeiten')
     },
@@ -116,10 +122,11 @@ export default {
     },
     // Alle Einträge dieses Themenbereichs über sämtliche Protokolle, neueste Sitzung zuerst
     eintraege() {
+      const bekannt = new Set(this.gremium.themenbereiche.map((tb) => tb.id))
       return sitzungenStore
         .eintraegeVonGremium(this.ids.gremiumId)
-        .filter(({ eintrag }) => eintrag.themenbereichId === this.ids.themenbereichId)
-        .sort((a, b) => b.sitzung.datum.localeCompare(a.sitzung.datum))
+        .filter(({ eintrag }) => (this.ohne ? !bekannt.has(eintrag.themenbereichId) : eintrag.themenbereichId === this.ids.themenbereichId))
+        .sort((a, b) => (b.sitzung.datum || '').localeCompare(a.sitzung.datum || ''))
     },
     allePendenzen() {
       return this.eintraege.filter(({ eintrag }) => eintrag.typ === 'pendenz')
@@ -140,6 +147,7 @@ export default {
   },
   methods: {
     formatDatum,
+    stimmenText,
     linkKopieren() {
       navigator.clipboard.writeText(location.href.split('#')[0] + '#/themenbereich/' + this.themenbereich.freigabeKey)
       this.kopiert = true
