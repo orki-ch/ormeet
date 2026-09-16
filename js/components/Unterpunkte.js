@@ -38,13 +38,10 @@ export default {
               <label class="stack-xs"><span class="label">Verantwortlich</span><PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Sonst wie darüber" :nur-eigene="nurPerson?.id" /></label>
               <label v-if="!nurPerson" class="stack-xs"><span class="label">Dürfen zusätzlich bearbeiten</span><PersonenInput v-model="u.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Personen, Rollen oder Gruppen" nur-liste /></label>
             </MenuDropdown>
-            <MenuDropdown v-if="!elternTyp" :text="'Einstellungen: ' + (TYP_LABELS[u.typ] || 'Typ frei')" panel>
-              <label class="stack-xs"><span class="label">Typ der Einträge</span>
-                <select v-model="u.typ" class="input" title="Gilt im Protokoll für alles unter diesem Unterpunkt">
-                  <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
-                </select>
-              </label>
-            </MenuDropdown>
+            <!-- Nur ein Feld: direkt als Auswahl im Pillen-Look -->
+            <select v-if="!elternTyp" v-model="u.typ" class="btn-pille" title="Typ der Einträge – gilt im Protokoll für alles unter diesem Unterpunkt">
+              <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
+            </select>
             <MenuDropdown>
               <button v-if="!einzeln(u)" class="menu-item" :disabled="j === 0" @click="verschieben(j, -1)">↑ Nach oben</button>
               <button v-if="!einzeln(u)" class="menu-item" :disabled="j === liste.length - 1" @click="verschieben(j, 1)">↓ Nach unten</button>
