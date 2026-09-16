@@ -20,10 +20,11 @@ export default {
     return { offen: false }
   },
   mounted() {
-    document.addEventListener('click', this.schliessen)
+    // Capture-Phase: schliesst auch bei Klicks in Elementen, die die Weitergabe stoppen (z. B. Unterpunkte)
+    document.addEventListener('click', this.schliessen, true)
   },
   beforeUnmount() {
-    document.removeEventListener('click', this.schliessen)
+    document.removeEventListener('click', this.schliessen, true)
   },
   methods: {
     schliessen(event) {
