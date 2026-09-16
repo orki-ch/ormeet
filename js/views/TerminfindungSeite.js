@@ -4,13 +4,14 @@ import { sync } from '../stores/sync.js'
 import { aktuellePerson, vollzugriff, zurueckZu } from '../utils/rechte.js'
 import { STIMME, formatDatum } from '../utils/labels.js'
 import MenuDropdown from '../components/MenuDropdown.js'
+import MiniKalender from '../components/MiniKalender.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
 
 // Terminfindung (Nuudel-artig): Optionen, Abstimmungsmatrix mit Summenzeile, Kommentare, Termin festlegen
 export default {
   name: 'TerminfindungSeite',
-  components: { MenuDropdown },
+  components: { MenuDropdown, MiniKalender },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -40,21 +41,33 @@ export default {
       <section v-if="voll && tf.status === 'offen'" class="card stack">
         <div>
           <h2 class="card-title">Terminvorschläge</h2>
-          <p class="hint">Mehrere Tage, pro Tag beliebige Zeitfenster. Die Teilnehmenden stimmen unten ab.</p>
-          <div class="liste">
-            <div v-for="(o, i) in tf.optionen" :key="o.id" class="liste-zeile small">
-              <strong class="nowrap">{{ formatDatum(o.datum) }}</strong>
-              <span class="muted nowrap">{{ o.von }}<span v-if="o.bis"> – {{ o.bis }}</span></span>
-              <span class="grow"></span>
-              <button class="btn btn-danger btn-icon" title="Entfernen" @click="optionEntfernen(i)">✕</button>
+          <p class="hint">Tage im Kalender anklicken (nochmals klicken entfernt sie). Jeder Vorschlag lässt sich in der Liste einzeln anpassen; die Zeit rechts gilt für neue Vorschläge und lässt sich auf die angekreuzten übertragen.</p>
+          <div class="grid-3 termin-erfassung">
+            <!-- Links: Kalender und manuelles Datum -->
+            <div class="stack-sm">
+              <MiniKalender :markiert="tf.optionen.map((o) => o.datum)" @wahl="tagUmschalten" />
+              <form class="row" @submit.prevent="tagHinzufuegen(neu.datum)">
+                <input v-model="neu.datum" type="date" class="input grow" required />
+                <button class="btn btn-icon" title="Datum hinzufügen">+</button>
+              </form>
+            </div>
+            <!-- Mitte: gewählte Termine, je direkt anpassbar -->
+            <div class="stack-sm">
+              <p v-if="!tf.optionen.length" class="muted small">Noch keine Vorschläge – links einen Tag wählen.</p>
+              <label v-for="(o, i) in tf.optionen" :key="o.id" class="row-nowrap small">
+                <input v-model="gewaehlt" type="checkbox" :value="o.id" />
+                <input :value="o.datum + 'T' + (o.von || '00:00')" type="datetime-local" class="input klein grow" title="Datum und Beginn" @change="zeitSetzen(o, $event.target.value)" />
+                <input v-model="o.bis" type="time" class="input klein w-sm" title="Bis (optional)" @change="sortieren" />
+                <button type="button" class="btn btn-ghost btn-icon text-err" title="Entfernen" @click="optionEntfernen(i)">✕</button>
+              </label>
+            </div>
+            <!-- Rechts: Zeitvorgabe -->
+            <div class="stack-sm">
+              <label class="stack-xs"><span class="label">Von</span><input v-model="neu.von" type="time" class="input" /></label>
+              <label class="stack-xs"><span class="label">Bis (optional)</span><input v-model="neu.bis" type="time" class="input" /></label>
+              <button type="button" class="btn" :disabled="!gewaehlt.length" @click="zeitUebertragen">Auf ausgewählte übertragen</button>
             </div>
           </div>
-          <form class="row mt-2" @submit.prevent="optionHinzufuegen">
-            <input v-model="neu.datum" type="date" class="input w-sm" required />
-            <input v-model="neu.von" type="time" class="input w-sm" title="Von" required />
-            <input v-model="neu.bis" type="time" class="input w-sm" title="Bis (optional)" />
-            <button class="btn btn-primary">+ Vorschlag</button>
-          </form>
         </div>
         <div class="row" style="gap: 0.5rem 1.5rem">
           <label class="check small"><input v-model="tf.einzelwahl" type="checkbox" /> Nur eine Option mit «Ja» wählbar</label>
@@ -133,7 +146,7 @@ export default {
     <p v-else class="muted">Zu dieser Sitzung gibt es keine Terminfindung.</p>
   `,
   data() {
-    return { neu: { datum: '', von: '', bis: '' }, neuerName: '', neuerKommentar: '', STIMME }
+    return { neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME }
   },
   computed: {
     sitzung() {
@@ -209,14 +222,36 @@ export default {
       if (this.anonym) return !zeile.personId && this.tf.bearbeitbar // namentliche Zeilen (keine Mitglieder / Gäste mit Link)
       return zeile.eigene && (this.tf.bearbeitbar || !zeile.stimme)
     },
-    optionHinzufuegen() {
-      this.tf.optionen.push({ id: crypto.randomUUID(), ...this.neu })
+    // Kalender-Klick: Tag hinzufügen, bei erneutem Klick alle Vorschläge dieses Tages entfernen
+    tagUmschalten(datum) {
+      const vorhanden = this.tf.optionen.map((o, i) => (o.datum === datum ? i : -1)).filter((i) => i >= 0)
+      if (!vorhanden.length) return this.tagHinzufuegen(datum)
+      vorhanden.reverse().forEach((i) => this.optionEntfernen(i))
+    },
+    // Neuer Vorschlag übernimmt die Zeitvorgabe rechts
+    tagHinzufuegen(datum) {
+      if (!datum) return
+      this.tf.optionen.push({ id: crypto.randomUUID(), datum, von: this.neu.von, bis: this.neu.bis })
+      this.sortieren()
+    },
+    zeitSetzen(option, wert) {
+      const [datum, von] = wert.split('T')
+      if (!datum) return
+      option.datum = datum
+      option.von = von || ''
+      this.sortieren()
+    },
+    zeitUebertragen() {
+      this.tf.optionen.filter((o) => this.gewaehlt.includes(o.id)).forEach((o) => Object.assign(o, { von: this.neu.von, bis: this.neu.bis }))
+      this.sortieren()
+    },
+    sortieren() {
       this.tf.optionen.sort((a, b) => (a.datum + a.von).localeCompare(b.datum + b.von))
-      this.neu = { datum: this.neu.datum, von: '', bis: '' }
     },
     optionEntfernen(i) {
       const id = this.tf.optionen[i].id
       this.tf.optionen.splice(i, 1)
+      this.gewaehlt = this.gewaehlt.filter((g) => g !== id)
       this.tf.stimmen.forEach((s) => (s.wahl = s.wahl.filter((w) => w.optionId !== id)))
     },
     // Klick: leer -> ja -> vielleicht -> nein -> ja …

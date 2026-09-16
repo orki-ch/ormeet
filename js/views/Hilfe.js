@@ -89,8 +89,8 @@ export default {
           <li>Ein Klick auf einen Eintrag öffnet ihn zum Bearbeiten; er bleibt offen, bis du <em>Fertig</em> klickst oder im selben Traktandum einen anderen Eintrag öffnest.</li>
           <li>Übertragene Pendenzen zeigen den Stand aus der früheren Sitzung; Status, Person und Frist änderst du direkt dort – die Änderung gilt überall.</li>
           <li>Gespeichert wird automatisch (Anzeige oben rechts). <kbd>Ctrl+S</kbd> speichert sofort.</li>
-          <li>Unten den nächsten Sitzungstermin erfassen – er erscheint im Protokoll und hat schon sein eigenes Vorprotokoll.</li>
           <li>Über ⋯ den <em>Verfolger-Link</em> kopieren, wenn Personen live mitlesen sollen.</li>
+          <li><strong>Nächster Sitzungstermin:</strong> Mit dem Schalter wählst du <em>Offen lassen</em>, <em>Bestehend</em> (eine schon erfasste Sitzung), <em>Neu</em> (Datum, Zeit, Ort, Vorlage) oder <em>Abstimmung</em> (Termin per Terminfindung suchen). Darunter erscheint nur, was dafür nötig ist; der Termin erscheint im Protokoll und hat schon sein eigenes Vorprotokoll.</li>
           <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden.</li>
         </ol>
       </section>
@@ -99,7 +99,7 @@ export default {
         <h2 class="card-title">7. Termin finden</h2>
         <ol>
           <li>Beim Erfassen der Sitzung <em>Termin per Abstimmung finden</em> wählen. Die Sitzung erscheint mit Status «In Planung» und «Termin offen».</li>
-          <li>Auf der Terminfindungs-Seite Vorschläge erfassen: Tag, Von, optional Bis. Einstellungen: nur eine Option mit «Ja», verdeckte Abstimmung, nachträgliches Ändern erlauben.</li>
+          <li>Auf der Terminfindungs-Seite Vorschläge erfassen: Tage im Mini-Kalender anklicken (nochmals klicken entfernt sie) oder ein Datum von Hand mit «+» hinzufügen. Jeder Vorschlag hat in der Liste ein eigenes Datum-Zeit-Feld und optional «Bis». Die Zeit rechts gilt für neue Vorschläge; angekreuzte Vorschläge übernehmen sie mit «Auf ausgewählte übertragen». Einstellungen: nur eine Option mit «Ja», verdeckte Abstimmung, nachträgliches Ändern erlauben.</li>
           <li>Alle Beteiligten sehen die Abstimmung in ihrer Übersicht bzw. im Vorprotokoll und tragen per Klick ✓ Ja, ? Vielleicht oder ✕ Nein ein. Die Spalte mit den meisten Ja-Stimmen ist hervorgehoben; unten kann kommentiert werden.</li>
           <li>Bearbeitende können Stimmen für weitere Personen eintragen und das Ergebnis als CSV exportieren.</li>
           <li><em>Wählen</em> unter einer Spalte legt den Termin fest – Datum und Zeit werden in die Sitzung übernommen. Das Vorprotokoll kann schon vorher vorbereitet werden; ein Protokoll gibt es erst, wenn der Termin feststeht.</li>

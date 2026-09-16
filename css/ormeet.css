@@ -1427,6 +1427,116 @@ select.btn-pille {
   }
 }
 
+/* Pillen-Schalter (Segmentauswahl): Freigabestufen, nächster Termin */
+.schalter {
+  display: inline-flex;
+  padding: 0.2rem;
+  border: 1px solid var(--linie);
+  border-radius: 999px;
+  background: white;
+  white-space: nowrap;
+  button {
+    border: 0;
+    background: transparent;
+    border-radius: 999px;
+    padding: 0.35rem 0.8rem;
+    font-size: var(--fs-label);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-leise);
+    cursor: pointer;
+    transition: background 0.25s, color 0.25s;
+    &.aktiv {
+      background: var(--wald);
+      color: white;
+    }
+    &:disabled {
+      cursor: default;
+    }
+    &:not(:disabled):not(.aktiv):hover {
+      color: var(--wald);
+    }
+  }
+  &.gesetzt {
+    border-color: var(--brand);
+  }
+  /* Darf auf kleinen Bildschirmen umbrechen */
+  &.umbruch {
+    flex-wrap: wrap;
+    white-space: normal;
+    width: fit-content;
+    max-width: 100%;
+  }
+  &.fix button.aktiv {
+    background: var(--flaeche-soft);
+    color: var(--text-muted);
+  }
+}
+
+/* Mini-Kalender (Terminfindung): ein Monat, Klick wählt Tage */
+.minikalender {
+  .kopf {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+  }
+  .tage {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.15rem;
+  }
+  .wochentag {
+    text-align: center;
+    font-size: var(--fs-label);
+    color: var(--text-leise);
+    padding-bottom: 0.2rem;
+  }
+  .tag {
+    aspect-ratio: 1;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    font-size: var(--fs-sm);
+    color: var(--text);
+    cursor: pointer;
+    transition: var(--tc);
+    &:hover {
+      background: var(--flaeche-soft);
+    }
+    &.leer {
+      color: var(--text-leise);
+    }
+    &.heute {
+      box-shadow: inset 0 0 0 1px var(--brand);
+    }
+    &.markiert {
+      background: var(--wald);
+      color: white;
+    }
+  }
+}
+/* Termin-Erfassung: Kalender · Liste · Zeitvorgabe */
+.termin-erfassung {
+  align-items: start;
+  grid-template-columns: 17rem minmax(0, 1fr) 14rem;
+  .row-nowrap input[type="checkbox"] {
+    flex: none;
+  }
+  .btn {
+    white-space: normal;
+  }
+  .row-nowrap .input.w-sm {
+    width: 6.5rem;
+  }
+}
+@media (max-width: 900px) {
+  .termin-erfassung {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- Protokoll-Elemente ---------- */
 
 .traktandum-kopf {
@@ -1553,44 +1663,6 @@ select.btn-pille {
     letter-spacing: 0.02em;
     flex: none;
     &.hell {
-      background: var(--flaeche-soft);
-      color: var(--text-muted);
-    }
-  }
-  .schalter {
-    display: inline-flex;
-    padding: 0.2rem;
-    border: 1px solid var(--linie);
-    border-radius: 999px;
-    background: white;
-    white-space: nowrap;
-    button {
-      border: 0;
-      background: transparent;
-      border-radius: 999px;
-      padding: 0.35rem 0.8rem;
-      font-size: var(--fs-label);
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: var(--text-leise);
-      cursor: pointer;
-      transition: background 0.25s, color 0.25s;
-      &.aktiv {
-        background: var(--wald);
-        color: white;
-      }
-      &:disabled {
-        cursor: default;
-      }
-      &:not(:disabled):not(.aktiv):hover {
-        color: var(--wald);
-      }
-    }
-    &.gesetzt {
-      border-color: var(--brand);
-    }
-    &.fix button.aktiv {
       background: var(--flaeche-soft);
       color: var(--text-muted);
     }

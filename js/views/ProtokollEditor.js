@@ -154,14 +154,20 @@ export default {
           <button v-if="voll" class="btn btn-ghost" @click="sitzung.naechsterTerminId = null">Ändern</button>
         </p>
         <p v-else-if="!voll" class="muted small">Noch nicht festgelegt.</p>
-        <div v-else class="row">
-          <select v-if="spaetereSitzungen.length" v-model="sitzung.naechsterTerminId" class="input w-lg">
-            <option :value="null">Bestehenden Termin wählen …</option>
-            <option v-for="s in spaetereSitzungen" :key="s.id" :value="s.id">{{ formatDatum(s.datum) }} {{ s.zeit }}</option>
-          </select>
-          <form class="row" @submit.prevent="terminErfassen">
-            <label class="check small"><input v-model="neuerTermin.terminfindung" type="checkbox" /> Termin per Abstimmung finden</label>
-            <template v-if="!neuerTermin.terminfindung">
+        <div v-else class="stack-sm">
+          <!-- Pillen-Schalter: je nach Wahl erscheint darunter nur das nötige Formular -->
+          <span class="schalter umbruch">
+            <button v-for="(label, modus) in TERMIN_MODI" :key="modus" type="button" :class="{ aktiv: terminModus === modus }" @click="terminModus = modus">{{ label }}</button>
+          </span>
+          <div v-if="terminModus === 'bestehend'" class="row">
+            <select v-if="spaetereSitzungen.length" v-model="sitzung.naechsterTerminId" class="input w-lg">
+              <option :value="null">Termin wählen …</option>
+              <option v-for="s in spaetereSitzungen" :key="s.id" :value="s.id">{{ formatDatum(s.datum) }} {{ s.zeit }}</option>
+            </select>
+            <span v-else class="muted small">Es gibt noch keine spätere Sitzung – neuen Termin erfassen oder per Abstimmung finden.</span>
+          </div>
+          <form v-else-if="terminModus !== 'offen'" class="row" @submit.prevent="terminErfassen">
+            <template v-if="terminModus === 'neu'">
               <input v-model="neuerTermin.datum" type="date" class="input w-sm" required />
               <input v-model="neuerTermin.zeit" type="time" class="input w-sm" />
             </template>
@@ -170,7 +176,7 @@ export default {
               <option value="">Leeres Vorprotokoll</option>
               <option v-for="v in gremium.vorlagen" :key="v.id" :value="v.id">Vorlage: {{ v.name }}</option>
             </select>
-            <button class="btn btn-primary">Termin erfassen</button>
+            <button class="btn btn-primary">{{ terminModus === 'neu' ? 'Termin erfassen' : 'Abstimmung starten' }}</button>
           </form>
         </div>
       </section>
@@ -187,7 +193,9 @@ export default {
       speicherTimer: null,
       neuesTraktandum: '',
       linkKopiert: false,
-      neuerTermin: { datum: '', zeit: '', ort: '', vorlageId: '', terminfindung: false },
+      neuerTermin: { datum: '', zeit: '', ort: '', vorlageId: '' },
+      terminModus: 'offen', // offen | bestehend | neu | abstimmung
+      TERMIN_MODI: { offen: 'Offen lassen', bestehend: 'Bestehend', neu: 'Neu', abstimmung: 'Abstimmung' },
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
       PENDENZ_STATUS,
@@ -381,9 +389,10 @@ export default {
       this.neuesTraktandum = ''
     },
     terminErfassen() {
-      const termin = sitzungenStore.erstelleSitzung(this.gremium.id, this.neuerTermin)
+      const termin = sitzungenStore.erstelleSitzung(this.gremium.id, { ...this.neuerTermin, terminfindung: this.terminModus === 'abstimmung' })
       this.sitzung.naechsterTerminId = termin.id
-      this.neuerTermin = { datum: '', zeit: '', ort: '', vorlageId: '', terminfindung: false }
+      this.neuerTermin = { datum: '', zeit: '', ort: '', vorlageId: '' }
+      this.terminModus = 'offen'
     },
   },
 }
