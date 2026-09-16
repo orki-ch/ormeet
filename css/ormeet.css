@@ -1025,19 +1025,46 @@ input[type="color"].input, .farbe {
   }
 }
 
+/* Kontrollkästchen wie das «o» im Ormeet-Logo: rund, Waldgrün mit weissem Haken – überall im System */
+input[type="checkbox"] {
+  appearance: none;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin: 0;
+  flex: none;
+  border: 1.5px solid var(--text-leise);
+  border-radius: 50%;
+  background-color: white;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 62%;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: var(--tc);
+  &:hover {
+    border-color: var(--wald);
+  }
+  &:checked {
+    border-color: var(--wald);
+    background-color: var(--wald);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12.5l5 5L20 6.5' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  }
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--brand-hell2);
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
 .check {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
   cursor: pointer;
   min-height: 2.25rem;
-  input {
-    width: 1.15rem;
-    height: 1.15rem;
-    accent-color: var(--brand-dunkel);
-    cursor: pointer;
-    margin: 0;
-  }
   &.aus {
     opacity: 0.45;
   }
@@ -1521,14 +1548,18 @@ select.btn-pille {
 .termin-erfassung {
   align-items: start;
   grid-template-columns: 17rem minmax(0, 1fr) 14rem;
-  .row-nowrap input[type="checkbox"] {
-    flex: none;
-  }
   .btn {
     white-space: normal;
   }
-  .row-nowrap .input.w-sm {
+  .row-nowrap .w-sm {
     width: 6.5rem;
+    flex: none;
+  }
+  .termin-titel .label {
+    margin: 0;
+  }
+  .btn.leer {
+    visibility: hidden;
   }
 }
 @media (max-width: 900px) {

@@ -54,6 +54,12 @@ export default {
             <!-- Mitte: gewählte Termine, je direkt anpassbar -->
             <div class="stack-sm">
               <p v-if="!tf.optionen.length" class="muted small">Noch keine Vorschläge – links einen Tag wählen.</p>
+              <div v-else class="row-nowrap small termin-titel">
+                <input type="checkbox" :checked="alleGewaehlt" title="Alle auswählen" @change="alleWaehlen($event.target.checked)" />
+                <span class="label grow">Start: Datum und Uhrzeit</span>
+                <span class="label w-sm">Bis (optional)</span>
+                <span class="btn btn-icon leer"></span>
+              </div>
               <label v-for="(o, i) in tf.optionen" :key="o.id" class="row-nowrap small">
                 <input v-model="gewaehlt" type="checkbox" :value="o.id" />
                 <input :value="o.datum + 'T' + (o.von || '00:00')" type="datetime-local" class="input klein grow" title="Datum und Beginn" @change="zeitSetzen(o, $event.target.value)" />
@@ -149,6 +155,9 @@ export default {
     return { neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME }
   },
   computed: {
+    alleGewaehlt() {
+      return this.tf.optionen.length > 0 && this.tf.optionen.every((o) => this.gewaehlt.includes(o.id))
+    },
     sitzung() {
       return sitzungenStore.sitzungById(this.sitzungId)
     },
@@ -247,6 +256,9 @@ export default {
     },
     sortieren() {
       this.tf.optionen.sort((a, b) => (a.datum + a.von).localeCompare(b.datum + b.von))
+    },
+    alleWaehlen(ja) {
+      this.gewaehlt = ja ? this.tf.optionen.map((o) => o.id) : []
     },
     optionEntfernen(i) {
       const id = this.tf.optionen[i].id
