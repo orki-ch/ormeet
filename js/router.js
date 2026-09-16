@@ -75,6 +75,9 @@ router.beforeEach(async (to) => {
     const key = to.params.zugangsKey
     // Angemeldetes Konto öffnet einen persönlichen Link (16 Zeichen; Konto-Tokens sind länger): Mitglied mit dem Konto verknüpfen
     if (key.length === 16 && api.token && api.token !== key && (await angemeldet()) && sync.zugriff.rolle === 'benutzer') {
+      // Eigener, schon verknüpfter Link (z. B. aus dem Kalender-Abo): direkt weiter
+      const eigenes = sync.zugriff.gremien.find((g) => g.zugangsKey === key)
+      if (eigenes) return to.query.weiter?.startsWith('/') ? to.query.weiter : `/meine/${eigenes.gremiumId}`
       if (confirm(`Du bist mit dem Konto ${sync.zugriff.email} angemeldet. Persönlichen Link mit diesem Konto verknüpfen? «Abbrechen» öffnet den Link ohne Konto.`)) {
         const verknuepft = await api.anfrage('verknuepfen', '', { key }).catch(() => null)
         if (verknuepft) {

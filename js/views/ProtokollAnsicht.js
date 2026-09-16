@@ -1,6 +1,6 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
-import { abgleichen } from '../stores/sync.js'
+import { abgleichen, sync } from '../stores/sync.js'
 import { personenText } from '../utils/traktanden.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
@@ -86,7 +86,8 @@ export default {
   },
   computed: {
     protokoll() {
-      return sitzungenStore.protokollByVerfolgerKey(this.verfolgerKey)
+      // Der Server liefert dem Verfolger-Zugang den Key nicht mit – dann über die Protokoll-ID des Zugangs
+      return sitzungenStore.protokollByVerfolgerKey(this.verfolgerKey) || sitzungenStore.protokollById(sync.zugriff?.protokollId)
     },
     sitzung() {
       return sitzungenStore.sitzungById(this.protokoll.sitzungId)

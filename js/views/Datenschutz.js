@@ -41,7 +41,7 @@ export default {
         <p>Alle Daten werden auf dem Server gespeichert, auf dem diese Installation läuft: <code>{{ speicherort }}</code>. Es findet keine Übermittlung an andere Server oder ins Ausland durch die Anwendung statt. Einzige Ausnahme ist die freiwillige Anmeldung über einen Anbieter (Sublevia, Orki): Dabei bestätigt der Anbieter Ihre Identität und übermittelt Name und E-Mail-Adresse an diese Installation; es gilt zusätzlich die Datenschutzerklärung des Anbieters.</p>
         <p v-if="verschluesselt">Die Verbindung zwischen Ihrem Browser und {{ domain }} ist verschlüsselt (HTTPS).</p>
         <p v-else class="text-err">Hinweis: Diese Installation wird derzeit ohne HTTPS aufgerufen. Daten werden unverschlüsselt übertragen. Die Betreiberin sollte eine verschlüsselte Verbindung einrichten.</p>
-        <p>Der Zugriff ist durch ein Passwort (Superadmin) sowie durch geheime, zufällig erzeugte Links geschützt. Wer einen Link kennt, erhält den dazugehörigen Zugriff. Die Betreiberin trifft angemessene technische und organisatorische Massnahmen zur Datensicherheit (Art. 8 DSG); Links sollten nur an berechtigte Personen weitergegeben und bei Bedarf erneuert werden.</p>
+        <p>Die Daten werden auf dem Server verschlüsselt abgelegt (AES-256); der Schlüssel liegt getrennt von den Daten. Der Zugriff ist durch ein Passwort (Superadmin) sowie durch geheime, zufällig erzeugte Links geschützt. Wer einen Link kennt, erhält den dazugehörigen Zugriff. Die Betreiberin trifft angemessene technische und organisatorische Massnahmen zur Datensicherheit (Art. 8 DSG); Links sollten nur an berechtigte Personen weitergegeben und bei Bedarf erneuert werden.</p>
       </section>
 
       <section class="card">
@@ -84,7 +84,7 @@ export default {
       return location.protocol === 'https:' || location.hostname === 'localhost'
     },
     kontakt() {
-      return window.ORMEET_KONTAKT || ''
+      return document.getElementById('ormeet-kontakt')?.textContent.match(/'([^']*)'/)?.[1] || ''
     },
     datum() {
       return new Date().toLocaleDateString('de-CH', { month: 'long', year: 'numeric' })

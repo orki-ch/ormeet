@@ -160,7 +160,7 @@ export async function gremiumLoeschen(gremiumId) {
 
 export function abmelden() {
   clearTimeout(timer)
-  if (sync.zugriff?.rolle === 'benutzer') api.anfrage('abmelden', '', {}).catch(() => {}) // Anmeldung auf dem Server löschen
+  if (['benutzer', 'admin'].includes(sync.zugriff?.rolle)) api.anfrage('abmelden', '', {}).catch(() => {}) // Anmeldung auf dem Server löschen
   api.setToken('')
   sync.zugriff = null
   sync.status = 'gespeichert'

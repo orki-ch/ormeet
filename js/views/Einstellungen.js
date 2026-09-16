@@ -33,7 +33,7 @@ export default {
           <summary>Installation abgeschlossen <span class="sub">{{ ergebnis.dateien.length }} Dateien</span></summary>
           <ul class="inhalt small muted" style="padding-left: 1.2rem"><li v-for="d in ergebnis.dateien" :key="d">{{ d }}</li></ul>
         </details>
-        <p class="hint" style="margin: 0">Vor einem Update empfiehlt sich eine Sicherung des Ordners <code>data/</code>. Nach der Installation lädt die Seite neu.</p>
+        <p class="hint" style="margin: 0">Vor einem Update empfiehlt sich eine Sicherung des Ordners <code>data/</code> und der Datei <code>schluessel.php</code>. Nach der Installation lädt die Seite neu.</p>
       </section>
 
       <form v-if="sso" class="card stack" @submit.prevent="ssoSpeichern">

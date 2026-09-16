@@ -4,8 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ormeet – Sitzungsprotokolle</title>
+    <!-- Schutz vor eingeschleustem Code: Skripte, Stile und Verbindungen nur von dieser Installation -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+    <meta name="referrer" content="same-origin" />
 
-    <script>window.ORMEET_KONTAKT = ''</script>
+    <!-- Kontaktangabe für die Datenschutzerklärung (optional, zwischen die Anführungszeichen schreiben); wird nur gelesen, nicht ausgeführt -->
+    <script id="ormeet-kontakt" type="text/plain">window.ORMEET_KONTAKT = ''</script>
     <link rel="stylesheet" href="css/ormeet.css">
 
     <script src="lib/vue.global.prod.js"></script>

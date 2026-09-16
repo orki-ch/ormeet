@@ -148,9 +148,10 @@ export default {
       const gewuenscht = this.gremiumId || localStorage.getItem(AKTIV_KEY)
       return mitglied.includes(gewuenscht) ? gewuenscht : mitglied[0]
     },
+    // Konto: mit dem persönlichen Link des Mitglieds statt dem Konto-Token (der Kalender-Dienst erhält so keinen Konto-Zugang)
     kalenderLink() {
-      const gremium = this.konto ? '&gremium=' + this.gremium.id : ''
-      return location.origin + location.pathname.replace(/[^/]*$/, '') + 'api.php?aktion=ical&token=' + api.token + gremium
+      const key = this.konto?.gremien.find((g) => g.gremiumId === this.gremium.id)?.zugangsKey || api.token
+      return location.origin + location.pathname.replace(/[^/]*$/, '') + 'api.php?aktion=ical&token=' + key + '&gremium=' + this.gremium.id
     },
     gremium() {
       return gremienStore.byId(this.aktivesGremiumId)

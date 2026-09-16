@@ -1,9 +1,9 @@
 <?php
 // ---------------------------------------------------------------
-// Ormeet API – speichert die Daten pro Gremium als JSON-Datei in data/
+// Ormeet API – speichert die Daten pro Gremium als JSON-Datei in data/ (verschlüsselt, Schlüssel in schluessel.php)
 //
 // Zugriff über den Header X-Token:
-//   Superadmin-Passwort      -> alle Gremien, anlegen/löschen, Konten verwalten
+//   superadmin.anmeldungen[] -> Superadmin (Token nach Anmeldung mit dem Passwort): alle Gremien, anlegen/löschen, Konten verwalten
 //   benutzer[].anmeldungen[] -> Konto (E-Mail/Passwort oder SSO): pro Gremium Eigentümer (wie Superadmin, nur dort)
 //                               oder Mitglied (wie persönlicher Link); Daten in data/benutzer.json
 //   zugaenge[].key           -> Gremium-Zugang mit Rechten pro Bereich (sitzungen / mitglieder / einstellungen: keine|lesen|bearbeiten)
@@ -18,7 +18,10 @@
 
 const ADMIN_PASSWORT = 'bitte-aendern';   // <- unbedingt ändern!
 const DATEN_ORDNER = __DIR__ . '/data';
+const SCHLUESSEL_DATEI = __DIR__ . '/schluessel.php'; // Schlüssel für die verschlüsselte Ablage; wird beim ersten Aufruf erzeugt
 const BENUTZER_DATEI = DATEN_ORDNER . '/benutzer.json';
+const SUPERADMIN_DATEI = DATEN_ORDNER . '/superadmin.json'; // Anmeldungen (Tokens) des Superadmins
+const VERSUCHE_DATEI = DATEN_ORDNER . '/anmeldeversuche.json'; // Fehlversuche pro Adresse (Schutz gegen Passwort-Raten)
 const EINSTELLUNGEN_DATEI = DATEN_ORDNER . '/einstellungen.json';
 // SSO-Anbieter (OpenID Connect): Server-URL, Client-ID und Client-Secret werden in den Einstellungen gepflegt (data/einstellungen.json)
 const SSO_ANBIETER = [
@@ -30,6 +33,7 @@ const VOLLE_RECHTE = ['sitzungen' => 'bearbeiten', 'mitglieder' => 'bearbeiten',
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
 
 if (!is_dir(DATEN_ORDNER)) {
   mkdir(DATEN_ORDNER, 0750, true);
@@ -47,6 +51,72 @@ function dateiVon($gremiumId) {
   return DATEN_ORDNER . "/$gremiumId.json";
 }
 
+// --- Verschlüsselte Ablage ---------------------------------------
+// Alle Dateien in data/ liegen mit AES-256-GCM verschlüsselt (Kennung + Base64 von IV, Tag, Chiffrat).
+// Der Schlüssel liegt getrennt in schluessel.php im Ormeet-Ordner: Wer nur data/ in die Hände bekommt, kann nichts lesen.
+const KENNUNG = 'ORMEET1:';
+
+// Schlüssel laden; beim ersten Aufruf erzeugen und den bestehenden Datenbestand verschlüsseln
+function schluessel() {
+  static $key = null;
+  if ($key !== null) return $key;
+  if (!function_exists('openssl_encrypt')) antwort(['fehler' => 'Die PHP-Erweiterung openssl fehlt – sie wird für die verschlüsselte Ablage benötigt'], 500);
+  $sperre = fopen(DATEN_ORDNER . '/.sperre', 'c'); // nur ein Aufruf darf den Schlüssel anlegen
+  flock($sperre, LOCK_EX);
+  if (!file_exists(SCHLUESSEL_DATEI)) {
+    $hex = bin2hex(random_bytes(32));
+    $inhalt = "<?php\n// Ormeet: Schlüssel für die verschlüsselte Datenablage in data/. Ohne diese Datei sind die Daten nicht lesbar –\n"
+      . "// zusammen mit data/ sichern, beim Umzug mitnehmen, nie weitergeben.\nreturn '$hex';\n";
+    if (file_put_contents(SCHLUESSEL_DATEI, $inhalt, LOCK_EX) === false) {
+      antwort(['fehler' => 'Die Schlüsseldatei schluessel.php konnte nicht angelegt werden – der Ormeet-Ordner muss für PHP beschreibbar sein'], 500);
+    }
+    $key = hex2bin($hex);
+    foreach (glob(DATEN_ORDNER . '/*.json') as $datei) dateiLesen($datei); // vorhandene Daten sofort verschlüsseln
+  }
+  flock($sperre, LOCK_UN);
+  fclose($sperre);
+  $key = hex2bin(include SCHLUESSEL_DATEI);
+  return $key;
+}
+
+function verschluesseln($text) {
+  $iv = random_bytes(12);
+  $chiffrat = openssl_encrypt($text, 'aes-256-gcm', schluessel(), OPENSSL_RAW_DATA, $iv, $tag);
+  return KENNUNG . base64_encode($iv . $tag . $chiffrat);
+}
+
+function entschluesseln($roh) {
+  if (strpos($roh, KENNUNG) !== 0) return $roh; // unverschlüsselt (älterer Datenbestand)
+  $bin = base64_decode(substr($roh, strlen(KENNUNG)));
+  $text = openssl_decrypt(substr($bin, 28), 'aes-256-gcm', schluessel(), OPENSSL_RAW_DATA, substr($bin, 0, 12), substr($bin, 12, 16));
+  if ($text === false) antwort(['fehler' => 'Die Daten lassen sich nicht entschlüsseln – gehört schluessel.php zu diesem Ordner data/?'], 500);
+  return $text;
+}
+
+// Datei lesen und entschlüsseln; unverschlüsselte Dateien (älterer Datenbestand, eingespielte Sicherung) sofort verschlüsseln
+function dateiLesen($datei) {
+  if (!file_exists($datei)) return '';
+  $roh = file_get_contents($datei);
+  if (strpos($roh, KENNUNG) === 0) return entschluesseln($roh);
+  $handle = fopen($datei, 'c+');
+  flock($handle, LOCK_EX);
+  $roh = stream_get_contents($handle);
+  if (strpos($roh, KENNUNG) !== 0) {
+    ftruncate($handle, 0);
+    rewind($handle);
+    fwrite($handle, verschluesseln($roh));
+  }
+  flock($handle, LOCK_UN);
+  fclose($handle);
+  return entschluesseln($roh);
+}
+
+function dateiSchreiben($datei, $text) {
+  file_put_contents($datei, verschluesseln($text), LOCK_EX);
+}
+
+schluessel();
+
 // Leere personenKeys als Objekt ({}) statt Array ([]) ausgeben
 function normalisiere(array $bundle) {
   foreach ($bundle['vorprotokolle'] as &$vp) {
@@ -56,7 +126,7 @@ function normalisiere(array $bundle) {
 }
 
 function lesen($datei) {
-  $bundle = json_decode(file_get_contents($datei), true);
+  $bundle = json_decode(dateiLesen($datei), true);
   return $bundle ? normalisiere($bundle) : null;
 }
 
@@ -72,12 +142,12 @@ function alleBundles() {
 
 // --- Konten, Einstellungen -----------------------------------------
 function jsonLesen($datei, array $standard) {
-  $daten = file_exists($datei) ? json_decode(file_get_contents($datei), true) : null;
+  $daten = file_exists($datei) ? json_decode(dateiLesen($datei), true) : null;
   return is_array($daten) ? $daten + $standard : $standard;
 }
 
 function jsonSchreiben($datei, array $daten) {
-  file_put_contents($datei, json_encode($daten, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+  dateiSchreiben($datei, json_encode($daten, JSON_UNESCAPED_UNICODE));
 }
 
 function benutzerLesen() {
@@ -119,6 +189,34 @@ function anmeldungAnlegen(array &$b) {
   return $token;
 }
 
+// Superadmin: Anmeldungen (Tokens) statt Passwort im Browser – Abmelden macht den Token serverseitig ungültig
+function superadminLesen() {
+  return jsonLesen(SUPERADMIN_DATEI, ['anmeldungen' => []]);
+}
+
+function superadminZugriff($token) {
+  foreach (superadminLesen()['anmeldungen'] as $a) if (hash_equals($a['token'], $token)) return ['rolle' => 'admin'];
+  return null;
+}
+
+// Passwort-Raten bremsen: höchstens 10 Fehlversuche pro Adresse in 15 Minuten
+function anmeldeSperrePruefen() {
+  $versuche = jsonLesen(VERSUCHE_DATEI, [])[$_SERVER['REMOTE_ADDR'] ?? ''] ?? [];
+  if (count(array_filter($versuche, fn($t) => $t > time() - 900)) >= 10) antwort(['fehler' => 'Zu viele Fehlversuche – bitte in 15 Minuten erneut versuchen'], 429);
+}
+
+function fehlversuch($text) {
+  $alle = [];
+  foreach (jsonLesen(VERSUCHE_DATEI, []) as $adresse => $zeiten) {
+    $zeiten = array_values(array_filter($zeiten, fn($t) => $t > time() - 900));
+    if ($zeiten) $alle[$adresse] = $zeiten;
+  }
+  $alle[$_SERVER['REMOTE_ADDR'] ?? ''][] = time();
+  jsonSchreiben(VERSUCHE_DATEI, $alle);
+  usleep(300000);
+  antwort(['fehler' => $text], 401);
+}
+
 // Konto ohne Geheimnisse (für Superadmin und Kontoinhaber)
 function benutzerOeffentlich(array $b) {
   return ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'], 'hatPasswort' => $b['passwortHash'] !== '',
@@ -150,7 +248,8 @@ function benutzerGremien($benutzerId) {
     }
     foreach ($g['mitglieder'] as $m) {
       if (($m['benutzerId'] ?? null) === $benutzerId) {
-        $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'mitglied', 'personId' => $m['id'], 'personName' => $m['name']];
+        // zugangsKey: persönlicher Link des Mitglieds – dient dem Konto als Kalender-Abo (statt des Konto-Tokens)
+        $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'mitglied', 'personId' => $m['id'], 'personName' => $m['name'], 'zugangsKey' => $m['zugangsKey'] ?? ''];
         break;
       }
     }
@@ -174,7 +273,7 @@ function mitgliedVerknuepfen($gremiumId, $personId, $benutzerId) {
   $datei = dateiVon($gremiumId);
   $handle = fopen($datei, 'c+');
   flock($handle, LOCK_EX);
-  $bundle = json_decode(stream_get_contents($handle), true);
+  $bundle = json_decode(entschluesseln(stream_get_contents($handle)), true);
   if ($bundle) {
     foreach ($bundle['gremium']['mitglieder'] as &$m) {
       if ($m['id'] === $personId) $m['benutzerId'] = $benutzerId;
@@ -182,15 +281,18 @@ function mitgliedVerknuepfen($gremiumId, $personId, $benutzerId) {
     }
     ftruncate($handle, 0);
     rewind($handle);
-    fwrite($handle, json_encode($bundle, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+    fwrite($handle, verschluesseln(json_encode($bundle, JSON_UNESCAPED_UNICODE)));
   }
   flock($handle, LOCK_UN);
   fclose($handle);
 }
 
+function istHttps() {
+  return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
+}
+
 function basisUrl() {
-  $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https';
-  return ($https ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/';
+  return (istHttps() ? 'https' : 'http') . '://' . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/';
 }
 
 function indexById(array $liste) {
@@ -478,10 +580,12 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   }
   $aenderungen['vorprotokolle'] = $vorprotokolle;
 
+  $gastSitzungId = null; // Gast-Link: nur das Protokoll der eigenen Sitzung
+  foreach ($bundle['vorprotokolle'] as $vp) if ($vp['id'] === $nurVorprotokollId) $gastSitzungId = $vp['sitzungId'];
   $protokolle = [];
   foreach ($aenderungen['protokolle'] ?? [] as $neu) {
     foreach ($bundle['protokolle'] as $alt) {
-      if ($alt['id'] !== $neu['id']) continue;
+      if ($alt['id'] !== $neu['id'] || ($nurVorprotokollId && $alt['sitzungId'] !== $gastSitzungId)) continue;
       $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'protokoll', $person['id']) : 'eigene';
       $protokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : protokollMerge($alt, $neu, $person, $bundle));
     }
@@ -511,17 +615,20 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   return $aenderungen;
 }
 
-// Geheime Schlüssel entfernen, die der Zugang nicht sehen darf
+// Geheime Schlüssel leeren, die der Zugang nicht sehen darf (leer statt entfernt, damit der Client keine neuen erzeugt)
+// Gremium-Zugang: Links nur zu Bereichen, die er bearbeiten darf – Verfolger- und Übersichts-Links (nur lesen) schon ab «lesen»
 function bereinigen(array $bundle, array $zugriff) {
   $rolle = $zugriff['rolle'];
   if ($rolle === 'admin') return $bundle;
-  unset($bundle['gremium']['zugaenge']);
   $bundle['gremium']['zugaenge'] = [];
-  if ($rolle === 'gremium') return $bundle; // Gremium-Zugang darf Freigabe-, Personen- und Übersichts-Links verteilen
-  foreach ($bundle['gremium']['mitglieder'] as &$m) unset($m['zugangsKey']);
-  foreach ($bundle['gremium']['themenbereiche'] as &$tb) unset($tb['freigabeKey']);
-  foreach ($bundle['vorprotokolle'] as &$vp) { unset($vp['freigabeLinkKey']); $vp['personenKeys'] = new stdClass(); }
-  foreach ($bundle['protokolle'] as &$p) unset($p['verfolgerKey']);
+  $rechte = $rolle === 'gremium' ? $zugriff['rechte'] : [];
+  $sitzungen = $rechte['sitzungen'] ?? 'keine';
+  if (($rechte['mitglieder'] ?? '') !== 'bearbeiten') foreach ($bundle['gremium']['mitglieder'] as &$m) $m['zugangsKey'] = '';
+  if ($sitzungen === 'keine') foreach ($bundle['gremium']['themenbereiche'] as &$tb) $tb['freigabeKey'] = '';
+  if ($sitzungen !== 'bearbeiten') foreach ($bundle['vorprotokolle'] as &$vp) { $vp['freigabeLinkKey'] = ''; $vp['personenKeys'] = new stdClass(); }
+  if ($sitzungen === 'keine') foreach ($bundle['protokolle'] as &$p) $p['verfolgerKey'] = '';
+  unset($m, $tb, $vp, $p);
+  if ($sitzungen === 'bearbeiten') return $bundle;
   // Verdeckte Terminfindung: nur die eigene Stimme sichtbar
   foreach ($bundle['sitzungen'] as &$s) {
     if (!empty($s['terminfindung']['verdeckt'])) {
@@ -586,8 +693,7 @@ function kontoZugriff($token, array $benutzer) {
 }
 
 $zugriff = null;
-if ($token !== '' && hash_equals(ADMIN_PASSWORT, $token)) $zugriff = ['rolle' => 'admin'];
-elseif ($token !== '') $zugriff = kontoZugriff($token, benutzerLesen()) ?? linkZugriff($token);
+if ($token !== '') $zugriff = superadminZugriff($token) ?? kontoZugriff($token, benutzerLesen()) ?? linkZugriff($token);
 
 // --- Konto: Anmelden, Registrieren, SSO (ohne gültigen Token erreichbar) ---------------
 function tokenAntwort(array $benutzer, $i) {
@@ -606,13 +712,20 @@ if ($aktion === 'sso_anbieter') {
 }
 
 if ($aktion === 'anmelden') {
-  $email = trim($eingabe['email'] ?? '');
+  anmeldeSperrePruefen();
+  $email = trim((string) ($eingabe['email'] ?? ''));
+  $passwort = (string) ($eingabe['passwort'] ?? '');
+  if ($email === '') {
+    // Superadmin: Passwort gegen einen Token tauschen
+    if (!hash_equals(ADMIN_PASSWORT, $passwort)) fehlversuch('Das Passwort stimmt nicht');
+    $superadmin = superadminLesen();
+    $neuerToken = anmeldungAnlegen($superadmin);
+    jsonSchreiben(SUPERADMIN_DATEI, $superadmin);
+    antwort(['token' => $neuerToken]);
+  }
   $benutzer = benutzerLesen();
   $i = benutzerByEmail($benutzer, $email);
-  if ($i === null || $benutzer[$i]['passwortHash'] === '' || !password_verify($eingabe['passwort'] ?? '', $benutzer[$i]['passwortHash'])) {
-    usleep(300000);
-    antwort(['fehler' => 'E-Mail oder Passwort stimmt nicht'], 401);
-  }
+  if ($i === null || $benutzer[$i]['passwortHash'] === '' || !password_verify($passwort, $benutzer[$i]['passwortHash'])) fehlversuch('E-Mail oder Passwort stimmt nicht');
   linkVerknuepfen($zugriff, $benutzer[$i]['id']);
   tokenAntwort($benutzer, $i);
 }
@@ -644,11 +757,17 @@ function ssoSignatur($daten) {
   return hash_hmac('sha256', $daten, hash('sha256', ADMIN_PASSWORT . '|sso'));
 }
 
+function ssoCookie($wert) {
+  setcookie('ormeet_sso', $wert, ['expires' => $wert === '' ? 1 : time() + 600, 'path' => rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/', 'secure' => istHttps(), 'httponly' => true, 'samesite' => 'Lax']);
+}
+
 if ($aktion === 'sso_start') {
   $id = $_GET['anbieter'] ?? '';
   $anbieter = ssoAktiv()[$id] ?? null;
   if (!$anbieter) antwort(['fehler' => 'Dieser Anbieter ist nicht eingerichtet'], 400);
-  $daten = base64_encode(json_encode(['anbieter' => $id, 'verknuepfen' => $_GET['verknuepfen'] ?? '', 'weiter' => $_GET['weiter'] ?? '', 'zeit' => time(), 'nonce' => bin2hex(random_bytes(8))]));
+  $nonce = bin2hex(random_bytes(16));
+  ssoCookie($nonce); // bindet den Rücksprung an diesen Browser (kein Unterschieben fremder Anmeldungen)
+  $daten = base64_encode(json_encode(['anbieter' => $id, 'verknuepfen' => $_GET['verknuepfen'] ?? '', 'weiter' => $_GET['weiter'] ?? '', 'zeit' => time(), 'nonce' => $nonce]));
   $state = $daten . '.' . ssoSignatur($daten);
   $url = rtrim($anbieter['url'], '/') . $anbieter['authorize'] . '?' . http_build_query([
     'response_type' => 'code', 'client_id' => $anbieter['clientId'], 'redirect_uri' => basisUrl() . 'api.php?aktion=sso_callback',
@@ -663,6 +782,8 @@ if ($aktion === 'sso_callback') {
   [$daten, $signatur] = array_pad(explode('.', $_GET['state'] ?? '', 2), 2, '');
   $state = json_decode(base64_decode($daten), true);
   if (!$state || !hash_equals(ssoSignatur($daten), $signatur) || time() - $state['zeit'] > 600) { $fehlerSeite('Die Anmeldung ist abgelaufen – bitte erneut versuchen'); exit; }
+  if (!hash_equals($state['nonce'], $_COOKIE['ormeet_sso'] ?? '')) { $fehlerSeite('Die Anmeldung wurde in einem anderen Browser begonnen – bitte erneut versuchen'); exit; }
+  ssoCookie('');
   $anbieter = ssoAktiv()[$state['anbieter']] ?? null;
   if (!$anbieter || empty($_GET['code'])) { $fehlerSeite('Anmeldung beim Anbieter fehlgeschlagen'); exit; }
   $basis = rtrim($anbieter['url'], '/');
@@ -836,7 +957,7 @@ if ($aktion === 'speichern') {
 
   $handle = fopen($datei, 'c+');
   flock($handle, LOCK_EX);
-  $bundle = $neu ? null : json_decode(stream_get_contents($handle), true);
+  $bundle = $neu ? null : json_decode(entschluesseln(stream_get_contents($handle)), true);
   $bundle = $bundle ?: ['gremium' => null, 'sitzungen' => [], 'vorprotokolle' => [], 'protokolle' => []];
 
   if (isset($aenderungen['gremium'])) {
@@ -849,6 +970,7 @@ if ($aktion === 'speichern') {
       unset($m);
     }
   }
+  foreach (array_keys($aenderungen['sitzungen'] ?? []) as $k) $aenderungen['sitzungen'][$k]['gremiumId'] = $gremiumId; // eine Sitzung bleibt in ihrem Gremium
   if ($rolle === 'gremium') $aenderungen = gremiumRechteAnwenden($bundle, $aenderungen, $zugriff['rechte']);
   if ($rolle === 'person' || ($rolle === 'freigabe' && isset($zugriff['personId']))) $aenderungen = personRechteAnwenden($bundle, $aenderungen, $zugriff);
   if ($rolle === 'freigabe' && !isset($zugriff['personId'])) {
@@ -874,7 +996,7 @@ if ($aktion === 'speichern') {
   $bundle = einarbeiten($bundle, $aenderungen);
   ftruncate($handle, 0);
   rewind($handle);
-  fwrite($handle, json_encode($bundle, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+  fwrite($handle, verschluesseln(json_encode($bundle, JSON_UNESCAPED_UNICODE)));
   flock($handle, LOCK_UN);
   fclose($handle);
   antwort(['ok' => true]);
@@ -926,7 +1048,7 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   $kontakt = preg_match("/window\.ORMEET_KONTAKT = '([^']*)'/", $altesIndex, $m) ? $m[1] : null;
 
   $schreiben = function ($name, $inhalt) use ($passwort, $kontakt) {
-    if ($name === '' || substr($name, -1) === '/' || strpos($name, 'data/') === 0 || strpos($name, '..') !== false) return null;
+    if ($name === '' || substr($name, -1) === '/' || strpos($name, 'data/') === 0 || strpos($name, '..') !== false || $name === 'schluessel.php') return null;
     if ($name === 'api.php' && $passwort !== null) {
       $inhalt = preg_replace_callback("/const ADMIN_PASSWORT = '[^']*'/", fn() => "const ADMIN_PASSWORT = '" . addcslashes($passwort, "'\\") . "'", $inhalt, 1);
     }
@@ -992,6 +1114,11 @@ if ($aktion === 'loeschen') {
 
 // --- Konto des angemeldeten Benutzers ------------------------------
 if ($aktion === 'abmelden') {
+  if ($istSuperadmin) {
+    $superadmin = superadminLesen();
+    $superadmin['anmeldungen'] = array_values(array_filter($superadmin['anmeldungen'], fn($a) => !hash_equals($a['token'], $token)));
+    jsonSchreiben(SUPERADMIN_DATEI, $superadmin);
+  }
   if ($konto) {
     $benutzer = benutzerLesen();
     $i = benutzerById($benutzer, $konto['benutzerId']);
@@ -1063,7 +1190,7 @@ if ($aktion === 'benutzer_loeschen') {
     else {
       $bundle = lesen(dateiVon($g['gremiumId']));
       $bundle['gremium']['eigentuemerId'] = null;
-      file_put_contents(dateiVon($g['gremiumId']), json_encode($bundle, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT), LOCK_EX);
+      dateiSchreiben(dateiVon($g['gremiumId']), json_encode($bundle, JSON_UNESCAPED_UNICODE));
     }
   }
   antwort(['ok' => true]);

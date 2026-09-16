@@ -34,8 +34,9 @@ export default {
       this.laeuft = true
       this.fehler = ''
       try {
-        if (this.superadmin) api.setToken(this.passwort)
-        else api.setToken((await api.anfrage('anmelden', '', { email: this.email, passwort: this.passwort })).token)
+        // Superadmin (ohne E-Mail) und Konto erhalten einen Token; das Passwort bleibt nicht im Browser
+        const daten = this.superadmin ? { passwort: this.passwort } : { email: this.email, passwort: this.passwort }
+        api.setToken((await api.anfrage('anmelden', '', daten)).token)
         await laden()
         this.$router.push(startPfad())
       } catch (fehler) {

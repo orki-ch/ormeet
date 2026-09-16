@@ -35,14 +35,14 @@ Ormeet braucht nur ein Webhosting oder einen eigenen Server mit **PHP 7.4 oder n
    ```html
    <script>window.ORMEET_KONTAKT = 'Verein XY, info@example.ch'</script>
    ```
-5. Die Adresse im Browser aufrufen und mit dem Passwort anmelden. Ormeet legt den Ordner `data/` für alle Daten selbst an und schützt ihn vor fremdem Zugriff.
+5. Die Adresse im Browser aufrufen und mit dem Passwort anmelden. Ormeet legt den Ordner `data/` für alle Daten selbst an, schützt ihn vor fremdem Zugriff und speichert alles verschlüsselt; der Schlüssel liegt getrennt davon in `schluessel.php`. Sicherung = `data/` **und** `schluessel.php`.
 
 Die ausführliche Anleitung mit Bedienung, Rechten, Sicherung und Umzug: [ormeet.ch/dokumentation.html](https://ormeet.ch/dokumentation.html)
 
 ## Updates
 
 Ormeet prüft einmal täglich, ob hier ein neues Release vorliegt. Die Verwaltung sieht dann einen Hinweis am
-Zahnrad-Symbol und installiert das Update per Klick. `data/`, Passwort und Kontaktangabe bleiben erhalten.
+Zahnrad-Symbol und installiert das Update per Klick. `data/`, `schluessel.php`, Passwort und Kontaktangabe bleiben erhalten.
 
 ## Hilfe & Support
 
@@ -54,7 +54,7 @@ gehostet in der Schweiz.
 ## Technik
 
 Vue 3 (Options API) ohne Build-Schritt, alle Bibliotheken liegen lokal in `lib/`. Backend `api.php` mit einer
-JSON-Datei pro Gremium in `data/`. Läuft per FTP-Upload auf jedem PHP-Hosting.
+JSON-Datei pro Gremium in `data/` (AES-256 verschlüsselt). Läuft per FTP-Upload auf jedem PHP-Hosting (PHP 7.4+ mit `openssl`).
 
 ## Lizenz
 
