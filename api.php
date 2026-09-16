@@ -400,36 +400,30 @@ function freigabeStufe(array $sitzung, string $dokument, $personId) {
   return istLeitung($sitzung, $personId) ? 'alles' : 'eigene';
 }
 
-// Vorprotokoll: nur berechtigte Traktanden / Unterpunkte (Reihenfolge bleibt) und eigene Anwesenheit übernehmen
-function vorprotokollMerge(array $alt, array $neu, array $person) {
-  $personId = $person['id'];
-  $neuById = indexById($neu['traktanden'] ?? []);
+// Traktanden / Unterpunkte (alle Ebenen): berechtigte Einträge ganz übernehmen (inkl. Löschen und neue), fremde behalten
+// und darin nur die Unterpunkte mit eigener Berechtigung übernehmen; die Reihenfolge der fremden bleibt
+function traktandenMerge(array $altListe, array $neuListe, array $person) {
+  $neuById = indexById($neuListe);
   $altIds = [];
-  $traktanden = [];
-  foreach ($alt['traktanden'] as $t) {
+  $liste = [];
+  foreach ($altListe as $t) {
     $altIds[$t['id']] = true;
     $n = $neuById[$t['id']] ?? null;
     if (istBerechtigt($t, $person)) {
-      if ($n) $traktanden[] = $n; // ganzes Traktandum (inkl. Löschen)
+      if ($n) $liste[] = $n;
       continue;
     }
-    // Fremdes Traktandum: nur Unterpunkte mit eigener Berechtigung übernehmen
-    $neuSubs = indexById($n['untertraktanden'] ?? []);
-    $subs = [];
-    $subIds = [];
-    foreach ($t['untertraktanden'] as $u) {
-      $subIds[$u['id']] = true;
-      if (!istBerechtigt($u, $person)) { $subs[] = $u; continue; }
-      if (isset($neuSubs[$u['id']])) $subs[] = $neuSubs[$u['id']];
-    }
-    foreach ($neuSubs as $u) if (!isset($subIds[$u['id']]) && istBerechtigt($u, $person)) $subs[] = $u;
-    $t['untertraktanden'] = $subs;
-    $traktanden[] = $t;
+    $t['untertraktanden'] = traktandenMerge($t['untertraktanden'] ?? [], $n['untertraktanden'] ?? [], $person);
+    $liste[] = $t;
   }
-  foreach ($neu['traktanden'] ?? [] as $t) {
-    if (!isset($altIds[$t['id']]) && istBerechtigt($t, $person)) $traktanden[] = $t;
-  }
-  $alt['traktanden'] = $traktanden;
+  foreach ($neuListe as $t) if (!isset($altIds[$t['id']]) && istBerechtigt($t, $person)) $liste[] = $t;
+  return $liste;
+}
+
+// Vorprotokoll: nur berechtigte Traktanden / Unterpunkte und eigene Anwesenheit übernehmen
+function vorprotokollMerge(array $alt, array $neu, array $person) {
+  $personId = $person['id'];
+  $alt['traktanden'] = traktandenMerge($alt['traktanden'], $neu['traktanden'] ?? [], $person);
 
   $anwesend = array_values(array_diff($alt['anwesendeMitgliederIds'], [$personId]));
   if (in_array($personId, $neu['anwesendeMitgliederIds'] ?? [], true)) $anwesend[] = $personId;
@@ -437,15 +431,13 @@ function vorprotokollMerge(array $alt, array $neu, array $person) {
   return $alt;
 }
 
-// IDs der Traktanden / Unterpunkte, die die Person in diesem Vorprotokoll bearbeiten darf
-function erlaubteTraktanden(array $vorprotokoll, array $person) {
-  $erlaubt = [];
-  foreach ($vorprotokoll['traktanden'] as $t) {
-    $haupt = istBerechtigt($t, $person);
-    if ($haupt) $erlaubt[$t['id']] = true;
-    foreach ($t['untertraktanden'] ?? [] as $u) if ($haupt || istBerechtigt($u, $person)) $erlaubt[$u['id']] = true;
+// IDs der Traktanden / Unterpunkte (alle Ebenen), die die Person bearbeiten darf; Unterpunkte erben das Recht von oben
+function erlaubteSammeln(array $liste, array $person, bool $geerbt, array &$erlaubt) {
+  foreach ($liste as $t) {
+    $darf = $geerbt || istBerechtigt($t, $person);
+    if ($darf) $erlaubt[$t['id']] = true;
+    erlaubteSammeln($t['untertraktanden'] ?? [], $person, $darf, $erlaubt);
   }
-  return $erlaubt;
 }
 
 // Protokoll: nur Einträge zu berechtigten Traktanden, übertragene Pendenzen berechtigter Traktanden und eigene Anwesenheit
@@ -460,12 +452,9 @@ function protokollMerge(array $alt, array $neu, array $person, array $bundle) {
     if ($stufe === 'lesen') continue; // Freigabe «Lesen»: keine Einträge, keine übertragenen Pendenzen
     $voll = $stufe === 'alles';
     foreach ($vp['traktanden'] as $t) {
-      $haupt = $voll || istBerechtigt($t, $person);
-      if ($haupt && !empty($t['pendenzId'])) $pendenzIds[$t['pendenzId']] = true;
-      if ($vp['sitzungId'] !== $alt['sitzungId']) continue;
-      if ($haupt) $erlaubt[$t['id']] = true;
-      foreach ($t['untertraktanden'] ?? [] as $u) if ($haupt || istBerechtigt($u, $person)) $erlaubt[$u['id']] = true;
+      if (($voll || istBerechtigt($t, $person)) && !empty($t['pendenzId'])) $pendenzIds[$t['pendenzId']] = true;
     }
+    if ($vp['sitzungId'] === $alt['sitzungId']) erlaubteSammeln($vp['traktanden'], $person, $voll, $erlaubt);
   }
   $darf = fn($e) => isset($erlaubt[$e['traktandumId']]) || isset($pendenzIds[$e['id']]);
 

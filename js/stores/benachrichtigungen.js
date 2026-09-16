@@ -3,7 +3,7 @@ import { sitzungenStore } from './sitzungen.js'
 import { sync } from './sync.js'
 import { updateStand } from './updates.js'
 import { rolleIm, personIdIm, istLeitung } from '../utils/rechte.js'
-import { istBerechtigt } from '../utils/traktanden.js'
+import { alleUnterpunkte, istBerechtigt } from '../utils/traktanden.js'
 import { formatDatum } from '../utils/labels.js'
 
 // Benachrichtigungen werden aus den geladenen Daten abgeleitet (kein Serverzustand nötig);
@@ -89,7 +89,7 @@ export function benachrichtigungen() {
           for (const t of vp.traktanden) {
             const haupt = istBerechtigt(t, person)
             if (haupt) melde(`traktandum:${t.id}`, `Traktandum «${t.titel}» ist dir zugewiesen (${sitzungName(s)})`, `/sitzung/${s.id}/vorprotokoll`, g)
-            for (const u of t.untertraktanden) {
+            for (const u of alleUnterpunkte(t)) {
               if (!haupt && istBerechtigt(u, person)) melde(`traktandum:${u.id}`, `Unterpunkt «${u.titel}» ist dir zugewiesen (${sitzungName(s)})`, `/sitzung/${s.id}/vorprotokoll`, g)
             }
           }

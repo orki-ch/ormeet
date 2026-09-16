@@ -19,11 +19,24 @@ export function neuesTraktandum(daten) {
   }
 }
 
+// Unterpunkte können selbst Unterpunkte haben (1.1.1); tiefer als drei Ebenen geht es nicht
+export const MAX_TIEFE = 3
+
 export function neuesUntertraktandum(titel) {
-  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [] }
+  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [], untertraktanden: [] }
 }
 
-// Wirksamer Typ eines Unterpunkts: der des Traktandums, sonst der eigene
+// Alle Unterpunkte eines Traktandums über alle Ebenen (ohne das Traktandum selbst)
+export function alleUnterpunkte(eintrag) {
+  return (eintrag.untertraktanden || []).flatMap((u) => [u, ...alleUnterpunkte(u)])
+}
+
+// Darf die Person das Traktandum oder einen seiner Unterpunkte bearbeiten?
+export function istIrgendwoBerechtigt(traktandum, person) {
+  return istBerechtigt(traktandum, person) || alleUnterpunkte(traktandum).some((u) => istBerechtigt(u, person))
+}
+
+// Wirksamer Typ: der erste gesetzte Typ von oben nach unten (Traktandum vor Unterpunkt)
 export function wirksamerTyp(traktandum, untertraktandum = null) {
   return traktandum.typ || untertraktandum?.typ || ''
 }
@@ -44,12 +57,17 @@ export function kopiereTraktandum(traktandum, index) {
     antragId: null,
     verantwortliche: traktandum.verantwortliche.map((p) => ({ ...p })),
     bearbeiter: traktandum.bearbeiter.map((p) => ({ ...p })),
-    untertraktanden: traktandum.untertraktanden.map((u) => ({
-      ...u,
-      id: crypto.randomUUID(),
-      verantwortliche: u.verantwortliche.map((p) => ({ ...p })),
-      bearbeiter: u.bearbeiter.map((p) => ({ ...p })),
-    })),
+    untertraktanden: traktandum.untertraktanden.map(kopiereUnterpunkt),
+  }
+}
+
+function kopiereUnterpunkt(u) {
+  return {
+    ...u,
+    id: crypto.randomUUID(),
+    verantwortliche: u.verantwortliche.map((p) => ({ ...p })),
+    bearbeiter: u.bearbeiter.map((p) => ({ ...p })),
+    untertraktanden: (u.untertraktanden || []).map(kopiereUnterpunkt),
   }
 }
 

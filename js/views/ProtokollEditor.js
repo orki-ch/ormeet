@@ -12,10 +12,11 @@ import PdfExportButton from '../components/PdfExportButton.js'
 import PersonInput from '../components/PersonInput.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import TeilenKarte from '../components/TeilenKarte.js'
+import Unterpunkte from '../components/Unterpunkte.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PersonInput, SitzungKopfdaten, TeilenKarte },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PersonInput, SitzungKopfdaten, TeilenKarte, Unterpunkte },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -88,7 +89,7 @@ export default {
           <h2>{{ t.titel }}</h2>
           <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
-          <span class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
+          <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
           <span v-if="t.dauer" class="dauer-zeile small">
             <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
             <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
@@ -122,18 +123,13 @@ export default {
 
           <EintragListe :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
 
-          <div v-for="(u, j) in t.untertraktanden" :id="u.id" :key="u.id" class="sub" :class="{ bearbeitbar: darfSub(t, u) && !darfTraktandum(t) }" :style="darfSub(t, u) && !darfTraktandum(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''">
-            <div class="sub-kopf">
-              <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
-              <h3>{{ u.titel }}</h3>
-              <span v-if="!t.typ && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ TYP_LABELS[u.typ] }}</span>
-              <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
-            </div>
-            <p v-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
-            <div class="mt-1">
-              <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfSub(t, u)" :person-id="person?.id" :typ="wirksamerTyp(t, u)" />
-            </div>
-          </div>
+          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen">
+            <template #default="{ u, typ, darf }">
+              <div class="mt-1">
+                <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
+              </div>
+            </template>
+          </Unterpunkte>
         </div>
       </section>
 
@@ -329,8 +325,9 @@ export default {
     darfTraktandum(t) {
       return this.voll || (this.eigene && this.person && istBerechtigt(t, this.person))
     },
-    darfSub(t, u) {
-      return this.darfTraktandum(t) || (this.eigene && this.person && istBerechtigt(u, this.person))
+    // Unterpunkt, auf dem die Person selbst berechtigt ist (Rechte von oben erbt der Baum)
+    darfEigenen(u) {
+      return Boolean(this.eigene && this.person && istBerechtigt(u, this.person))
     },
     darfAnwesenheit(m) {
       return this.voll || (this.eigene && this.person && m.id === this.person.id)

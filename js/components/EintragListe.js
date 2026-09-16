@@ -31,8 +31,10 @@ export default {
               <option v-for="(label, wert) in TYP_LABELS" :key="wert" :value="wert">{{ label }}</option>
             </select>
             <input v-model.trim="e.titel" class="input grow" placeholder="Titel" />
-            <ThemenbereichSelect v-model="e.themenbereichId" :themenbereiche="gremium.themenbereiche" class="w-md" />
-            <button class="btn btn-ghost btn-icon" title="Neuen Themenbereich anlegen" @click="neuerThemenbereichOffen = !neuerThemenbereichOffen">+</button>
+            <span class="row-nowrap">
+              <ThemenbereichSelect v-model="e.themenbereichId" :themenbereiche="gremium.themenbereiche" class="w-md" />
+              <button class="btn btn-ghost btn-icon" title="Neuen Themenbereich anlegen" @click="neuerThemenbereichOffen = !neuerThemenbereichOffen">+</button>
+            </span>
           </div>
           <form v-if="neuerThemenbereichOffen" class="row" @submit.prevent="themenbereichErstellen(e)">
             <input v-model="neuerThemenbereich.farbe" type="color" class="farbe" />
@@ -59,7 +61,7 @@ export default {
               <input v-model="e.faelligBis" type="date" class="input w-sm" title="Bis wann" />
             </template>
             <span class="ml-auto row-nowrap">
-              <button class="btn btn-danger" @click="eintraege.splice(eintraege.indexOf(e), 1); aktiv = null">Löschen</button>
+              <button class="btn btn-ghost text-err" @click="eintraege.splice(eintraege.indexOf(e), 1); aktiv = null">Löschen</button>
               <button class="btn" @click="aktiv = null">Fertig</button>
             </span>
           </div>

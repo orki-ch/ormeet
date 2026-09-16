@@ -89,9 +89,24 @@ function traktandumTitel(nummer, traktandum, themenbereichName, dauerIst = null)
 }
 
 // Unterpunkt-Zeile: Nummer, Titel, optional Typ und Verantwortliche
-function unterpunktText(nummer, t, u) {
-  const zusatz = [!t.typ && TYP_LABELS[u.typ], personenText(u.verantwortliche)].filter(Boolean).join(' · ')
+function unterpunktText(nummer, elternTyp, u) {
+  const zusatz = [!elternTyp && TYP_LABELS[u.typ], personenText(u.verantwortliche)].filter(Boolean).join(' · ')
   return [`${nummer} ${u.titel}`, ...(zusatz ? [{ text: `   ${zusatz}`, style: 'klein', bold: false }] : [])]
+}
+
+// Unterpunkte über alle Ebenen: pro Unterpunkt Titelzeile, Notiz und (Protokoll) Einträge, je Ebene weiter eingerückt
+function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null) {
+  return liste.flatMap((u, j) => {
+    const nr = `${nummer}.${j + 1}`
+    const einzug = 10 * tiefe
+    const typ = elternTyp || u.typ
+    return [
+      eintraege ? { text: unterpunktText(nr, elternTyp, u), style: 'h4', margin: [einzug, 6, 0, 2] } : { text: unterpunktText(nr, elternTyp, u), margin: [einzug, 2, 0, 0] },
+      ...(u.notiz ? [{ text: u.notiz, style: eintraege ? 'notiz' : 'klein', margin: [einzug + (eintraege ? 10 : 0), 0, 0, 2] }] : []),
+      ...(eintraege ? eintraege(u.id).map((b) => ({ ...b, margin: [einzug + 10, 0, 0, 6] })) : []),
+      ...unterpunktBloecke(u.untertraktanden || [], nr, typ, tiefe + 1, eintraege),
+    ]
+  })
 }
 
 function eintragBlock(eintrag, label = TYP_LABELS[eintrag.typ]) {
@@ -133,10 +148,7 @@ export function vorprotokollDokument({ gremium, sitzung, vorprotokoll, erwartete
       stack: [
         { text: [{ text: t.titel, bold: true }, ...(t.typ ? [{ text: `   ${TYP_LABELS[t.typ]}`, style: 'klein' }] : [])] },
         ...(t.notiz ? [{ text: t.notiz, style: 'klein' }] : []),
-        ...t.untertraktanden.flatMap((u, j) => [
-          { text: unterpunktText(`${i + 1}.${j + 1}`, t, u), margin: [10, 2, 0, 0] },
-          ...(u.notiz ? [{ text: u.notiz, style: 'klein', margin: [10, 0, 0, 0] }] : []),
-        ]),
+        ...unterpunktBloecke(t.untertraktanden, `${i + 1}`, t.typ, 1),
       ],
     },
     themenbereichName(t.themenbereichId),
@@ -169,11 +181,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
     const uebertragen = uebertragenePendenzen.find((p) => p.eintrag.id === t.pendenzId)
     if (uebertragen) bloecke.push(eintragBlock(uebertragen.eintrag, 'Übertragene Pendenz'))
     bloecke.push(...eintraegeVon(t.id))
-    t.untertraktanden.forEach((u, j) => {
-      bloecke.push({ text: unterpunktText(`${i + 1}.${j + 1}`, t, u), style: 'h4' })
-      if (u.notiz) bloecke.push({ text: u.notiz, style: 'notiz', margin: [20, 0, 0, 2] })
-      bloecke.push(...eintraegeVon(u.id).map((b) => ({ ...b, margin: [20, 0, 0, 6] })))
-    })
+    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${i + 1}`, t.typ, 1, eintraegeVon))
     return bloecke
   })
 

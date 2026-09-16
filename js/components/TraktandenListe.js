@@ -1,18 +1,20 @@
 import ThemenbereichSelect from './ThemenbereichSelect.js'
 import PersonenInput from './PersonenInput.js'
 import MenuDropdown from './MenuDropdown.js'
+import Unterpunkte from './Unterpunkte.js'
+import UnterpunktEditor from './UnterpunktEditor.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { TRAKTANDUM_TYP, TYP_BADGE, TYP_LABELS, formatDauer } from '../utils/labels.js'
-import { dauerSumme, istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText, wirksamerTyp } from '../utils/traktanden.js'
+import { dauerSumme, istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
 
-// Traktandenliste (zwei Ebenen) im Karten-Layout des Protokolls, direkt im übergebenen Array bearbeitet.
+// Traktandenliste mit Unterpunkten (bis drei Ebenen) im Karten-Layout des Protokolls, direkt im übergebenen Array bearbeitet.
 // Bearbeitbare Karten / Unterpunkte tragen einen Rahmen in der Ormeet-Farbe; Klick öffnet die Bearbeitung.
 // nurPerson (persönlicher Freigabe-Link): bearbeitbar sind Traktanden, bei denen die Person verantwortlich oder
-// als Bearbeiter eingetragen ist (direkt, über ihre Rolle oder eine Gruppe); Unterpunkte erben das vom Traktandum.
+// als Bearbeiter eingetragen ist (direkt, über ihre Rolle oder eine Gruppe); Unterpunkte erben das von oben.
 // Typ (Information / Antrag / Pendenz) und geplante Dauer werden hier festgelegt; im Protokoll sind sie fix.
 export default {
   name: 'TraktandenListe',
-  components: { MenuDropdown, PersonenInput, ThemenbereichSelect },
+  components: { MenuDropdown, PersonenInput, ThemenbereichSelect, Unterpunkte, UnterpunktEditor },
   mixins: [bearbeitenMixin],
   props: {
     traktanden: { type: Array, required: true },
@@ -37,43 +39,20 @@ export default {
               <button class="menu-item menu-item-danger" @click="traktanden.splice(i, 1); nummerieren(); aktiv = null">Traktandum löschen</button>
             </MenuDropdown>
           </div>
-          <div class="eingerueckt grid-2">
-            <div><span class="label">Verantwortlich</span><PersonenInput v-model="t.verantwortliche" :personen="personen" placeholder="Name eingeben oder wählen" :nur-eigene="nurPerson?.id" /></div>
-            <div><span class="label">Dürfen zusätzlich bearbeiten</span><PersonenInput v-model="t.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Personen, Rollen oder Gruppen" nur-liste :disabled="!!nurPerson" /></div>
-          </div>
-          <div class="eingerueckt row">
-            <div>
-              <span class="label">Typ der Einträge</span>
-              <select v-model="t.typ" class="input w-md" title="Gilt im Protokoll für alle Einträge und Unterpunkte dieses Traktandums">
+          <div class="eingerueckt stack-sm">
+            <div class="row">
+              <PersonenInput v-model="t.verantwortliche" :personen="personen" class="grow" placeholder="Verantwortlich" :nur-eigene="nurPerson?.id" />
+              <select v-model="t.typ" class="input w-sm" title="Typ der Einträge im Protokoll – gilt für alles unter diesem Traktandum">
                 <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
               </select>
+              <span class="dauer" title="Geplante Dauer"><input v-model.number="t.dauer" type="number" min="0" step="5" class="input" placeholder="Dauer" @change="dauerBereinigen(t)" /> Min.</span>
             </div>
-            <div>
-              <span class="label">Geplante Dauer</span>
-              <span class="dauer"><input v-model.number="t.dauer" type="number" min="0" step="5" class="input" placeholder="–" @change="dauerBereinigen(t)" /> Min.</span>
-            </div>
-          </div>
-          <div class="eingerueckt stack">
-            <textarea v-model.trim="t.notiz" v-wachsen class="input" rows="1" placeholder="Notiz / Beschreibung (mehrzeilig)"></textarea>
-            <div v-for="(u, j) in t.untertraktanden" :key="u.id" class="sub stack-sm">
-              <div class="row">
-                <span class="nr mono small leise">{{ i + 1 }}.{{ j + 1 }}</span>
-                <input v-model.trim="u.titel" class="input grow" placeholder="Unterpunkt" />
-                <select v-if="!t.typ" v-model="u.typ" class="input w-sm" title="Typ der Einträge dieses Unterpunkts">
-                  <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
-                </select>
-                <span class="row-nowrap">
-                  <button class="btn btn-ghost btn-icon" :disabled="j === 0" @click="verschieben(t.untertraktanden, j, -1)">↑</button>
-                  <button class="btn btn-ghost btn-icon" :disabled="j === t.untertraktanden.length - 1" @click="verschieben(t.untertraktanden, j, 1)">↓</button>
-                  <button class="btn btn-danger btn-icon" @click="t.untertraktanden.splice(j, 1)">✕</button>
-                </span>
-              </div>
-              <textarea v-model.trim="u.notiz" v-wachsen class="input" rows="1" placeholder="Notiz (mehrzeilig)"></textarea>
-              <div class="grid-2">
-                <PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Verantwortlich (sonst wie Traktandum)" :nur-eigene="nurPerson?.id" />
-                <PersonenInput v-model="u.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Dürfen zusätzlich bearbeiten" nur-liste :disabled="!!nurPerson" />
-              </div>
-            </div>
+            <textarea v-model.trim="t.notiz" v-wachsen class="input" rows="1" placeholder="Notiz (optional)"></textarea>
+            <details v-if="!nurPerson" class="aufklapp klein" :open="t.bearbeiter.length > 0">
+              <summary>Wer darf zusätzlich bearbeiten</summary>
+              <PersonenInput v-model="t.bearbeiter" :personen="bearbeiterAuswahl" class="mt-1" placeholder="Personen, Rollen oder Gruppen" nur-liste />
+            </details>
+            <UnterpunktEditor v-if="t.untertraktanden.length" :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" />
             <div class="row">
               <button class="btn btn-ghost" @click="t.untertraktanden.push(neuesUntertraktandum(''))">+ Unterpunkt</button>
               <button class="btn ml-auto" @click="aktiv = null">Fertig</button>
@@ -94,32 +73,15 @@ export default {
           </div>
           <p v-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
           <div v-if="t.untertraktanden.length" class="eingerueckt">
-            <template v-for="(u, j) in t.untertraktanden" :key="u.id">
+            <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" @klick="(u, darf) => subKlick(t, u, darf)">
               <!-- Bearbeitung nur dieses Unterpunkts (Person mit Rechten auf dem Unterpunkt) -->
-              <div v-if="aktiv === u.id" class="sub editing stack-sm" style="padding: 0.75rem 0.75rem 0.75rem 1rem" @click.stop>
-                <div class="row">
-                  <span class="nr mono small leise">{{ i + 1 }}.{{ j + 1 }}</span>
-                  <input v-model.trim="u.titel" class="input grow" placeholder="Unterpunkt" />
-                  <select v-if="!t.typ" v-model="u.typ" class="input w-sm" title="Typ der Einträge dieses Unterpunkts">
-                    <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
-                  </select>
+              <template #editor="{ u, nummer, index }">
+                <div class="sub editing stack-sm" style="padding: 0.75rem 0.75rem 0.75rem 1rem" @click.stop>
+                  <UnterpunktEditor :liste="[u]" :nummer="nummer" :start="index" :tiefe="nummer.split('.').length + 1" :eltern-typ="elternTypVon(t, u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" fest />
+                  <div class="row"><button class="btn ml-auto" @click="aktiv = null">Fertig</button></div>
                 </div>
-                <textarea v-model.trim="u.notiz" v-wachsen class="input" rows="1" placeholder="Notiz (mehrzeilig)"></textarea>
-                <div class="row">
-                  <PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Verantwortlich" :nur-eigene="nurPerson?.id" class="grow" />
-                  <button class="btn" @click="aktiv = null">Fertig</button>
-                </div>
-              </div>
-              <div v-else :id="u.id" class="sub" :class="{ editierbar: subEditierbar(t, u) && !hauptEditierbar(t) }" :style="subEditierbar(t, u) && !hauptEditierbar(t) ? 'padding: 0.5rem 0.75rem 0.5rem 1rem' : ''" @click.stop="subKlick(t, u)">
-                <div class="sub-kopf">
-                  <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
-                  <h3>{{ u.titel }}</h3>
-                  <span v-if="!t.typ && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ TYP_LABELS[u.typ] }}</span>
-                  <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
-                </div>
-                <p v-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
-              </div>
-            </template>
+              </template>
+            </Unterpunkte>
           </div>
         </section>
       </template>
@@ -144,19 +106,30 @@ export default {
     neuesUntertraktandum,
     personenText,
     formatDauer,
-    wirksamerTyp,
     hauptEditierbar(t) {
       if (this.nurLesen) return false
       return !this.nurPerson || istBerechtigt(t, this.nurPerson)
     },
-    // Unterpunkt allein bearbeitbar: nur wenn das Traktandum selbst gesperrt ist
-    subEditierbar(t, u) {
-      if (this.nurLesen) return false
-      return this.hauptEditierbar(t) || istBerechtigt(u, this.nurPerson)
+    // Unterpunkt allein bearbeitbar (Person mit Rechten darauf), wenn das Element darüber gesperrt ist
+    pruefen(u) {
+      return !this.nurLesen && !!this.nurPerson && istBerechtigt(u, this.nurPerson)
     },
-    subKlick(t, u) {
+    subKlick(t, u, darf) {
       if (this.hauptEditierbar(t)) this.aktiv = t.id
-      else if (istBerechtigt(u, this.nurPerson)) this.aktiv = u.id
+      else if (darf) this.aktiv = u.id
+    },
+    // Vorgegebener Typ für einen einzeln bearbeiteten Unterpunkt: Traktandum oder ein Unterpunkt darüber
+    elternTypVon(t, u) {
+      if (t.typ) return t.typ
+      const pfad = (liste) => {
+        for (const k of liste) {
+          if (k === u) return []
+          const rest = pfad(k.untertraktanden)
+          if (rest) return [k, ...rest]
+        }
+        return null
+      }
+      return (pfad(t.untertraktanden) || []).find((k) => k.typ)?.typ || ''
     },
     themenbereich(id) {
       return this.themenbereiche.find((tb) => tb.id === id)

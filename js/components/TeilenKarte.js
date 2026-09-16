@@ -1,6 +1,6 @@
 import { gremienStore } from '../stores/gremien.js'
 import { FREIGABE_STUFEN, freigabeStufe, istLeitung, rolleIm, standardStufe } from '../utils/rechte.js'
-import { istBerechtigt } from '../utils/traktanden.js'
+import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
 
 // Teilen-Karte eines Vorprotokolls / Protokolls: wer hat welchen Zugriff, Freigabestufe pro Person setzen,
 // Links kopieren. Die Stufen sind mit den geltenden Rechten vorbelegt (Leitung «Alles», sonst «Eigene»);
@@ -98,7 +98,7 @@ export default {
       const leitung = istLeitung(this.sitzung, person.id)
       const funktion = this.sitzung.sitzungsleitung.some((p) => p.id === person.id) ? 'Sitzungsleitung' : this.sitzung.protokollfuehrung.some((p) => p.id === person.id) ? 'Protokollführung' : ''
       const nummern = this.vorprotokoll.traktanden
-        .map((t, i) => (istBerechtigt(t, person) || t.untertraktanden.some((u) => istBerechtigt(u, person)) ? i + 1 : 0))
+        .map((t, i) => (istIrgendwoBerechtigt(t, person) ? i + 1 : 0))
         .filter(Boolean)
       const zuweisung = leitung ? funktion : nummern.length ? this.traktandenText(nummern) : 'kein Traktandum zugewiesen'
       const stufe = freigabeStufe(this.sitzung, this.dokument, person.id)

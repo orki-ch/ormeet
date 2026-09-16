@@ -110,12 +110,18 @@ function traktandum(t, personen) {
   t.dauer ??= null
   t.pendenzId ??= null
   t.antragId ??= null
-  t.untertraktanden ??= []
-  t.untertraktanden.forEach((u) => {
+  unterpunkte(t)
+}
+
+// Unterpunkte auf allen Ebenen (Unterpunkte von Unterpunkten seit 1.3)
+function unterpunkte(eintrag) {
+  eintrag.untertraktanden ??= []
+  eintrag.untertraktanden.forEach((u) => {
     u.notiz ??= ''
     u.typ ??= ''
     u.verantwortliche ??= []
     u.bearbeiter ??= []
+    unterpunkte(u)
   })
 }
 

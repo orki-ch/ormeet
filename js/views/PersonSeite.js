@@ -6,7 +6,7 @@ import { istLeitung, personIdIm } from '../utils/rechte.js'
 import GremiumSuche from '../components/GremiumSuche.js'
 import SsoButtons from '../components/SsoButtons.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
-import { istBerechtigt } from '../utils/traktanden.js'
+import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 
 const AKTIV_KEY = 'ormeet-aktives-gremium'
@@ -224,7 +224,7 @@ export default {
     anzahlZugewiesen(s) {
       const vp = this.vorprotokollVon(s)
       if (!vp) return 0
-      return vp.traktanden.filter((t) => istBerechtigt(t, this.person) || t.untertraktanden.some((u) => istBerechtigt(u, this.person))).length
+      return vp.traktanden.filter((t) => istIrgendwoBerechtigt(t, this.person)).length
     },
   },
 }

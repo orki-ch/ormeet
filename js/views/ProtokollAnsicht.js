@@ -4,11 +4,12 @@ import { abgleichen, sync } from '../stores/sync.js'
 import { personenText } from '../utils/traktanden.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
+import Unterpunkte from '../components/Unterpunkte.js'
 
 // Live-Ansicht eines Protokolls über den Verfolger-Link (nur lesen, aktualisiert sich automatisch)
 export default {
   name: 'ProtokollAnsicht',
-  components: { SitzungKopfdaten },
+  components: { SitzungKopfdaten, Unterpunkte },
   props: {
     verfolgerKey: { type: String, required: true },
   },
@@ -54,22 +55,18 @@ export default {
             </div>
             <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
           </div>
-          <div v-for="(u, j) in t.untertraktanden" :key="u.id" class="sub">
-            <div class="sub-kopf">
-              <span class="nr">{{ i + 1 }}.{{ j + 1 }}</span>
-              <h3>{{ u.titel }}</h3>
-              <span v-if="!t.typ && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ TYP_LABELS[u.typ] }}</span>
-            </div>
-            <p v-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
-            <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
-              <div class="eintrag-zeile">
-                <span class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
-                <span class="titel">{{ e.titel }}</span>
-                <span class="leise">{{ meta(e) }}</span>
+          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ">
+            <template #default="{ u }">
+              <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
+                <div class="eintrag-zeile">
+                  <span class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+                  <span class="titel">{{ e.titel }}</span>
+                  <span class="leise">{{ meta(e) }}</span>
+                </div>
+                <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
               </div>
-              <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
-            </div>
-          </div>
+            </template>
+          </Unterpunkte>
         </div>
       </section>
 

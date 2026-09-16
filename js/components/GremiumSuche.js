@@ -54,9 +54,12 @@ export default {
         const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(sitzung.id)
         vorprotokoll?.traktanden.forEach((t, i) => {
           if (passt(t.titel, t.notiz)) treffer.push({ id: t.id, sitzung, art: 'Traktandum', badge: 'brand', titel: `${i + 1}. ${t.titel}`, text: t.notiz, meta: this.themenbereich(t.themenbereichId), pfad: this.sitzungPfad(sitzung, t.id) })
-          t.untertraktanden.forEach((u, j) => {
-            if (passt(u.titel, u.notiz)) treffer.push({ id: u.id, sitzung, art: 'Unterpunkt', badge: 'brand', titel: `${i + 1}.${j + 1} ${u.titel}`, text: u.notiz, meta: `Traktandum ${t.titel}`, pfad: this.sitzungPfad(sitzung, u.id) })
-          })
+          const unterpunkte = (liste, nummer) =>
+            liste.forEach((u, j) => {
+              if (passt(u.titel, u.notiz)) treffer.push({ id: u.id, sitzung, art: 'Unterpunkt', badge: 'brand', titel: `${nummer}.${j + 1} ${u.titel}`, text: u.notiz, meta: `Traktandum ${t.titel}`, pfad: this.sitzungPfad(sitzung, u.id) })
+              unterpunkte(u.untertraktanden || [], `${nummer}.${j + 1}`)
+            })
+          unterpunkte(t.untertraktanden, `${i + 1}`)
         })
         const protokoll = sitzungenStore.protokollVonSitzung(sitzung.id)
         protokoll?.eintraege.forEach((e) => {

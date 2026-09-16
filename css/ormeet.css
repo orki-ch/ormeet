@@ -825,6 +825,10 @@ details > summary::-webkit-details-marker {
     box-shadow: none;
     color: var(--text);
   }
+  &.aktiv {
+    background-color: var(--flaeche-soft);
+    color: var(--brand-dunkel);
+  }
 }
 
 .btn-danger {
@@ -1269,6 +1273,13 @@ input[type="color"].input, .farbe {
   > .inhalt {
     margin-top: 1.25rem;
   }
+  /* Kleine Variante: seltene Einstellungen in Formularen */
+  &.klein > summary {
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
 }
 
 .vorlage {
@@ -1508,7 +1519,7 @@ input[type="color"].input, .farbe {
   gap: 0.35rem;
   white-space: nowrap;
   .input {
-    width: 4.5rem;
+    width: 5.25rem;
     min-height: 2rem;
     padding: 0.2rem 0.5rem;
     text-align: right;
@@ -1534,6 +1545,13 @@ input[type="color"].input, .farbe {
   padding-left: 1rem;
   margin-top: 0.75rem;
   border-radius: var(--r-klein);
+  /* Unterpunkte von Unterpunkten: gleiche Optik, eine Stufe kleiner */
+  .sub {
+    margin-top: 0.5rem;
+    h3 {
+      font-size: var(--fs-sm);
+    }
+  }
   .sub-kopf {
     display: flex;
     align-items: baseline;
