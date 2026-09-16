@@ -1,13 +1,17 @@
-// «⋯»-Menü für seltene Aktionen. Inhalt: Buttons mit class="menu-item".
+// «⋯»-Menü für seltene Aktionen (Inhalt: Buttons mit class="menu-item"); schliesst bei jedem Klick darin.
+// Mit `text` wird der Auslöser eine schlanke Pille, mit `panel` bleibt das Menü offen (Formularfelder darin).
 export default {
   name: 'MenuDropdown',
   props: {
     icon: { type: String, default: '⋯' },
+    text: { type: String, default: '' },
+    panel: { type: Boolean, default: false },
   },
   template: `
     <div ref="root" class="dropdown">
-      <button class="btn btn-ghost btn-icon" title="Weitere Aktionen" @click="offen = !offen">{{ icon }}</button>
-      <div v-if="offen" class="dropdown-menu" @click="offen = false">
+      <button v-if="text" type="button" class="btn-pille" :class="{ offen }" @click="offen = !offen">{{ text }} <span class="pfeil">▾</span></button>
+      <button v-else type="button" class="btn btn-ghost btn-icon" title="Weitere Aktionen" @click="offen = !offen">{{ icon }}</button>
+      <div v-if="offen" class="dropdown-menu" :class="{ panel }" @click="panel || (offen = false)">
         <slot />
       </div>
     </div>

@@ -90,10 +90,6 @@ export default {
           <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
-          <span v-if="t.dauer" class="dauer-zeile small">
-            <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
-            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
-          </span>
         </div>
         <p v-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
 
@@ -107,11 +103,11 @@ export default {
             </p>
             <p v-if="uebertragene[t.pendenzId].eintrag.inhalt" class="muted">{{ uebertragene[t.pendenzId].eintrag.inhalt }}</p>
             <div class="row">
-              <select v-model="uebertragene[t.pendenzId].eintrag.pendenzStatus" class="input w-sm" :disabled="!darfTraktandum(t)">
+              <select v-model="uebertragene[t.pendenzId].eintrag.pendenzStatus" class="btn-pille" title="Status" :disabled="!darfTraktandum(t)">
                 <option v-for="(label, wert) in PENDENZ_STATUS" :key="wert" :value="wert">{{ label }}</option>
               </select>
-              <PersonInput v-model="uebertragene[t.pendenzId].eintrag.zugewiesenAnName" v-model:person-id="uebertragene[t.pendenzId].eintrag.zugewiesenAn" :personen="personen" class="w-md" placeholder="Zugewiesen an" :disabled="!darfTraktandum(t)" />
-              <input v-model="uebertragene[t.pendenzId].eintrag.faelligBis" type="date" class="input w-sm" title="Bis wann" :disabled="!darfTraktandum(t)" />
+              <PersonInput v-model="uebertragene[t.pendenzId].eintrag.zugewiesenAnName" v-model:person-id="uebertragene[t.pendenzId].eintrag.zugewiesenAn" :personen="personen" class="w-md klein" placeholder="Zugewiesen an" :disabled="!darfTraktandum(t)" />
+              <input v-model="uebertragene[t.pendenzId].eintrag.faelligBis" type="date" class="input klein w-sm" title="Bis wann" :disabled="!darfTraktandum(t)" />
             </div>
           </div>
 
@@ -130,6 +126,11 @@ export default {
               </div>
             </template>
           </Unterpunkte>
+        </div>
+        <!-- Zeit unten rechts an der Karte -->
+        <div v-if="t.dauer" class="dauer-zeile small">
+          <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
+          <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
         </div>
       </section>
 

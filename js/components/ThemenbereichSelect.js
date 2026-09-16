@@ -6,8 +6,8 @@ export default {
   },
   emits: ['update:modelValue'],
   template: `
-    <select :value="modelValue" class="input" @change="$emit('update:modelValue', $event.target.value)">
-      <option value="">– Themenbereich –</option>
+    <select :value="modelValue" :class="$attrs.class ? '' : 'input'" @change="$emit('update:modelValue', $event.target.value)">
+      <option value="">{{ $attrs.class ? 'Themenbereich' : '– Themenbereich –' }}</option>
       <option v-for="tb in themenbereiche" :key="tb.id" :value="tb.id">{{ tb.name }}</option>
     </select>
   `,

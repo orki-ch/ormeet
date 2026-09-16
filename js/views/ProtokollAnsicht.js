@@ -47,19 +47,19 @@ export default {
             <strong>{{ uebertragene[t.pendenzId].titel }}</strong>
             <span class="muted">· {{ PENDENZ_STATUS[uebertragene[t.pendenzId].pendenzStatus] }} · {{ uebertragene[t.pendenzId].zugewiesenAnName || '–' }}</span>
           </div>
-          <div v-for="e in eintraegeVon(t.id)" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
+          <div v-for="e in eintraegeVon(t.id)" :key="e.id" class="eintrag" :class="t.typ ? '' : 'typ-' + e.typ">
             <div class="eintrag-zeile">
-              <span class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+              <span v-if="!t.typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
               <span class="titel">{{ e.titel }}</span>
               <span class="leise">{{ meta(e) }}</span>
             </div>
             <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
           </div>
           <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ">
-            <template #default="{ u }">
-              <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="'typ-' + e.typ">
+            <template #default="{ u, typ }">
+              <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
                 <div class="eintrag-zeile">
-                  <span class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+                  <span v-if="!typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
                   <span class="titel">{{ e.titel }}</span>
                   <span class="leise">{{ meta(e) }}</span>
                 </div>

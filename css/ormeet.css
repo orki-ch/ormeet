@@ -203,6 +203,15 @@ details > summary::-webkit-details-marker {
   gap: 0.5rem;
 }
 
+/* Bedienelemente rechts in einer Kopfzeile (Auswahl, Pille, ⋯); auf kleinen Bildschirmen eine eigene Zeile */
+.werkzeuge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-left: auto;
+}
+
 .between {
   justify-content: space-between;
 }
@@ -366,6 +375,20 @@ details > summary::-webkit-details-marker {
   }
   .eingerueckt {
     margin-left: 0.75rem;
+  }
+  .werkzeuge {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+  }
+  /* Panel-Menüs auf dem Handy als Blatt am unteren Rand statt abgeschnitten neben der Pille */
+  .dropdown .dropdown-menu.panel {
+    position: fixed;
+    left: 1rem;
+    right: 1rem;
+    bottom: 1rem;
+    top: auto;
+    min-width: 0;
+    z-index: 40;
   }
   .nur-desktop {
     display: none !important;
@@ -739,17 +762,6 @@ details > summary::-webkit-details-marker {
 
 /* Vorschau / Bearbeitung */
 
-.vorschau {
-  cursor: pointer;
-  border-radius: var(--r);
-  padding: 0.5rem 0.75rem;
-  margin: 0 -0.75rem;
-  transition: var(--tc);
-  &:hover {
-    background: var(--flaeche-soft);
-  }
-}
-
 .editierbar {
   cursor: pointer;
   box-shadow: var(--schatten-karte), 0 0 0 1px var(--brand) !important;
@@ -889,6 +901,56 @@ details > summary::-webkit-details-marker {
   &:disabled {
     background: var(--flaeche-soft);
     box-shadow: none;
+    color: var(--text-muted);
+  }
+}
+
+/* Kompakte Felder in Bearbeitungszeilen (Einträge, Unterpunkte) */
+.input.klein {
+  min-height: 2rem;
+  padding: 0.2rem 0.5rem;
+  font-size: var(--fs-sm);
+}
+
+/* Nahtlose Textfelder: sehen aus wie der Text, den sie ersetzen – Bearbeitung direkt im Element */
+.nahtlos {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+  resize: none;
+  border-radius: var(--r-klein);
+  outline: none;
+  field-sizing: content;
+  &::placeholder {
+    color: var(--text-leise);
+  }
+  &:focus {
+    box-shadow: 0 0 0 3px var(--brand-hell2);
+  }
+  &.grow {
+    flex: 1 1 10rem;
+    width: auto;
+  }
+  &.h2 {
+    font-size: var(--fs-h2);
+    font-weight: 500;
+  }
+  &.h3 {
+    font-weight: 600;
+  }
+  &.titel {
+    font-weight: 600;
+  }
+  &.notiz {
+    margin-top: 0.25rem;
+    font-size: var(--fs-sm);
     color: var(--text-muted);
   }
 }
@@ -1192,6 +1254,59 @@ input[type="color"].input, .farbe {
     padding: 0.4rem;
     box-shadow: var(--schatten-modal);
     border: 1px solid var(--linie-leise);
+    /* Panel mit Formularfeldern (bleibt beim Klick darin offen) */
+    &.panel {
+      min-width: 20rem;
+      padding: 0.9rem 1rem 1rem;
+      display: grid;
+      gap: 0.75rem;
+      cursor: default;
+      .stack-xs {
+        display: block;
+      }
+      .label {
+        margin-bottom: 0.25rem;
+      }
+    }
+  }
+}
+
+/* Schlanke Pille als Auslöser eines Menüs oder als Auswahlfeld: zeigt, was gesetzt ist */
+.btn-pille {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 16rem;
+  padding: 0.25rem 0.7rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--flaeche-soft);
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: var(--tc);
+  &:hover, &.offen {
+    background-color: var(--brand-hell2);
+    color: var(--brand-dunkel);
+  }
+  .pfeil {
+    font-size: 0.75em;
+  }
+}
+/* Auswahlfeld im Pillen-Look (öffnet direkt die Liste) */
+select.btn-pille {
+  display: inline-block;
+  appearance: none;
+  padding-right: 1.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='6' viewBox='0 0 8 6'%3E%3Cpath d='M0 0h8L4 6z' fill='%235a655d'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  &:focus {
+    outline: none;
   }
 }
 
@@ -1533,18 +1648,33 @@ input[type="color"].input, .farbe {
   color: var(--text-muted);
 }
 .dauer-zeile {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-left: auto;
+  width: fit-content;
+  margin: 1rem 0 0 auto;
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--r);
+  background: var(--flaeche-soft);
   color: var(--text-muted);
 }
 
 .sub {
   border-left: 2px solid var(--linie);
-  padding-left: 1rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
   margin-top: 0.75rem;
   border-radius: var(--r-klein);
+  background: var(--flaeche-soft);
+  /* Typ-Farbe am Element, das den Typ setzt bzw. erbt – die Einträge darunter bleiben neutral */
+  &.typ-information {
+    border-left-color: #7fb3d9;
+  }
+  &.typ-antrag {
+    border-left-color: #a58ee0;
+  }
+  &.typ-pendenz {
+    border-left-color: #e0857d;
+  }
   /* Unterpunkte von Unterpunkten: gleiche Optik, eine Stufe kleiner */
   .sub {
     margin-top: 0.5rem;
@@ -1554,7 +1684,7 @@ input[type="color"].input, .farbe {
   }
   .sub-kopf {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
     .nr {
@@ -1569,18 +1699,26 @@ input[type="color"].input, .farbe {
 }
 
 .eintrag {
-  border-left: 3px solid var(--linie);
-  padding-left: 0.75rem;
+  background: var(--flaeche-soft);
+  border-radius: var(--r);
+  padding: 0.5rem 0.75rem;
   margin: 0.35rem 0;
-  border-radius: var(--r-klein);
+  transition: var(--tc);
+  &.klickbar {
+    cursor: pointer;
+    &:hover {
+      box-shadow: 0 0 0 1px var(--brand);
+    }
+  }
+  /* Farbe nur, wenn der Eintrag seinen Typ selbst trägt (nicht von oben vorgegeben) */
   &.typ-information {
-    border-left-color: #7fb3d9;
+    border-left: 3px solid #7fb3d9;
   }
   &.typ-antrag {
-    border-left-color: #a58ee0;
+    border-left: 3px solid #a58ee0;
   }
   &.typ-pendenz {
-    border-left-color: #e0857d;
+    border-left: 3px solid #e0857d;
   }
   .eintrag-zeile {
     display: flex;
