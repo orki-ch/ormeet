@@ -28,6 +28,7 @@ export default {
             <p class="kicker">Vorprotokoll · {{ gremium.name }} · {{ formatDatum(sitzung.datum) }}</p>
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
             <p v-if="sitzung.genehmigt" class="small text-ok mt-1">Das Protokoll dieser Sitzung wurde am {{ formatDatum(sitzung.genehmigt.datum) }} genehmigt – Vorprotokoll und Protokoll können nicht mehr bearbeitet werden.</p>
+            <p v-else-if="gesperrt" class="muted small mt-1">Zu dieser Sitzung gibt es bereits ein Protokoll – das Vorprotokoll ist damit abgeschlossen und kann nicht mehr bearbeitet werden.<span v-if="darfProtokoll"> Änderungen sind erst wieder möglich, wenn das Protokoll entfernt wird (im Protokoll über ⋯).</span></p>
             <p v-else-if="person && !voll && !eigene" class="muted small mt-1">Dieses Vorprotokoll ist für dich nur zum Lesen freigegeben.</p>
             <p v-else-if="person && !voll" class="muted small mt-1">Bearbeitbar sind die dir zugewiesenen Traktanden (farbiger Rahmen) und deine Anwesenheit.</p>
             <p v-else-if="person && voll" class="muted small mt-1">Als Sitzungsleitung / Protokollführung hast du vollen Zugriff auf dieses Vorprotokoll.</p>
@@ -71,7 +72,7 @@ export default {
       </div>
 
       <div>
-        <p v-if="!nurLesen" class="muted small mb-2">Traktanden mit farbigem Rahmen kannst du anklicken und bearbeiten.</p>
+        <p v-if="!nurLesen && eigene" class="muted small mb-2">Traktanden mit farbigem Rahmen kannst du anklicken und bearbeiten.</p>
         <TraktandenListe :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="voll ? null : person" :nur-lesen="nurLesen || !eigene" />
       </div>
 
@@ -102,12 +103,17 @@ export default {
     person() {
       return aktuellePerson(this.gremium.id, this.vorprotokoll.gaeste)
     },
+    // Sobald ein Protokoll existiert, steht das Vorprotokoll fest (formell: die Traktandenliste ist verschickt und die
+    // Sitzung hat begonnen) – bearbeitbar wird es erst wieder, wenn das Protokoll entfernt wird
+    gesperrt() {
+      return !!sitzungenStore.protokollVonSitzung(this.sitzung.id)
+    },
     voll() {
-      return vollzugriff(this.sitzung, 'vorprotokoll')
+      return !this.gesperrt && vollzugriff(this.sitzung, 'vorprotokoll')
     },
     // Eigene Traktanden bearbeiten (false bei Freigabe «Lesen»)
     eigene() {
-      return darfEigene(this.sitzung, 'vorprotokoll')
+      return !this.gesperrt && darfEigene(this.sitzung, 'vorprotokoll')
     },
     darfProtokoll() {
       return vollzugriff(this.sitzung, 'protokoll')

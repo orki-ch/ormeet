@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { abgleichen, sync } from '../stores/sync.js'
-import { personenText } from '../utils/traktanden.js'
+import { istAntragPunkt, personenText } from '../utils/traktanden.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import Unterpunkte from '../components/Unterpunkte.js'
@@ -40,7 +40,7 @@ export default {
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span v-if="t.dauer || protokoll.dauern?.[t.id]" class="leise small nowrap">{{ dauerText(t) }}</span>
         </div>
-        <p v-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
+        <p v-if="t.notiz && !istAntragPunkt(t)" class="notiz pre eingerueckt">{{ t.notiz }}</p>
         <div class="eingerueckt mt-2 stack-sm">
           <div v-if="uebertragene[t.pendenzId]" class="pendenz-uebertragen">
             <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
@@ -55,7 +55,7 @@ export default {
             </div>
             <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
           </div>
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ">
+          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" im-protokoll>
             <template #default="{ u, typ }">
               <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
                 <div class="eintrag-zeile">
@@ -117,6 +117,7 @@ export default {
   methods: {
     formatDatum,
     personenText,
+    istAntragPunkt,
     async aktualisieren() {
       await abgleichen()
       this.aktualisiertUm = new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })

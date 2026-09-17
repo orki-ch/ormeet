@@ -4,7 +4,7 @@ import MenuDropdown from './MenuDropdown.js'
 import Unterpunkte from './Unterpunkte.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { TRAKTANDUM_TYP, TYP_BADGE, TYP_LABELS, formatDauer } from '../utils/labels.js'
-import { dauerSumme, istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
+import { dauerSumme, istAntragPunkt, istBerechtigt, neuesTraktandum, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
 
 // Traktandenliste mit Unterpunkten (bis drei Ebenen) im Karten-Layout des Protokolls, direkt im übergebenen Array bearbeitet.
 // Bearbeitbare Karten / Unterpunkte tragen einen Rahmen in der Ormeet-Farbe; Klick öffnet die Bearbeitung im selben Layout:
@@ -12,6 +12,7 @@ import { dauerSumme, istBerechtigt, neuesTraktandum, neuesUntertraktandum, perso
 // nurPerson (persönlicher Freigabe-Link): bearbeitbar sind Traktanden, bei denen die Person verantwortlich oder
 // als Bearbeiter eingetragen ist (direkt, über ihre Rolle oder eine Gruppe); Unterpunkte erben das von oben.
 // Typ (Information / Antrag / Pendenz) und geplante Dauer werden hier festgelegt; im Protokoll sind sie fix.
+// Ein Punkt vom Typ Antrag (ohne Unterpunkte) ist selbst der Antrag: Titel und Notiz werden im Protokoll zum offenen Antrag.
 export default {
   name: 'TraktandenListe',
   components: { MenuDropdown, PersonenInput, ThemenbereichSelect, Unterpunkte },
@@ -42,7 +43,7 @@ export default {
               </MenuDropdown>
               <MenuDropdown :text="'Einstellungen: ' + ([TYP_LABELS[t.typ], formatDauer(t.dauer)].filter(Boolean).join(' · ') || '–')" panel>
                 <label class="stack-xs"><span class="label">Typ der Einträge</span>
-                  <select v-model="t.typ" class="input" title="Gilt im Protokoll für alles unter diesem Traktandum">
+                  <select v-model="t.typ" class="input" title="Gilt im Protokoll für alles unter diesem Traktandum – bei «Antrag» werden Titel und Notiz dort zum offenen Antrag">
                     <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert">{{ label }}</option>
                   </select>
                 </label>
@@ -64,7 +65,7 @@ export default {
             <span v-if="t.dauer" class="leise small nowrap" title="Geplante Dauer">{{ formatDauer(t.dauer) }}</span>
           </template>
         </div>
-        <div v-if="aktiv === t.id" class="eingerueckt"><textarea v-model.trim="t.notiz" v-wachsen class="nahtlos notiz" rows="1" placeholder="Notiz …"></textarea></div>
+        <div v-if="aktiv === t.id" class="eingerueckt"><textarea v-model.trim="t.notiz" v-wachsen class="nahtlos notiz" rows="1" :placeholder="istAntragPunkt(t) ? 'Antragstext …' : 'Notiz …'"></textarea></div>
         <p v-else-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
         <div v-if="t.untertraktanden.length" class="eingerueckt">
           <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" :bearbeiten="aktiv === t.id" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" @klick="(u, darf) => subKlick(t, u, darf)" @fertig="aktiv = null" />
@@ -95,6 +96,7 @@ export default {
     neuesUntertraktandum,
     personenText,
     formatDauer,
+    istAntragPunkt,
     hauptEditierbar(t) {
       if (this.nurLesen) return false
       return !this.nurPerson || istBerechtigt(t, this.nurPerson)

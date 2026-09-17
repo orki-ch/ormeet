@@ -1,7 +1,7 @@
 import MenuDropdown from './MenuDropdown.js'
 import PersonenInput from './PersonenInput.js'
 import { TRAKTANDUM_TYP, TYP_BADGE, TYP_LABELS } from '../utils/labels.js'
-import { MAX_TIEFE, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
+import { MAX_TIEFE, istAntragPunkt, neuesUntertraktandum, personenText } from '../utils/traktanden.js'
 
 // Unterpunkte eines Traktandums als Baum über alle Ebenen (1.1, 1.1.1). Anzeige und Bearbeitung im selben Layout:
 // im Bearbeitungsmodus (bearbeiten = ganzer Baum, aktivId = ein einzelner Unterpunkt) werden Titel und Notiz
@@ -9,6 +9,7 @@ import { MAX_TIEFE, neuesUntertraktandum, personenText } from '../utils/traktand
 // pruefen(u): darf die Person diesen Unterpunkt selbst bearbeiten; geerbt: das Element darüber ist schon bearbeitbar.
 // Selbst bearbeitbare Unterpunkte unter einem gesperrten Element erhalten die Rahmen-Klasse `klasse`.
 // Slot default { u, nr, typ, darf }: Inhalte unter dem Unterpunkt (Einträge im Protokoll).
+// imProtokoll: die Notiz eines Antrag-Punkts entfällt dort – sie ist beim Start zum Antrag geworden.
 export default {
   name: 'Unterpunkte',
   components: { MenuDropdown, PersonenInput },
@@ -25,6 +26,7 @@ export default {
     personen: { type: Array, default: () => [] },
     bearbeiterAuswahl: { type: Array, default: () => [] },
     nurPerson: { type: Object, default: null },
+    imProtokoll: { type: Boolean, default: false },
   },
   emits: ['klick', 'fertig'],
   template: `
@@ -56,10 +58,10 @@ export default {
           <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
         </template>
       </div>
-      <textarea v-if="imEdit(u)" v-model.trim="u.notiz" v-wachsen class="nahtlos notiz" rows="1" placeholder="Notiz …"></textarea>
-      <p v-else-if="u.notiz" class="notiz pre">{{ u.notiz }}</p>
+      <textarea v-if="imEdit(u)" v-model.trim="u.notiz" v-wachsen class="nahtlos notiz" rows="1" :placeholder="istAntragPunkt(u, elternTyp) ? 'Antragstext …' : 'Notiz …'"></textarea>
+      <p v-else-if="u.notiz && !(imProtokoll && istAntragPunkt(u, elternTyp))" class="notiz pre">{{ u.notiz }}</p>
       <slot :u="u" :nr="nr(j)" :typ="elternTyp || u.typ" :darf="darf(u)"></slot>
-      <Unterpunkte v-if="u.untertraktanden?.length" :liste="u.untertraktanden" :nummer="nr(j)" :tiefe="tiefe + 1" :eltern-typ="elternTyp || u.typ" :geerbt="darf(u)" :pruefen="pruefen" :aktiv-id="aktivId" :klasse="klasse" :bearbeiten="imEdit(u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" @klick="(k, d) => $emit('klick', k, d)" @fertig="$emit('fertig')">
+      <Unterpunkte v-if="u.untertraktanden?.length" :liste="u.untertraktanden" :nummer="nr(j)" :tiefe="tiefe + 1" :eltern-typ="elternTyp || u.typ" :geerbt="darf(u)" :pruefen="pruefen" :aktiv-id="aktivId" :klasse="klasse" :bearbeiten="imEdit(u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" :im-protokoll="imProtokoll" @klick="(k, d) => $emit('klick', k, d)" @fertig="$emit('fertig')">
         <template v-for="(_, name) in $slots" #[name]="scope"><slot :name="name" v-bind="scope"></slot></template>
       </Unterpunkte>
       <div v-if="einzeln(u)" class="row mt-1"><button class="btn ml-auto" @click.stop="$emit('fertig')">Fertig</button></div>
@@ -71,6 +73,7 @@ export default {
   methods: {
     personenText,
     neuesUntertraktandum,
+    istAntragPunkt,
     nr(j) {
       return `${this.nummer}.${j + 1}`
     },

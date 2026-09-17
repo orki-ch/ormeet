@@ -41,6 +41,18 @@ export function wirksamerTyp(traktandum, untertraktandum = null) {
   return traktandum.typ || untertraktandum?.typ || ''
 }
 
+// Ein Punkt vom Typ Antrag ohne Unterpunkte ist selbst der Antrag: Titel und Notiz aus dem Vorprotokoll
+// werden beim Start des Protokolls zum offenen Antrag (die Notiz erscheint dort nicht mehr separat)
+export function istAntragPunkt(punkt, elternTyp = '') {
+  return (elternTyp || punkt.typ) === 'antrag' && !punkt.untertraktanden?.length
+}
+
+// Alle Punkte eines Traktandums (es selbst und alle Unterpunkte) mit dem von oben geerbten Typ
+export function punkteMitElternTyp(punkt, elternTyp = '') {
+  const typ = elternTyp || punkt.typ
+  return [{ punkt, elternTyp }, ...(punkt.untertraktanden || []).flatMap((u) => punkteMitElternTyp(u, typ))]
+}
+
 // Summe der geplanten Dauern in Minuten
 export function dauerSumme(traktanden) {
   return traktanden.reduce((summe, t) => summe + (Number(t.dauer) || 0), 0)

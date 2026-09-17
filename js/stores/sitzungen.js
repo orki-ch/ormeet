@@ -1,6 +1,6 @@
 import { gremienStore } from './gremien.js'
 import { neuerKey } from '../utils/keys.js'
-import { kopiereTraktandum, neuesTraktandum } from '../utils/traktanden.js'
+import { istAntragPunkt, kopiereTraktandum, neuesTraktandum, punkteMitElternTyp } from '../utils/traktanden.js'
 
 const state = Vue.reactive({ sitzungen: [], vorprotokolle: [], protokolle: [] })
 
@@ -206,6 +206,7 @@ export const sitzungenStore = {
     const vorprotokoll = sitzungenStore.vorprotokollById(vorprotokollId)
     const sitzung = sitzungenStore.sitzungById(vorprotokoll.sitzungId)
     if (!sitzung.datum) return // Termin noch offen: erst nach der Terminfindung
+    if (sitzungenStore.protokollVonSitzung(sitzung.id)) return // Protokoll läuft: die Traktandenliste steht fest
     const vorhandene = new Set(vorprotokoll.traktanden.flatMap((t) => [t.pendenzId, t.antragId]))
 
     sitzungenStore.vertagteAntraege(sitzung.gremiumId, sitzung.datum).forEach(({ eintrag }) => {
@@ -256,8 +257,37 @@ export const sitzungenStore = {
     }
     state.protokolle.push(protokoll)
     sitzung.status = 'laufend'
+    sitzungenStore.uebernimmAntraege(protokoll, vorprotokoll)
     sitzungenStore.ergaenzeAntraege(protokoll.id)
     return protokoll
+  },
+
+  // Protokoll entfernen: die Sitzung fällt ins Vorprotokoll zurück, das damit wieder bearbeitbar ist
+  loescheProtokoll(sitzungId) {
+    state.protokolle = state.protokolle.filter((p) => p.sitzungId !== sitzungId)
+    sitzungenStore.sitzungById(sitzungId).status = 'vorprotokoll'
+  },
+
+  // Im Vorprotokoll erfasste Anträge (Traktandum / Unterpunkt vom Typ Antrag ohne Unterpunkte) werden beim Start
+  // des Protokolls zu offenen Anträgen – Titel und Notiz sind der Antrag. Vertagte Anträge: siehe ergaenzeAntraege.
+  uebernimmAntraege(protokoll, vorprotokoll) {
+    vorprotokoll.traktanden.forEach((t) =>
+      punkteMitElternTyp(t)
+        .filter(({ punkt, elternTyp }) => !punkt.antragId && istAntragPunkt(punkt, elternTyp))
+        .forEach(({ punkt }) =>
+          protokoll.eintraege.push({
+            id: crypto.randomUUID(),
+            traktandumId: punkt.id,
+            themenbereichId: t.themenbereichId,
+            typ: 'antrag',
+            titel: punkt.titel,
+            inhalt: punkt.notiz,
+            antragStatus: 'offen',
+            stimmen: { ja: null, nein: null, enthaltung: null },
+            vorherigerAntragId: null,
+          }),
+        ),
+    )
   },
 
   // Für jeden vertagten Antrag im Vorprotokoll einen neuen, offenen Antrag im Protokoll anlegen (idempotent)
