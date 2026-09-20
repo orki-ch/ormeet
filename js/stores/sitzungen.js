@@ -268,6 +268,16 @@ export const sitzungenStore = {
     sitzungenStore.sitzungById(sitzungId).status = 'vorprotokoll'
   },
 
+  // Ein Protokoll braucht einen Termin. Wurde die Terminfindung nach dem Sitzungsstart wieder geöffnet (ältere Stände),
+  // blieb ein leeres Protokoll zurück, das das Vorprotokoll sperrt – es wird beim nächsten Öffnen entfernt.
+  bereinigeProtokollOhneTermin(sitzungId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    const protokoll = sitzungenStore.protokollVonSitzung(sitzungId)
+    if (!sitzung || sitzung.datum || !protokoll || protokoll.eintraege.length) return
+    sitzungenStore.loescheProtokoll(sitzungId)
+    if (sitzung.terminfindung?.status === 'offen') sitzung.status = 'terminfindung'
+  },
+
   // Im Vorprotokoll erfasste Anträge (Traktandum / Unterpunkt vom Typ Antrag ohne Unterpunkte) werden beim Start
   // des Protokolls zu offenen Anträgen – Titel und Notiz sind der Antrag. Vertagte Anträge: siehe ergaenzeAntraege.
   uebernimmAntraege(protokoll, vorprotokoll) {

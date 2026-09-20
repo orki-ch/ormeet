@@ -31,7 +31,7 @@ export default {
             <router-link :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
             <MenuDropdown v-if="voll">
               <button class="menu-item" @click="csvExport">Ergebnis als CSV exportieren</button>
-              <button v-if="tf.status === 'abgeschlossen'" class="menu-item" @click="wiederOeffnen">Terminfindung wieder öffnen</button>
+              <button v-if="tf.status === 'abgeschlossen'" class="menu-item" :disabled="protokollMitEintraegen" :title="protokollMitEintraegen ? 'Das Protokoll dieser Sitzung enthält bereits Einträge – zuerst das Protokoll entfernen' : ''" @click="wiederOeffnen">Terminfindung wieder öffnen</button>
             </MenuDropdown>
           </div>
         </div>
@@ -163,6 +163,10 @@ export default {
     },
     tf() {
       return this.sitzung?.terminfindung
+    },
+    // Ein Protokoll mit Einträgen hängt am Termin: die Terminfindung lässt sich dann nicht mehr öffnen
+    protokollMitEintraegen() {
+      return (sitzungenStore.protokollVonSitzung(this.sitzungId)?.eintraege.length || 0) > 0
     },
     gremium() {
       return gremienStore.byId(this.sitzung.gremiumId)
@@ -305,7 +309,10 @@ export default {
       if (!confirm(`${formatDatum(option.datum)}, ${option.von} als Sitzungstermin festlegen?`)) return
       sitzungenStore.terminFestlegen(this.sitzungId, option.id)
     },
+    // Ein bereits gestartetes, noch leeres Protokoll geht mit dem Termin weg – sonst bliebe das Vorprotokoll gesperrt
     wiederOeffnen() {
+      if (this.protokollMitEintraegen) return
+      if (sitzungenStore.protokollVonSitzung(this.sitzungId)) sitzungenStore.loescheProtokoll(this.sitzungId)
       this.tf.status = 'offen'
       this.tf.gewaehlteOptionId = null
       this.sitzung.datum = ''

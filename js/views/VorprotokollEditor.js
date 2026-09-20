@@ -156,6 +156,7 @@ export default {
     springeZu(this.$route.query.zu) // Treffer aus der Suche
   },
   created() {
+    if (this.sitzungId && this.sitzungenStoreDarfAnlegen()) sitzungenStore.bereinigeProtokollOhneTermin(this.sitzungId)
     if (!this.vorprotokoll && this.sitzungId && this.sitzungenStoreDarfAnlegen()) sitzungenStore.erstelleVorprotokoll(this.sitzungId)
     // Bei jedem Öffnen neu hinzugekommene offene Pendenzen nachziehen
     if (this.vorprotokoll && this.voll) sitzungenStore.uebernimmPendenzen(this.vorprotokoll.id)
