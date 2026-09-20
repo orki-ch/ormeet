@@ -40,7 +40,7 @@ export default {
             <MenuDropdown>
               <PdfExportButton typ="vorprotokoll" :sitzung-id="sitzung.id" class="menu-item" />
               <button v-if="linksSichtbar" class="menu-item" @click="kopieren(vorprotokoll.freigabeLinkKey)">Allgemeinen Freigabe-Link kopieren</button>
-              <button v-if="voll && !gesperrt && vorherigeMitVorprotokoll" class="menu-item menu-item-danger" @click="vonVorherigerZusammenstellen">Vorprotokoll neu von vorheriger Sitzung zusammenstellen</button>
+              <button v-if="voll && !gesperrt" class="menu-item menu-item-danger" @click="zuruecksetzen">Vorprotokoll neu aufsetzen</button>
             </MenuDropdown>
           </div>
         </div>
@@ -109,10 +109,6 @@ export default {
     gesperrt() {
       return !!sitzungenStore.protokollVonSitzung(this.sitzung.id)
     },
-    vorherigeMitVorprotokoll() {
-      const vorherige = sitzungenStore.vorherigeSitzung(this.sitzung.id)
-      return vorherige ? sitzungenStore.vorprotokollVonSitzung(vorherige.id) : null
-    },
     voll() {
       return !this.gesperrt && vollzugriff(this.sitzung, 'vorprotokoll')
     },
@@ -180,11 +176,10 @@ export default {
     link(key) {
       return location.href.split('#')[0] + '#/freigabe/' + key
     },
-    // Ganzes Vorprotokoll von der letzten Sitzung neu aufbauen; Pendenzen und vertagte Anträge landen an ihrem bisherigen Ort
-    vonVorherigerZusammenstellen() {
-      const vorherige = sitzungenStore.vorherigeSitzung(this.sitzung.id)
-      if (!confirm(`Dieses Vorprotokoll löschen und neu von der Sitzung vom ${formatDatum(vorherige.datum)} zusammenstellen? Kopfdaten, Anwesenheit, Gäste und alle Traktanden werden ersetzt; offene Pendenzen und vertagte Anträge werden an ihrem bisherigen Ort eingefügt.`)) return
-      sitzungenStore.neuVonVorheriger(this.sitzung.id)
+    // Vorprotokoll löschen und wie beim Anlegen der Sitzung neu aufsetzen (Vorlage, Anwesenheit, Pendenzen / Anträge an ihrem Ort)
+    zuruecksetzen() {
+      if (!confirm('Dieses Vorprotokoll löschen und neu aufsetzen? Traktanden, Anwesenheit und Gäste werden wie beim Anlegen der Sitzung neu erstellt; offene Pendenzen und vertagte Anträge werden dabei wieder an ihrem bisherigen Ort eingefügt.')) return
+      sitzungenStore.setzeVorprotokollZurueck(this.sitzung.id)
     },
     kopieren(key) {
       navigator.clipboard.writeText(this.link(key))

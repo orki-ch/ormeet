@@ -182,26 +182,15 @@ export const sitzungenStore = {
 
   // Vorlage (nachträglich) auf eine Sitzung anwenden: Kopfdaten aus der Vorlage, Traktanden werden ersetzt –
   // automatisch übernommene Pendenzen / vertagte Anträge bleiben am Ende erhalten
-  // Vorprotokoll komplett neu von der zuletzt protokollierten Sitzung aufbauen: Kopfdaten (Titel, Sitzungsleitung,
-  // Protokollführung, Bemerkungen), Anwesenheit, Gäste und Traktanden (ohne deren automatisch übernommene Punkte) werden
-  // von dort kopiert, dann kommen die offenen Pendenzen / vertagten Anträge an ihren Ort. Die Freigabe-Links bleiben.
-  neuVonVorheriger(sitzungId) {
-    const sitzung = sitzungenStore.sitzungById(sitzungId)
-    const vorherige = sitzungenStore.vorherigeSitzung(sitzungId)
-    const quelle = vorherige && sitzungenStore.vorprotokollVonSitzung(vorherige.id)
-    const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(sitzungId)
-    if (!quelle || !vorprotokoll || sitzungenStore.protokollVonSitzung(sitzungId)) return false
-    const kopie = (liste) => (liste || []).map((p) => ({ ...p }))
-    sitzung.titel = vorherige.titel
-    sitzung.sitzungsleitung = kopie(vorherige.sitzungsleitung)
-    sitzung.protokollfuehrung = kopie(vorherige.protokollfuehrung)
-    sitzung.bemerkungen = vorherige.bemerkungen
-    vorprotokoll.anwesendeMitgliederIds = [...quelle.anwesendeMitgliederIds]
-    vorprotokoll.gaeste = quelle.gaeste.map((g) => ({ ...g, id: crypto.randomUUID() }))
-    vorprotokoll.personenKeys = {}
-    const ohneUebernommene = (liste) => liste.filter((p) => !p.istAutomatischUebernommen).map((p) => ({ ...p, untertraktanden: ohneUebernommene(p.untertraktanden || []) }))
-    vorprotokoll.traktanden = ohneUebernommene(quelle.traktanden).map(kopiereTraktandum)
-    sitzungenStore.uebernimmPendenzen(vorprotokoll.id)
+  // Vorprotokoll zurücksetzen: das bestehende wird gelöscht und wie beim Anlegen der Sitzung neu aufgesetzt (Traktanden
+  // der Vorlage, erwartete Anwesenheit, keine Gäste); offene Pendenzen und vertagte Anträge kommen dabei wie üblich an
+  // ihren Ort. Der allgemeine Freigabe-Link bleibt gültig, persönliche Gast-Links entfallen mit den Gästen.
+  setzeVorprotokollZurueck(sitzungId) {
+    const altes = sitzungenStore.vorprotokollVonSitzung(sitzungId)
+    if (!altes || sitzungenStore.protokollVonSitzung(sitzungId)) return false
+    state.vorprotokolle = state.vorprotokolle.filter((v) => v.id !== altes.id)
+    const neues = sitzungenStore.erstelleVorprotokoll(sitzungId)
+    neues.freigabeLinkKey = altes.freigabeLinkKey
     return true
   },
 
