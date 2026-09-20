@@ -182,6 +182,29 @@ export const sitzungenStore = {
 
   // Vorlage (nachträglich) auf eine Sitzung anwenden: Kopfdaten aus der Vorlage, Traktanden werden ersetzt –
   // automatisch übernommene Pendenzen / vertagte Anträge bleiben am Ende erhalten
+  // Vorprotokoll komplett neu von der zuletzt protokollierten Sitzung aufbauen: Kopfdaten (Titel, Sitzungsleitung,
+  // Protokollführung, Bemerkungen), Anwesenheit, Gäste und Traktanden (ohne deren automatisch übernommene Punkte) werden
+  // von dort kopiert, dann kommen die offenen Pendenzen / vertagten Anträge an ihren Ort. Die Freigabe-Links bleiben.
+  neuVonVorheriger(sitzungId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    const vorherige = sitzungenStore.vorherigeSitzung(sitzungId)
+    const quelle = vorherige && sitzungenStore.vorprotokollVonSitzung(vorherige.id)
+    const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(sitzungId)
+    if (!quelle || !vorprotokoll || sitzungenStore.protokollVonSitzung(sitzungId)) return false
+    const kopie = (liste) => (liste || []).map((p) => ({ ...p }))
+    sitzung.titel = vorherige.titel
+    sitzung.sitzungsleitung = kopie(vorherige.sitzungsleitung)
+    sitzung.protokollfuehrung = kopie(vorherige.protokollfuehrung)
+    sitzung.bemerkungen = vorherige.bemerkungen
+    vorprotokoll.anwesendeMitgliederIds = [...quelle.anwesendeMitgliederIds]
+    vorprotokoll.gaeste = quelle.gaeste.map((g) => ({ ...g, id: crypto.randomUUID() }))
+    vorprotokoll.personenKeys = {}
+    const ohneUebernommene = (liste) => liste.filter((p) => !p.istAutomatischUebernommen).map((p) => ({ ...p, untertraktanden: ohneUebernommene(p.untertraktanden || []) }))
+    vorprotokoll.traktanden = ohneUebernommene(quelle.traktanden).map(kopiereTraktandum)
+    sitzungenStore.uebernimmPendenzen(vorprotokoll.id)
+    return true
+  },
+
   wendeVorlageAn(sitzungId, vorlageId) {
     const sitzung = sitzungenStore.sitzungById(sitzungId)
     const vorlage = gremienStore.byId(sitzung.gremiumId).vorlagen.find((v) => v.id === vorlageId)
@@ -209,13 +232,31 @@ export const sitzungenStore = {
     const sitzung = sitzungenStore.sitzungById(vorprotokoll.sitzungId)
     if (!sitzung.datum) return // Termin noch offen: erst nach der Terminfindung
     if (sitzungenStore.protokollVonSitzung(sitzung.id)) return // Protokoll läuft: die Traktandenliste steht fest
+    // Wo stand der Eintrag zuletzt? Punkt mit demselben Titelpfad im neuen Vorprotokoll (oder null)
+    const zielFuer = (eintrag, herkunft) => {
+      const damals = sitzungenStore.vorprotokollVonSitzung(herkunft.id)
+      const pfad = damals && titelPfad(damals.traktanden, eintrag.traktandumId)
+      return pfad ? punktMitPfad(vorprotokoll.traktanden, pfad) : null
+    }
+
+    // Früher (bis 1.4.08) angehängte Haupttraktanden nachträglich an ihren Ort verschieben, sobald es ihn gibt
+    vorprotokoll.traktanden
+      .filter((t) => t.istAutomatischUebernommen && (t.pendenzId || t.antragId))
+      .forEach((t) => {
+        const treffer = sitzungenStore.eintragById(t.pendenzId || t.antragId)
+        const ziel = treffer && zielFuer(treffer.eintrag, treffer.sitzung)
+        if (!ziel) return
+        vorprotokoll.traktanden.splice(vorprotokoll.traktanden.indexOf(t), 1)
+        const { id, titel, notiz, typ, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId } = t
+        unterPunktEinfuegen(ziel, { id, titel, notiz, typ, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId })
+      })
+    vorprotokoll.traktanden.forEach((t, i) => (t.reihenfolge = i + 1))
+
     const vorhandene = new Set(allePunkte(vorprotokoll.traktanden).flatMap((p) => [p.pendenzId, p.antragId]))
 
     const einfuegen = ({ eintrag, sitzung: herkunft }, daten) => {
       if (vorhandene.has(eintrag.id)) return
-      const damals = sitzungenStore.vorprotokollVonSitzung(herkunft.id)
-      const pfad = damals && titelPfad(damals.traktanden, eintrag.traktandumId)
-      const ziel = pfad && punktMitPfad(vorprotokoll.traktanden, pfad)
+      const ziel = zielFuer(eintrag, herkunft)
       if (ziel) unterPunktEinfuegen(ziel, neuesUntertraktandum(daten.titel, { ...daten, istAutomatischUebernommen: true }))
       else vorprotokoll.traktanden.push(neuesTraktandum({ ...daten, themenbereichId: eintrag.themenbereichId, reihenfolge: vorprotokoll.traktanden.length + 1, istAutomatischUebernommen: true }))
     }
