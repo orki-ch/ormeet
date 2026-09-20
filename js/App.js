@@ -1,4 +1,5 @@
 import { sync, abmelden } from './stores/sync.js'
+import { appStand } from './api.js'
 import { updateStand, updatePruefen } from './stores/updates.js'
 import { startPfad } from './router.js'
 import Benachrichtigungen from './components/Benachrichtigungen.js'
@@ -41,6 +42,11 @@ export default {
         </div>
       </header>
       <main class="page">
+        <!-- Nach einem Update läuft dieser Tab noch mit alten Dateien – Neuladen holt die neue Version -->
+        <div v-if="appStand.neueVersion" class="banner mb-2">
+          <div class="grow"><strong>Ormeet wurde auf Version {{ appStand.neueVersion }} aktualisiert.</strong> Bitte die Seite neu laden, damit alles zusammenpasst.</div>
+          <button class="btn btn-primary" @click="neuLaden">Neu laden</button>
+        </div>
         <router-view />
       </main>
       <footer class="footer">
@@ -52,7 +58,7 @@ export default {
     </div>
   `,
   data() {
-    return { sync, ROLLEN, updateStand, domain: location.hostname }
+    return { sync, ROLLEN, updateStand, appStand, domain: location.hostname }
   },
   watch: {
     // Nach der Anmeldung als Superadmin einmal täglich auf Updates prüfen
@@ -79,5 +85,11 @@ export default {
       return 'ok'
     },
   },
-  methods: { abmelden },
+  methods: {
+    abmelden,
+    // index.php ist nicht gecacht und verweist auf die versionierten Dateien
+    neuLaden() {
+      location.reload()
+    },
+  },
 }

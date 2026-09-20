@@ -2,28 +2,14 @@
 <html lang="de">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ormeet – Sitzungsprotokolle</title>
-    <!-- Schutz vor eingeschleustem Code: Skripte, Stile und Verbindungen nur von dieser Installation -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
-    <meta name="referrer" content="same-origin" />
-
-    <!-- Kontaktangabe für die Datenschutzerklärung (optional, zwischen die Anführungszeichen schreiben); wird nur gelesen, nicht ausgeführt -->
+    <!-- Seit 1.4.08 startet Ormeet über index.php (versionierte Dateien gegen veraltete Browser-Caches). Diese Seite leitet nur weiter. -->
+    <!-- Kontaktangabe für die Datenschutzerklärung: bitte in index.php eintragen (ein Eintrag hier gilt weiterhin, solange index.php leer ist) -->
     <script id="ormeet-kontakt" type="text/plain">window.ORMEET_KONTAKT = ''</script>
-    <link rel="stylesheet" href="css/ormeet.css">
-
-    <script src="lib/vue.global.prod.js"></script>
-    <script src="lib/vue-router.global.prod.js"></script>
-    <script src="lib/pdfmake.min.js"></script>
-    <script src="lib/vfs_fonts.js"></script>
+    <noscript><meta http-equiv="refresh" content="0; url=index.php" /></noscript>
+    <script src="js/weiter.js"></script>
   </head>
   <body>
-    <div id="app">
-      <p style="padding: 2rem; font-family: sans-serif; color: #5a655d">
-        Ormeet wird geladen … Bleibt diese Meldung stehen, blockiert der Browser JavaScript
-        oder ist zu alt (benötigt Chrome/Edge 92+, Firefox 90+, Safari 15.4+).
-      </p>
-    </div>
-    <script type="module" src="js/main.js"></script>
+    <p style="padding: 2rem; font-family: sans-serif; color: #5a655d">Ormeet wird geladen … <a href="index.php">Weiter zu Ormeet</a></p>
   </body>
 </html>

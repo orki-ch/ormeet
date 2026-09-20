@@ -84,7 +84,7 @@ export default {
       return location.protocol === 'https:' || location.hostname === 'localhost'
     },
     kontakt() {
-      return document.getElementById('ormeet-kontakt')?.textContent.match(/'([^']*)'/)?.[1] || ''
+      return document.querySelector('meta[name="ormeet-kontakt"]')?.content || ''
     },
     datum() {
       return new Date().toLocaleDateString('de-CH', { month: 'long', year: 'numeric' })
