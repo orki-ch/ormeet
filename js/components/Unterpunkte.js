@@ -55,6 +55,7 @@ export default {
         </template>
         <template v-else>
           <h3>{{ u.titel }}</h3>
+          <span v-if="u.istAutomatischUebernommen" class="badge gelb">{{ u.antragId ? 'Vertagter Antrag' : 'Pendenz' }}</span>
           <span v-if="!elternTyp && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ PUNKT_TYP[u.typ] }}</span>
           <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
         </template>

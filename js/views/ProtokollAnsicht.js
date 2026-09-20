@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { abgleichen, sync } from '../stores/sync.js'
-import { istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
+import { allePunkte, istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, PUNKT_TYP, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import Unterpunkte from '../components/Unterpunkte.js'
@@ -57,6 +57,11 @@ export default {
           </div>
           <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
             <template #default="{ u, typ }">
+              <div v-if="uebertragene[u.pendenzId]" class="pendenz-uebertragen mt-1">
+                <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
+                <strong>{{ uebertragene[u.pendenzId].titel }}</strong>
+                <span class="muted">· {{ PENDENZ_STATUS[uebertragene[u.pendenzId].pendenzStatus] }} · {{ uebertragene[u.pendenzId].zugewiesenAnName || '–' }}</span>
+              </div>
               <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
                 <div class="eintrag-zeile">
                   <span v-if="!typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
@@ -97,7 +102,7 @@ export default {
     },
     uebertragene() {
       const map = {}
-      this.traktanden.filter((t) => t.pendenzId).forEach((t) => {
+      allePunkte(this.traktanden).filter((t) => t.pendenzId).forEach((t) => {
         const treffer = sitzungenStore.eintragById(t.pendenzId)
         if (treffer) map[t.pendenzId] = treffer.eintrag
       })

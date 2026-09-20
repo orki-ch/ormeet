@@ -1,6 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { protokollDokument, vorprotokollDokument } from '../pdf/dokumente.js'
+import { allePunkte } from '../utils/traktanden.js'
 
 export default {
   name: 'PdfExportButton',
@@ -21,7 +22,7 @@ export default {
         vorprotokoll,
         erwartete: gremienStore.erwarteteMitglieder(gremium.id),
         protokoll: sitzungenStore.protokollVonSitzung(this.sitzungId),
-        uebertragenePendenzen: vorprotokoll.traktanden
+        uebertragenePendenzen: allePunkte(vorprotokoll.traktanden)
           .filter((t) => t.pendenzId)
           .map((t) => sitzungenStore.eintragById(t.pendenzId))
           .filter(Boolean),

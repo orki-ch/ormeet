@@ -441,6 +441,15 @@ function erlaubteSammeln(array $liste, array $person, bool $geerbt, array &$erla
   }
 }
 
+// Übernommene Pendenzen (pendenzId) aller berechtigten Traktanden und Unterpunkte (Rechte werden nach unten vererbt)
+function pendenzIdsSammeln(array $liste, array $person, bool $geerbt, array &$ids) {
+  foreach ($liste as $t) {
+    $darf = $geerbt || istBerechtigt($t, $person);
+    if ($darf && !empty($t['pendenzId'])) $ids[$t['pendenzId']] = true;
+    pendenzIdsSammeln($t['untertraktanden'] ?? [], $person, $darf, $ids);
+  }
+}
+
 // Protokoll: nur Einträge zu berechtigten Traktanden, übertragene Pendenzen berechtigter Traktanden und eigene Anwesenheit
 function protokollMerge(array $alt, array $neu, array $person, array $bundle) {
   $personId = $person['id'];
@@ -452,9 +461,7 @@ function protokollMerge(array $alt, array $neu, array $person, array $bundle) {
     $stufe = $sitzung ? freigabeStufe($sitzung, 'protokoll', $personId) : 'eigene';
     if ($stufe === 'lesen') continue; // Freigabe «Lesen»: keine Einträge, keine übertragenen Pendenzen
     $voll = $stufe === 'alles';
-    foreach ($vp['traktanden'] as $t) {
-      if (($voll || istBerechtigt($t, $person)) && !empty($t['pendenzId'])) $pendenzIds[$t['pendenzId']] = true;
-    }
+    pendenzIdsSammeln($vp['traktanden'], $person, $voll, $pendenzIds);
     if ($vp['sitzungId'] === $alt['sitzungId']) erlaubteSammeln($vp['traktanden'], $person, $voll, $erlaubt);
   }
   $darf = fn($e) => isset($erlaubt[$e['traktandumId']]) || isset($pendenzIds[$e['id']]);

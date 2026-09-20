@@ -124,6 +124,9 @@ function unterpunkte(eintrag, elternTyp = '') {
     u.typ ??= ''
     u.verantwortliche ??= []
     u.bearbeiter ??= []
+    u.istAutomatischUebernommen ??= false // übernommene Pendenzen / vertagte Anträge auch als Unterpunkt (seit 1.4.09)
+    u.pendenzId ??= null
+    u.antragId ??= null
     unterpunkte(u, typ === 'antraege' ? 'antrag' : typ)
   })
 }

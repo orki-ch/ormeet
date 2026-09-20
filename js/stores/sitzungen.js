@@ -1,6 +1,6 @@
 import { gremienStore } from './gremien.js'
 import { neuerKey } from '../utils/keys.js'
-import { istAntragPunkt, kopiereTraktandum, neuesTraktandum, punkteMitElternTyp } from '../utils/traktanden.js'
+import { allePunkte, istAntragPunkt, kopiereTraktandum, neuesTraktandum, neuesUntertraktandum, punkteMitElternTyp, punktMitPfad, titelPfad, unterPunktEinfuegen } from '../utils/traktanden.js'
 
 const state = Vue.reactive({ sitzungen: [], vorprotokolle: [], protokolle: [] })
 
@@ -201,41 +201,36 @@ export const sitzungenStore = {
     vorprotokoll.traktanden = [...vorlage.traktanden.map(kopiereTraktandum), ...uebernommene].map((t, i) => ({ ...t, reihenfolge: i + 1 }))
   },
 
-  // Übernimmt noch nicht enthaltene offene Pendenzen und vertagte Anträge früherer Sitzungen als Traktanden (idempotent)
+  // Übernimmt noch nicht enthaltene offene Pendenzen und vertagte Anträge früherer Sitzungen (idempotent).
+  // Gibt es im neuen Vorprotokoll den Punkt, unter dem der Eintrag damals stand (gleicher Titelpfad, z. B. aus derselben
+  // Vorlage), kommt er dort als Unterpunkt hinein – sonst als eigenes Traktandum ans Ende.
   uebernimmPendenzen(vorprotokollId) {
     const vorprotokoll = sitzungenStore.vorprotokollById(vorprotokollId)
     const sitzung = sitzungenStore.sitzungById(vorprotokoll.sitzungId)
     if (!sitzung.datum) return // Termin noch offen: erst nach der Terminfindung
     if (sitzungenStore.protokollVonSitzung(sitzung.id)) return // Protokoll läuft: die Traktandenliste steht fest
-    const vorhandene = new Set(vorprotokoll.traktanden.flatMap((t) => [t.pendenzId, t.antragId]))
+    const vorhandene = new Set(allePunkte(vorprotokoll.traktanden).flatMap((p) => [p.pendenzId, p.antragId]))
 
-    sitzungenStore.vertagteAntraege(sitzung.gremiumId, sitzung.datum).forEach(({ eintrag }) => {
+    const einfuegen = ({ eintrag, sitzung: herkunft }, daten) => {
       if (vorhandene.has(eintrag.id)) return
-      vorprotokoll.traktanden.push(
-        neuesTraktandum({
-          titel: `Antrag: ${eintrag.titel}`,
-          themenbereichId: eintrag.themenbereichId,
-          typ: 'antrag',
-          notiz: eintrag.inhalt,
-          reihenfolge: vorprotokoll.traktanden.length + 1,
-          istAutomatischUebernommen: true,
-          antragId: eintrag.id,
-        }),
-      )
-    })
+      const damals = sitzungenStore.vorprotokollVonSitzung(herkunft.id)
+      const pfad = damals && titelPfad(damals.traktanden, eintrag.traktandumId)
+      const ziel = pfad && punktMitPfad(vorprotokoll.traktanden, pfad)
+      if (ziel) unterPunktEinfuegen(ziel, neuesUntertraktandum(daten.titel, { ...daten, istAutomatischUebernommen: true }))
+      else vorprotokoll.traktanden.push(neuesTraktandum({ ...daten, themenbereichId: eintrag.themenbereichId, reihenfolge: vorprotokoll.traktanden.length + 1, istAutomatischUebernommen: true }))
+    }
 
-    sitzungenStore.offenePendenzen(sitzung.gremiumId, sitzung.datum).forEach(({ eintrag }) => {
-      if (vorhandene.has(eintrag.id)) return
-      vorprotokoll.traktanden.push(
-        neuesTraktandum({
-          titel: `Pendenz: ${eintrag.titel}`,
-          themenbereichId: eintrag.themenbereichId,
-          verantwortliche: eintrag.zugewiesenAnName ? [{ id: eintrag.zugewiesenAn || null, name: eintrag.zugewiesenAnName }] : [],
-          reihenfolge: vorprotokoll.traktanden.length + 1,
-          istAutomatischUebernommen: true,
-          pendenzId: eintrag.id,
-        }),
-      )
+    sitzungenStore.vertagteAntraege(sitzung.gremiumId, sitzung.datum).forEach((treffer) =>
+      einfuegen(treffer, { titel: `Antrag: ${treffer.eintrag.titel}`, typ: 'antrag', notiz: treffer.eintrag.inhalt, antragId: treffer.eintrag.id }),
+    )
+
+    sitzungenStore.offenePendenzen(sitzung.gremiumId, sitzung.datum).forEach((treffer) => {
+      const { eintrag } = treffer
+      einfuegen(treffer, {
+        titel: `Pendenz: ${eintrag.titel}`,
+        verantwortliche: eintrag.zugewiesenAnName ? [{ id: eintrag.zugewiesenAn || null, name: eintrag.zugewiesenAnName }] : [],
+        pendenzId: eintrag.id,
+      })
     })
   },
 
@@ -283,7 +278,7 @@ export const sitzungenStore = {
   uebernimmAntraege(protokoll, vorprotokoll) {
     vorprotokoll.traktanden.forEach((t) =>
       punkteMitElternTyp(t)
-        .filter(({ punkt, elternTyp }) => !punkt.antragId && istAntragPunkt(punkt, elternTyp))
+        .filter(({ punkt, elternTyp }) => !punkt.antragId && !punkt.pendenzId && istAntragPunkt(punkt, elternTyp))
         .forEach(({ punkt }) =>
           protokoll.eintraege.push({
             id: crypto.randomUUID(),
@@ -306,7 +301,7 @@ export const sitzungenStore = {
     const vorprotokoll = sitzungenStore.vorprotokollVonSitzung(protokoll.sitzungId)
     if (!vorprotokoll) return
     const vorhandene = new Set(protokoll.eintraege.map((e) => e.vorherigerAntragId).filter(Boolean))
-    vorprotokoll.traktanden
+    allePunkte(vorprotokoll.traktanden)
       .filter((t) => t.antragId && !vorhandene.has(t.antragId))
       .forEach((t) => {
         const original = sitzungenStore.eintragById(t.antragId)?.eintrag

@@ -1,5 +1,5 @@
 import { ANTRAG_STATUS, PENDENZ_STATUS, PUNKT_TYP, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
-import { dauerSumme, istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
+import { allePunkte, dauerSumme, istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
 
 const STYLES = {
   titel: { fontSize: 18, bold: true, margin: [0, 0, 0, 2] },
@@ -96,17 +96,20 @@ function unterpunktText(nummer, elternTyp, u) {
 
 // Unterpunkte über alle Ebenen: pro Unterpunkt Titelzeile, Notiz und (Protokoll) Einträge, je Ebene weiter eingerückt.
 // Im Protokoll entfällt die Notiz eines Antrag-Punkts – sie ist beim Start zum Antrag geworden.
-function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null) {
+// uebertragen(punkt): Block einer übernommenen Pendenz (Protokoll), sonst null.
+function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, uebertragen = () => null) {
   return liste.flatMap((u, j) => {
     const nr = `${nummer}.${j + 1}`
     const einzug = 10 * tiefe
     const typ = elternTyp || u.typ
     const notiz = u.notiz && !(eintraege && istAntragPunkt(u, elternTyp))
+    const pendenz = uebertragen(u)
     return [
       eintraege ? { text: unterpunktText(nr, elternTyp, u), style: 'h4', margin: [einzug, 6, 0, 2] } : { text: unterpunktText(nr, elternTyp, u), margin: [einzug, 2, 0, 0] },
       ...(notiz ? [{ text: u.notiz, style: eintraege ? 'notiz' : 'klein', margin: [einzug + (eintraege ? 10 : 0), 0, 0, 2] }] : []),
+      ...(pendenz ? [{ ...pendenz, margin: [einzug + 10, 0, 0, 6] }] : []),
       ...(eintraege ? eintraege(u.id).map((b) => ({ ...b, margin: [einzug + 10, 0, 0, 6] })) : []),
-      ...unterpunktBloecke(u.untertraktanden || [], nr, kindTyp(typ), tiefe + 1, eintraege),
+      ...unterpunktBloecke(u.untertraktanden || [], nr, kindTyp(typ), tiefe + 1, eintraege, uebertragen),
     ]
   })
 }
@@ -180,10 +183,14 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
   const traktandenBloecke = vorprotokoll.traktanden.flatMap((t, i) => {
     const bloecke = [{ text: traktandumTitel(`${i + 1}.`, t, themenbereichName, dauern[t.id]), style: 'h3' }]
     if (t.notiz && !istAntragPunkt(t)) bloecke.push({ text: t.notiz, style: 'notiz' })
-    const uebertragen = uebertragenePendenzen.find((p) => p.eintrag.id === t.pendenzId)
-    if (uebertragen) bloecke.push(eintragBlock(uebertragen.eintrag, 'Übertragene Pendenz'))
+    const uebertragen = (punkt) => {
+      const treffer = punkt.pendenzId && uebertragenePendenzen.find((p) => p.eintrag.id === punkt.pendenzId)
+      return treffer ? eintragBlock(treffer.eintrag, 'Übertragene Pendenz') : null
+    }
+    const pendenz = uebertragen(t)
+    if (pendenz) bloecke.push(pendenz)
     bloecke.push(...eintraegeVon(t.id))
-    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${i + 1}`, kindTyp(t.typ), 1, eintraegeVon))
+    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen))
     return bloecke
   })
 

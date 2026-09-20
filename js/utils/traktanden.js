@@ -22,13 +22,53 @@ export function neuesTraktandum(daten) {
 // Unterpunkte können selbst Unterpunkte haben (1.1.1); tiefer als drei Ebenen geht es nicht
 export const MAX_TIEFE = 3
 
-export function neuesUntertraktandum(titel) {
-  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [], untertraktanden: [] }
+export function neuesUntertraktandum(titel, daten = {}) {
+  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [], istAutomatischUebernommen: false, pendenzId: null, antragId: null, untertraktanden: [], ...daten }
 }
 
 // Alle Unterpunkte eines Traktandums über alle Ebenen (ohne das Traktandum selbst)
 export function alleUnterpunkte(eintrag) {
   return (eintrag.untertraktanden || []).flatMap((u) => [u, ...alleUnterpunkte(u)])
+}
+
+// Alle Punkte einer Traktandenliste (Traktanden und Unterpunkte aller Ebenen)
+export function allePunkte(traktanden) {
+  return traktanden.flatMap((t) => [t, ...alleUnterpunkte(t)])
+}
+
+// Titel von der Wurzel bis zum Punkt mit dieser ID, z. B. ['Jugendarbeit', 'Lager'] – null, wenn es ihn nicht gibt
+export function titelPfad(traktanden, punktId) {
+  const suche = (liste, pfad) => {
+    for (const p of liste) {
+      const eigener = [...pfad, p.titel.trim()]
+      if (p.id === punktId) return eigener
+      const treffer = suche(p.untertraktanden || [], eigener)
+      if (treffer) return treffer
+    }
+    return null
+  }
+  return suche(traktanden, [])
+}
+
+// Punkt mit demselben Titelpfad in einer anderen Traktandenliste (gleiche Struktur, z. B. aus derselben Vorlage).
+// Automatisch übernommene Punkte zählen nicht als Ziel. Liefert { punkt, liste, index, tiefe } oder null.
+export function punktMitPfad(traktanden, pfad) {
+  let liste = traktanden
+  let treffer = null
+  for (const [tiefe, titel] of pfad.entries()) {
+    const index = liste.findIndex((p) => p.titel.trim() === titel && !p.istAutomatischUebernommen)
+    if (index < 0) return null
+    treffer = { punkt: liste[index], liste, index, tiefe: tiefe + 1 }
+    liste = treffer.punkt.untertraktanden || []
+  }
+  return treffer
+}
+
+// Übernommenen Punkt (Pendenz, vertagter Antrag) dort einfügen, wo er zuletzt stand: als Unterpunkt des Zielpunkts,
+// auf der untersten Ebene als Nachbar dahinter
+export function unterPunktEinfuegen(ziel, punkt) {
+  if (ziel.tiefe < MAX_TIEFE) (ziel.punkt.untertraktanden ??= []).push(punkt)
+  else ziel.liste.splice(ziel.index + 1, 0, punkt)
 }
 
 // Darf die Person das Traktandum oder einen seiner Unterpunkte bearbeiten?
@@ -82,6 +122,9 @@ function kopiereUnterpunkt(u) {
   return {
     ...u,
     id: crypto.randomUUID(),
+    istAutomatischUebernommen: false,
+    pendenzId: null,
+    antragId: null,
     verantwortliche: u.verantwortliche.map((p) => ({ ...p })),
     bearbeiter: u.bearbeiter.map((p) => ({ ...p })),
     untertraktanden: (u.untertraktanden || []).map(kopiereUnterpunkt),

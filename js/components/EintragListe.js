@@ -46,7 +46,7 @@ export default {
             </span>
           </template>
           <template v-else>
-            <span v-if="!typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+            <span v-if="!typ || e.typ !== typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
             <span class="titel" :class="{ leer: !e.titel }">{{ e.titel || 'Ohne Titel' }}</span>
             <span class="leise">{{ meta(e) }}</span>
             <select v-if="nurLesen && eigenePendenz(e)" v-model="e.pendenzStatus" class="input klein w-sm" title="Status deiner Pendenz" @click.stop>
@@ -117,9 +117,10 @@ export default {
       }
       return ''
     },
-    // Vorgegebener Typ gilt auch für ältere Einträge, sobald sie bearbeitet werden
+    // Vorgegebener Typ gilt auch für ältere Einträge, sobald sie bearbeitet werden – ausser für Anträge
+    // (ein vertagter Antrag kann unter einem Punkt mit anderem Typ stehen und bleibt ein Antrag)
     oeffnen(e) {
-      if (this.typ && e.typ !== this.typ) {
+      if (this.typ && e.typ !== this.typ && e.typ !== 'antrag') {
         e.typ = this.typ
         this.typGeaendert(e)
       }

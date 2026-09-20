@@ -2,21 +2,21 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
 import { aktuellePerson, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
-import { dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
+import { allePunkte, dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
 import EintragListe from '../components/EintragListe.js'
 import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import PdfExportButton from '../components/PdfExportButton.js'
-import PersonInput from '../components/PersonInput.js'
+import PendenzUebertragen from '../components/PendenzUebertragen.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import TeilenKarte from '../components/TeilenKarte.js'
 import Unterpunkte from '../components/Unterpunkte.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PersonInput, SitzungKopfdaten, TeilenKarte, Unterpunkte },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -96,21 +96,7 @@ export default {
 
         <div class="eingerueckt mt-2 stack-sm">
           <!-- Übertragene Pendenz aus früherer Sitzung (Status wird am Original aktualisiert) -->
-          <div v-if="uebertragene[t.pendenzId]" class="pendenz-uebertragen stack-sm">
-            <p>
-              <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
-              <strong>{{ uebertragene[t.pendenzId].eintrag.titel }}</strong>
-              <span class="muted">(aus Sitzung vom {{ formatDatum(uebertragene[t.pendenzId].sitzung.datum) }})</span>
-            </p>
-            <p v-if="uebertragene[t.pendenzId].eintrag.inhalt" class="muted">{{ uebertragene[t.pendenzId].eintrag.inhalt }}</p>
-            <div class="row">
-              <select v-model="uebertragene[t.pendenzId].eintrag.pendenzStatus" class="btn-pille" title="Status" :disabled="!darfTraktandum(t)">
-                <option v-for="(label, wert) in PENDENZ_STATUS" :key="wert" :value="wert">{{ label }}</option>
-              </select>
-              <PersonInput v-model="uebertragene[t.pendenzId].eintrag.zugewiesenAnName" v-model:person-id="uebertragene[t.pendenzId].eintrag.zugewiesenAn" :personen="personen" class="w-md klein" placeholder="Zugewiesen an" :disabled="!darfTraktandum(t)" />
-              <input v-model="uebertragene[t.pendenzId].eintrag.faelligBis" type="date" class="input klein w-sm" title="Bis wann" :disabled="!darfTraktandum(t)" />
-            </div>
-          </div>
+          <PendenzUebertragen v-if="uebertragene[t.pendenzId]" :eintrag="uebertragene[t.pendenzId].eintrag" :sitzung="uebertragene[t.pendenzId].sitzung" :personen="personen" :darf="darfTraktandum(t)" />
 
           <!-- Vertagter Antrag aus früherer Sitzung: wird hier als neuer Antrag entschieden -->
           <p v-if="uebertrageneAntraege[t.antragId]" class="pendenz-uebertragen">
@@ -123,6 +109,12 @@ export default {
 
           <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
             <template #default="{ u, typ, darf }">
+              <!-- Übernommene Pendenzen und vertagte Anträge stehen seit 1.4.09 dort, wo sie zuletzt waren – auch als Unterpunkt -->
+              <PendenzUebertragen v-if="uebertragene[u.pendenzId]" class="mt-1" :eintrag="uebertragene[u.pendenzId].eintrag" :sitzung="uebertragene[u.pendenzId].sitzung" :personen="personen" :darf="darf" />
+              <p v-if="uebertrageneAntraege[u.antragId]" class="pendenz-uebertragen mt-1">
+                <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
+                an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
+              </p>
               <div v-if="typ !== 'antraege'" class="mt-1">
                 <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
               </div>
@@ -255,7 +247,7 @@ export default {
     },
     uebertragene() {
       const map = {}
-      this.traktanden
+      allePunkte(this.traktanden)
         .filter((t) => t.pendenzId)
         .forEach((t) => {
           const treffer = sitzungenStore.eintragById(t.pendenzId)
@@ -265,7 +257,7 @@ export default {
     },
     uebertrageneAntraege() {
       const map = {}
-      this.traktanden
+      allePunkte(this.traktanden)
         .filter((t) => t.antragId)
         .forEach((t) => {
           const treffer = sitzungenStore.eintragById(t.antragId)
