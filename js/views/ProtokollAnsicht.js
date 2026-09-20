@@ -1,8 +1,8 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { abgleichen, sync } from '../stores/sync.js'
-import { istAntragPunkt, personenText } from '../utils/traktanden.js'
-import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
+import { istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
+import { ANTRAG_STATUS, PENDENZ_STATUS, PUNKT_TYP, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import Unterpunkte from '../components/Unterpunkte.js'
 
@@ -36,7 +36,7 @@ export default {
         <div class="traktandum-kopf">
           <span class="nr">{{ i + 1 }}.</span>
           <h2>{{ t.titel }}</h2>
-          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
+          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span v-if="t.dauer || protokoll.dauern?.[t.id]" class="leise small nowrap">{{ dauerText(t) }}</span>
         </div>
@@ -55,7 +55,7 @@ export default {
             </div>
             <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
           </div>
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" im-protokoll>
+          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
             <template #default="{ u, typ }">
               <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
                 <div class="eintrag-zeile">
@@ -79,7 +79,7 @@ export default {
     <p v-else class="muted">Zu diesem Link wurde kein Protokoll gefunden.</p>
   `,
   data() {
-    return { aktualisiertUm: '', timer: null, TYP_LABELS, TYP_BADGE, PENDENZ_STATUS }
+    return { aktualisiertUm: '', timer: null, TYP_LABELS, PUNKT_TYP, TYP_BADGE, PENDENZ_STATUS }
   },
   computed: {
     protokoll() {
@@ -118,6 +118,7 @@ export default {
     formatDatum,
     personenText,
     istAntragPunkt,
+    kindTyp,
     async aktualisieren() {
       await abgleichen()
       this.aktualisiertUm = new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit', second: '2-digit' })

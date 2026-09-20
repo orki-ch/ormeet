@@ -8,7 +8,7 @@ export function neuesTraktandum(daten) {
     verantwortliche: [],
     bearbeiter: [], // dürfen zusätzlich bearbeiten (persönlicher Freigabe-Link)
     notiz: '',
-    typ: '', // '' (frei) | information | antrag | pendenz – gilt für alle Einträge und Unterpunkte darunter
+    typ: '', // '' (frei) | information | antrag (Punkt ist selbst der Antrag) | antraege (jeder Unterpunkt ist ein Antrag) | pendenz
     dauer: null, // geplante Dauer in Minuten
     reihenfolge: 0,
     istAutomatischUebernommen: false,
@@ -41,15 +41,20 @@ export function wirksamerTyp(traktandum, untertraktandum = null) {
   return traktandum.typ || untertraktandum?.typ || ''
 }
 
-// Ein Punkt vom Typ Antrag ohne Unterpunkte ist selbst der Antrag: Titel und Notiz aus dem Vorprotokoll
-// werden beim Start des Protokolls zum offenen Antrag (die Notiz erscheint dort nicht mehr separat)
+// Typ, den die Unterpunkte eines Punkts von ihm erben: unter «Anträge» ist jeder Unterpunkt ein Antrag
+export function kindTyp(typ) {
+  return typ === 'antraege' ? 'antrag' : typ
+}
+
+// Ein Punkt vom Typ Antrag ist selbst der Antrag: Titel und Notiz aus dem Vorprotokoll werden beim Start des
+// Protokolls zum offenen Antrag (die Notiz erscheint dort nicht mehr separat). Solche Punkte haben keine Unterpunkte.
 export function istAntragPunkt(punkt, elternTyp = '') {
-  return (elternTyp || punkt.typ) === 'antrag' && !punkt.untertraktanden?.length
+  return (elternTyp || punkt.typ) === 'antrag'
 }
 
 // Alle Punkte eines Traktandums (es selbst und alle Unterpunkte) mit dem von oben geerbten Typ
 export function punkteMitElternTyp(punkt, elternTyp = '') {
-  const typ = elternTyp || punkt.typ
+  const typ = kindTyp(elternTyp || punkt.typ)
   return [{ punkt, elternTyp }, ...(punkt.untertraktanden || []).flatMap((u) => punkteMitElternTyp(u, typ))]
 }
 

@@ -1772,7 +1772,8 @@ select.btn-pille {
   &.typ-information {
     border-left-color: #7fb3d9;
   }
-  &.typ-antrag {
+  &.typ-antrag,
+  &.typ-antraege {
     border-left-color: #a58ee0;
   }
   &.typ-pendenz {

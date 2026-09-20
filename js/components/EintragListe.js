@@ -1,12 +1,14 @@
 import { gremienStore } from '../stores/gremien.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
-import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, stimmenText } from '../utils/labels.js'
+import { ANTRAG_STATUS, EINTRAG_TYP_WAHL, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, stimmenText } from '../utils/labels.js'
 import ThemenbereichSelect from './ThemenbereichSelect.js'
 import PersonInput from './PersonInput.js'
 import MenuDropdown from './MenuDropdown.js'
 
 // Einträge (Information / Antrag / Pendenz) eines Traktandums oder Unterpunkts.
 // Klick öffnet die Bearbeitung im selben Layout; Typ-Badge und Farbe nur, wenn der Typ nicht von oben vorgegeben ist.
+// Anträge werden im Vorprotokoll formuliert und beim Start des Protokolls übernommen: hier gibt es für sie nur noch
+// Beschluss und Stimmen – kein Hinzufügen, kein Umformulieren, kein Löschen.
 export default {
   name: 'EintragListe',
   components: { MenuDropdown, PersonInput, ThemenbereichSelect },
@@ -19,16 +21,20 @@ export default {
     personen: { type: Array, required: true },
     nurLesen: { type: Boolean, default: false },
     personId: { type: String, default: null }, // eigene Pendenzen bleiben im Status änderbar
-    typ: { type: String, default: '' }, // vom Traktandum vorgegebener Typ: alle Einträge sind dann von diesem Typ
+    typ: { type: String, default: '' }, // vom Traktandum vorgegebener Typ: alle Einträge sind dann von diesem Typ (antrag: nur abstimmen)
   },
   template: `
     <div>
       <!-- Vorschau und Bearbeitung im selben Layout: Titel und Inhalt werden direkt im Eintrag getippt -->
       <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="[typ ? '' : 'typ-' + e.typ, { editing: aktiv === e.id, klickbar: aktiv !== e.id && !nurLesen }]" @click.capture="aktiv !== e.id && !nurLesen && oeffnen(e)">
         <div class="eintrag-zeile">
-          <template v-if="aktiv === e.id">
+          <template v-if="aktiv === e.id && e.typ === 'antrag'">
+            <span v-if="!typ" class="badge" :class="TYP_BADGE.antrag">{{ TYP_LABELS.antrag }}</span>
+            <span class="titel grow">{{ e.titel }}</span>
+          </template>
+          <template v-else-if="aktiv === e.id">
             <select v-if="!typ" v-model="e.typ" class="btn-pille" title="Typ" @change="typGeaendert(e)">
-              <option v-for="(label, wert) in TYP_LABELS" :key="wert" :value="wert">{{ label }}</option>
+              <option v-for="(label, wert) in EINTRAG_TYP_WAHL" :key="wert" :value="wert">{{ label }}</option>
             </select>
             <input v-model.trim="e.titel" class="nahtlos titel grow" placeholder="Titel" />
             <span class="werkzeuge">
@@ -53,7 +59,7 @@ export default {
           <input v-model.trim="neuerThemenbereich.name" class="input grow" placeholder="Name des neuen Themenbereichs" required />
           <button class="btn btn-primary">Anlegen</button>
         </form>
-        <textarea v-if="aktiv === e.id" v-model.trim="e.inhalt" v-wachsen class="nahtlos notiz" rows="1" placeholder="Inhalt / Beschreibung …"></textarea>
+        <textarea v-if="aktiv === e.id && e.typ !== 'antrag'" v-model.trim="e.inhalt" v-wachsen class="nahtlos notiz" rows="1" placeholder="Inhalt / Beschreibung …"></textarea>
         <p v-else-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
         <div v-if="aktiv === e.id" class="row mt-1">
           <template v-if="e.typ === 'antrag'">
@@ -77,7 +83,7 @@ export default {
         </div>
       </div>
 
-      <button v-if="!nurLesen" class="btn btn-ghost" style="margin-left: -0.65rem" @click="hinzufuegen">+ {{ typ ? TYP_LABELS[typ] : 'Eintrag' }}</button>
+      <button v-if="!nurLesen && typ !== 'antrag' && typ !== 'antraege'" class="btn btn-ghost" style="margin-left: -0.65rem" @click="hinzufuegen">+ {{ typ ? TYP_LABELS[typ] : 'Eintrag' }}</button>
     </div>
   `,
   data() {
@@ -85,6 +91,7 @@ export default {
       neuerThemenbereichOffen: false,
       neuerThemenbereich: { name: '', farbe: '#b4c410' },
       TYP_LABELS,
+      EINTRAG_TYP_WAHL,
       TYP_BADGE,
       ANTRAG_STATUS,
       PENDENZ_STATUS,

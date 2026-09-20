@@ -2,8 +2,8 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
 import { aktuellePerson, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
-import { dauerSumme, istAntragPunkt, istBerechtigt, personenText, wirksamerTyp } from '../utils/traktanden.js'
-import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
+import { dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
+import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
 import EintragListe from '../components/EintragListe.js'
 import GaesteListe from '../components/GaesteListe.js'
@@ -88,7 +88,7 @@ export default {
         <div class="traktandum-kopf">
           <span class="nr">{{ i + 1 }}.</span>
           <h2>{{ t.titel }}</h2>
-          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ TYP_LABELS[t.typ] }}</span>
+          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
           <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
           <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
         </div>
@@ -118,11 +118,12 @@ export default {
             an der Sitzung vom {{ formatDatum(uebertrageneAntraege[t.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
           </p>
 
-          <EintragListe :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
+          <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
+          <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
 
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="t.typ" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
+          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
             <template #default="{ u, typ, darf }">
-              <div class="mt-1">
+              <div v-if="typ !== 'antraege'" class="mt-1">
                 <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
               </div>
             </template>
@@ -195,7 +196,7 @@ export default {
       SITZUNG_STATUS_KLASSE,
       PENDENZ_STATUS,
       TYP_BADGE,
-      TYP_LABELS,
+      PUNKT_TYP,
     }
   },
   computed: {
@@ -325,6 +326,7 @@ export default {
     sitzungStatus,
     wirksamerTyp,
     istAntragPunkt,
+    kindTyp,
     // Leeres oder ungültiges Feld -> keine Dauer
     dauerBereinigen(traktandumId) {
       const wert = this.protokoll.dauern[traktandumId]

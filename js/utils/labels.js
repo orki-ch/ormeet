@@ -1,4 +1,9 @@
+// Typen der Einträge im Protokoll
 export const TYP_LABELS = { information: 'Information', antrag: 'Antrag', pendenz: 'Pendenz' }
+// Typen, die man im Protokoll bei einem Eintrag noch wählen kann: Anträge entstehen nur im Vorprotokoll
+export const EINTRAG_TYP_WAHL = { information: 'Information', pendenz: 'Pendenz' }
+// Typen eines Traktandums / Unterpunkts: antrag = der Punkt ist selbst der Antrag, antraege = jeder Unterpunkt ist ein Antrag
+export const PUNKT_TYP = { information: 'Information', antrag: 'Antrag', antraege: 'Anträge', pendenz: 'Pendenz' }
 
 export const ANTRAG_STATUS = { offen: 'Offen', angenommen: 'Angenommen', abgelehnt: 'Abgelehnt', vertagt: 'Vertagt', sistiert: 'Sistiert' }
 
@@ -25,10 +30,16 @@ export const STIMME = { ja: '✓', vielleicht: '?', nein: '✕' }
 export function sitzungStatus(sitzung) {
   return sitzung.terminfindung?.status === 'offen' ? 'terminfindung' : sitzung.status
 }
-export const TYP_BADGE = { information: 'blau', antrag: 'violett', pendenz: 'rot' }
+export const TYP_BADGE = { information: 'blau', antrag: 'violett', antraege: 'violett', pendenz: 'rot' }
 
-// Typ eines Traktandums / Unterpunkts im Vorprotokoll: leer = frei, sonst gilt der Typ für alle Einträge darunter
-export const TRAKTANDUM_TYP = { '': 'Typ frei', ...TYP_LABELS }
+// Auswahl für den Typ eines Traktandums / Unterpunkts im Vorprotokoll: leer = frei, sonst gilt der Typ für alles darunter
+export const TRAKTANDUM_TYP = {
+  '': 'Typ frei',
+  information: 'Information',
+  antrag: 'Antrag – dieser Punkt ist der Antrag',
+  antraege: 'Anträge – jeder Unterpunkt ist ein Antrag',
+  pendenz: 'Pendenz',
+}
 
 // Minuten -> «20 Min.» / «1 h 15 Min.»
 export function formatDauer(minuten) {

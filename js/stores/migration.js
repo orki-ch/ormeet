@@ -113,15 +113,18 @@ function traktandum(t, personen) {
   unterpunkte(t)
 }
 
-// Unterpunkte auf allen Ebenen (Unterpunkte von Unterpunkten seit 1.3)
-function unterpunkte(eintrag) {
+// Unterpunkte auf allen Ebenen (Unterpunkte von Unterpunkten seit 1.3).
+// Bis 1.4 war ein Antrag-Punkt mit Unterpunkten stillschweigend eine Antragsliste – seither ist das der eigene Typ «antraege».
+function unterpunkte(eintrag, elternTyp = '') {
   eintrag.untertraktanden ??= []
+  if (!elternTyp && eintrag.typ === 'antrag' && eintrag.untertraktanden.length) eintrag.typ = 'antraege'
+  const typ = elternTyp || eintrag.typ
   eintrag.untertraktanden.forEach((u) => {
     u.notiz ??= ''
     u.typ ??= ''
     u.verantwortliche ??= []
     u.bearbeiter ??= []
-    unterpunkte(u)
+    unterpunkte(u, typ === 'antraege' ? 'antrag' : typ)
   })
 }
 
