@@ -5,7 +5,8 @@ import { MAX_TIEFE, istAntragPunkt, kindTyp, neuesUntertraktandum, personenText 
 
 // Unterpunkte eines Traktandums als Baum über alle Ebenen (1.1, 1.1.1). Anzeige und Bearbeitung im selben Layout:
 // im Bearbeitungsmodus (bearbeiten = ganzer Baum, aktivId = ein einzelner Unterpunkt) werden Titel und Notiz
-// direkt im Element getippt; Person, Typ und Rechte liegen in einem Pillen-Menü, Verschieben / Löschen / Unterpunkt anlegen im ⋯-Menü.
+// direkt im Element getippt; Person, Typ und Rechte liegen in einem Pillen-Menü, Verschieben / Löschen im ⋯-Menü,
+// «+ Unterpunkt zu 2.1» als Knopf unter dem Unterpunkt.
 // pruefen(u): darf die Person diesen Unterpunkt selbst bearbeiten; geerbt: das Element darüber ist schon bearbeitbar.
 // Selbst bearbeitbare Unterpunkte unter einem gesperrten Element erhalten die Rahmen-Klasse `klasse`.
 // Slot default { u, nr, typ, darf }: Inhalte unter dem Unterpunkt (Einträge im Protokoll).
@@ -48,7 +49,6 @@ export default {
             <MenuDropdown>
               <button v-if="!einzeln(u)" class="menu-item" :disabled="j === 0" @click="verschieben(j, -1)">↑ Nach oben</button>
               <button v-if="!einzeln(u)" class="menu-item" :disabled="j === liste.length - 1" @click="verschieben(j, 1)">↓ Nach unten</button>
-              <button v-if="tiefe < MAX_TIEFE && !istAntragPunkt(u, elternTyp)" class="menu-item" @click="u.untertraktanden.push(neuesUntertraktandum(''))">+ Unterpunkt zu {{ nr(j) }}</button>
               <button v-if="!einzeln(u)" class="menu-item menu-item-danger" @click="liste.splice(j, 1)">Unterpunkt löschen</button>
             </MenuDropdown>
           </span>
@@ -66,7 +66,11 @@ export default {
       <Unterpunkte v-if="u.untertraktanden?.length" :liste="u.untertraktanden" :nummer="nr(j)" :tiefe="tiefe + 1" :eltern-typ="kindTyp(elternTyp || u.typ)" :geerbt="darf(u)" :pruefen="pruefen" :aktiv-id="aktivId" :klasse="klasse" :bearbeiten="imEdit(u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" :im-protokoll="imProtokoll" @klick="(k, d) => $emit('klick', k, d)" @fertig="$emit('fertig')">
         <template v-for="(_, name) in $slots" #[name]="scope"><slot :name="name" v-bind="scope"></slot></template>
       </Unterpunkte>
-      <div v-if="einzeln(u)" class="row mt-1"><button class="btn ml-auto" @click.stop="$emit('fertig')">Fertig</button></div>
+      <!-- Weiterer Unterpunkt (1.1.1) direkt als Knopf, wie «+ Unterpunkt» beim Traktandum -->
+      <div v-if="imEdit(u) && (tiefe < MAX_TIEFE && !istAntragPunkt(u, elternTyp) || einzeln(u))" class="row mt-1">
+        <button v-if="tiefe < MAX_TIEFE && !istAntragPunkt(u, elternTyp)" class="btn btn-ghost" @click.stop="u.untertraktanden.push(neuesUntertraktandum(''))">+ Unterpunkt zu {{ nr(j) }}</button>
+        <button v-if="einzeln(u)" class="btn ml-auto" @click.stop="$emit('fertig')">Fertig</button>
+      </div>
     </div>
   `,
   data() {
