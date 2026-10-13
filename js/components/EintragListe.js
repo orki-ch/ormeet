@@ -14,6 +14,7 @@ export default {
   name: 'EintragListe',
   components: { MenuDropdown, PersonInput, ThemenbereichSelect },
   mixins: [bearbeitenMixin],
+  inject: { aenderung: { default: null } }, // Protokoll nach Abschluss: Klick auf einen Eintrag beantragt eine Änderung
   props: {
     traktandumId: { type: String, required: true },
     themenbereichId: { type: String, default: '' }, // Vorgabe für neue Einträge
@@ -28,17 +29,19 @@ export default {
   template: `
     <div>
       <!-- Vorschau und Bearbeitung im selben Layout: Titel und Inhalt werden direkt im Eintrag getippt -->
-      <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="[typ ? '' : 'typ-' + e.typ, { editing: aktiv === e.id, klickbar: aktiv !== e.id && !nurLesen }]" @click.capture="aktiv !== e.id && !nurLesen && oeffnen(e)">
+      <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="[typ ? '' : 'typ-' + e.typ, { editing: aktiv === e.id, klickbar: aktiv !== e.id && !nurLesen }]" @click.capture="aktiv !== e.id && !nurLesen && oeffnen(e)" @click="nurLesen && aenderung?.aktiv() && aenderung.oeffnen(e.id, e.titel || TYP_LABELS[e.typ], $event)">
         <div class="eintrag-zeile">
           <template v-if="aktiv === e.id && e.typ === 'antrag' && !antraegeFrei">
             <span v-if="!typ" class="badge" :class="TYP_BADGE.antrag">{{ TYP_LABELS.antrag }}</span>
             <span class="titel grow">{{ e.titel }}</span>
+            <span v-if="aenderung?.anzahl(e.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Eintrag">✎ {{ aenderung.anzahl(e.id) }}</span>
           </template>
           <template v-else-if="aktiv === e.id">
             <select v-if="!typ" v-model="e.typ" class="btn-pille" title="Typ" @change="typGeaendert(e)">
               <option v-for="(label, wert) in typWahl" :key="wert" :value="wert">{{ label }}</option>
             </select>
             <input v-model.trim="e.titel" class="nahtlos titel grow" placeholder="Titel" />
+            <span v-if="aenderung?.anzahl(e.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Eintrag">✎ {{ aenderung.anzahl(e.id) }}</span>
             <span class="werkzeuge">
               <ThemenbereichSelect v-model="e.themenbereichId" :themenbereiche="gremium.themenbereiche" class="btn-pille" />
               <MenuDropdown>
@@ -51,6 +54,7 @@ export default {
             <span v-if="!typ || e.typ !== typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
             <span class="titel" :class="{ leer: !e.titel }">{{ e.titel || 'Ohne Titel' }}</span>
             <span class="leise">{{ meta(e) }}</span>
+            <span v-if="aenderung?.anzahl(e.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Eintrag">✎ {{ aenderung.anzahl(e.id) }}</span>
             <select v-if="nurLesen && eigenePendenz(e)" v-model="e.pendenzStatus" class="input klein w-sm" title="Status deiner Pendenz" @click.stop>
               <option v-for="(label, wert) in PENDENZ_STATUS" :key="wert" :value="wert">{{ label }}</option>
             </select>

@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { aktuellePerson, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { allePunkte, dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -15,17 +15,18 @@ import TeilenKarte from '../components/TeilenKarte.js'
 import Unterpunkte from '../components/Unterpunkte.js'
 import Zusatztraktanden from '../components/Zusatztraktanden.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
+import Aenderungsantraege from '../components/Aenderungsantraege.js'
 import { neuerKey } from '../utils/keys.js'
 import { neuesTraktandum } from '../utils/traktanden.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden, KurzTeilnehmende },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden, KurzTeilnehmende, Aenderungsantraege },
   props: {
     sitzungId: { type: String, required: true },
   },
   template: `
-    <div v-if="protokoll" class="stack-lg">
+    <div v-if="protokoll" class="stack-lg" :class="{ 'aenderung-modus': darfStellen }">
       <header class="page-header" style="margin-bottom: 0">
         <router-link v-if="zurueck" :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
         <div class="kopf">
@@ -37,6 +38,7 @@ export default {
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
             <p v-if="linkKopiert" class="small text-ok mt-1">Verfolger-Link kopiert – wer ihn öffnet, sieht das Protokoll live (nur lesen).</p>
             <p v-else-if="genehmigt" class="small text-ok mt-1">Genehmigt an der Sitzung vom {{ formatDatum(sitzung.genehmigt.datum) }} – dieses Protokoll kann nicht mehr bearbeitet werden.</p>
+            <p v-else-if="darfStellen" class="muted small mt-1">Abgeschlossen – eine Änderung beantragst du per Klick auf den betreffenden Punkt.</p>
             <p v-else-if="person && !voll && !eigene" class="muted small mt-1">Dieses Protokoll ist für dich nur zum Lesen freigegeben.</p>
             <p v-else-if="person && !voll" class="muted small mt-1">Bereiche mit farbigem Rahmen kannst du bearbeiten; alles andere ist nur lesbar.</p>
           </div>
@@ -55,6 +57,9 @@ export default {
           </div>
         </div>
       </header>
+
+      <!-- Änderungsanträge nach Abschluss: Leitung sieht alle, wer beantragt hat, die eigenen -->
+      <Aenderungsantraege v-if="darfStellen || antraegeSichtbar.length" :liste="antraegeSichtbar" :alle="gespeichertesProtokoll.aenderungsantraege" :sicht-alle="siehtAlleAntraege" :darf-entscheiden="darfEntscheiden" :darf-stellen="darfStellen" :person-id="person?.id || null" :entscheider-name="person?.name || 'Verwaltung'" />
 
       <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" />
 
@@ -100,7 +105,7 @@ export default {
       <template v-for="(t, i) in traktanden" :key="t.id">
         <section :id="t.id" class="card mit-pille" :class="{ bearbeitbar: darfTraktandum(t) }">
           <!-- Kurzsitzung: Haupttraktanden entstehen hier; Klick auf den Titel öffnet ihn zum Bearbeiten -->
-          <div class="traktandum-kopf" :class="{ 'zusatz-kopf': kurz && voll && kurzAktiv !== t.id }" @click="kurz && voll && kurzAktiv !== t.id && kurzOeffnen(t)">
+          <div class="traktandum-kopf" :class="{ 'zusatz-kopf': kurz && voll && kurzAktiv !== t.id }" @click="kopfKlick(t, i, $event)">
             <span class="nr">{{ i + 1 }}.</span>
             <template v-if="kurz && kurzAktiv === t.id">
               <input v-model.trim="t.titel" class="nahtlos h2 grow" placeholder="Traktandum" />
@@ -113,6 +118,7 @@ export default {
               </span>
             </template>
             <h2 v-else :class="{ leer: !t.titel }">{{ t.titel || 'Ohne Titel' }}</h2>
+            <span v-if="antraegeAn(t.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Punkt">✎ {{ antraegeAn(t.id) }}</span>
             <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
             <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
             <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
@@ -205,10 +211,30 @@ export default {
         </div>
       </section>
 
+      <!-- Änderungsantrag zu einem angeklickten Punkt (nach Abschluss der Sitzung) -->
+      <div v-if="antragZiel" class="antrag-popover" :style="{ top: antragZiel.top + 'px', left: antragZiel.left + 'px' }">
+        <span class="label">Änderungsantrag zu «{{ antragZiel.zielText }}»</span>
+        <textarea ref="antragFeld" v-model.trim="antragText" v-wachsen class="input" rows="3" placeholder="Was soll geändert werden?"></textarea>
+        <div class="row mt-1">
+          <button type="button" class="btn" @click="antragZiel = null">Abbrechen</button>
+          <button type="button" class="btn btn-primary ml-auto" :disabled="!antragText" @click="antragSenden">Absenden</button>
+        </div>
+      </div>
+
       <TeilenKarte :sitzung="sitzung" dokument="protokoll" :vorprotokoll="vorprotokollDokument" :protokoll="protokoll" :darf-setzen="voll" :links-sichtbar="linksSichtbar" />
     </div>
     <p v-else class="muted">Zu dieser Sitzung gibt es noch kein Protokoll.</p>
   `,
+  // Unterpunkte und Einträge öffnen beim Anklicken einen Änderungsantrag und zeigen ihre Anzahl
+  provide() {
+    return {
+      aenderung: {
+        aktiv: () => this.darfStellen,
+        oeffnen: (zielId, zielText, event) => this.antragOeffnen(zielId, zielText, event),
+        anzahl: (zielId) => this.antraegeAn(zielId),
+      },
+    }
+  },
   data() {
     return {
       protokoll: null, // lokale Arbeitskopie, wird per Auto-Save in den Store geschrieben
@@ -218,6 +244,8 @@ export default {
       linkKopiert: false,
       zusatzAktiv: null, // ID des Zusatztraktandums in Bearbeitung
       kurzAktiv: null, // Kurzsitzung: ID des Traktandums, dessen Titel bearbeitet wird
+      antragZiel: null, // Änderungsantrag in Arbeit: { zielId, zielText, top, left }
+      antragText: '',
       neuerTermin: { datum: '', zeit: '', ort: '', vorlageId: '' },
       terminModus: 'offen', // offen | bestehend | neu | abstimmung
       TERMIN_MODI: { offen: 'Offen lassen', bestehend: 'Bestehend', neu: 'Neu', abstimmung: 'Abstimmung' },
@@ -240,6 +268,25 @@ export default {
     },
     kurz() {
       return !!this.sitzung.kurz
+    },
+    // Gespeicherter Stand im Store: Änderungsanträge werden dort bearbeitet (die Arbeitskopie trägt sie nicht)
+    gespeichertesProtokoll() {
+      return sitzungenStore.protokollVonSitzung(this.sitzungId)
+    },
+    darfStellen() {
+      return darfAenderungStellen(this.sitzung, this.gespeichertesProtokoll)
+    },
+    darfEntscheiden() {
+      return darfAenderungEntscheiden(this.sitzung)
+    },
+    // Alle Anträge sehen Protokollführung, Verwaltung und Sitzungsleitung; sonst nur die eigenen
+    siehtAlleAntraege() {
+      return this.darfEntscheiden || this.sitzung.sitzungsleitung.some((p) => p.id === this.person?.id)
+    },
+    antraegeSichtbar() {
+      if (istGenehmigt(this.sitzung)) return []
+      const alle = this.gespeichertesProtokoll?.aenderungsantraege || []
+      return this.siehtAlleAntraege ? alle : alle.filter((a) => a.personId === this.person?.id)
     },
     gremium() {
       return gremienStore.byId(this.sitzung.gremiumId)
@@ -328,6 +375,10 @@ export default {
     },
   },
   watch: {
+    // Klick auf eine Benachrichtigung, während das Protokoll schon offen ist
+    '$route.query.zu'(zu) {
+      springeZu(zu)
+    },
     protokoll: {
       deep: true,
       handler(neu, alt) {
@@ -386,6 +437,7 @@ export default {
     tastendruck(event) {
       if (event.key === 'Escape') {
         this.zusatzAktiv = null
+        this.antragZiel = null
         if (this.kurzAktiv) this.kurzSchliessen(this.traktanden.find((t) => t.id === this.kurzAktiv))
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
@@ -402,7 +454,8 @@ export default {
         vp.gaeste = this.protokoll.gaeste.map((g) => ({ ...g }))
         if (this.linksSichtbar) vp.gaeste.forEach((g) => (vp.personenKeys[g.id] ||= neuerKey()))
       }
-      sitzungenStore.speichereProtokoll({ ...this.protokoll, abwesende: this.abwesende })
+      // Änderungsanträge bleiben, wie sie im Store stehen (sie werden dort direkt bearbeitet)
+      sitzungenStore.speichereProtokoll({ ...this.protokoll, abwesende: this.abwesende, aenderungsantraege: this.gespeichertesProtokoll.aenderungsantraege })
       this.gespeichert = true
       this.gespeichertUm = this.uhrzeit()
       serverSpeichern()
@@ -415,6 +468,38 @@ export default {
       liste.splice(index < 0 ? liste.length : index, 0, zusatz)
       this.zusatzAktiv = zusatz.id
       this.$nextTick(() => document.getElementById(zusatz.id)?.querySelector('.nahtlos')?.focus())
+    },
+    // Klick auf den Kopf eines Traktandums: Kurzsitzung bearbeitet den Titel, nach Abschluss ein Änderungsantrag
+    kopfKlick(t, i, event) {
+      if (this.kurz && this.voll && this.kurzAktiv !== t.id) return this.kurzOeffnen(t)
+      if (this.darfStellen) this.antragOeffnen(t.id, `${i + 1}. ${t.titel}`, event)
+    },
+    // Offene Änderungsanträge an dieser Stelle (erledigte werden nicht mehr markiert)
+    antraegeAn(zielId) {
+      return this.antraegeSichtbar.filter((a) => a.zielId === zielId && a.status === 'offen').length
+    },
+    // Kleines Fenster mit Textfeld direkt beim angeklickten Punkt
+    antragOeffnen(zielId, zielText, event) {
+      const rahmen = event.currentTarget.getBoundingClientRect()
+      const breite = Math.min(384, innerWidth - 32)
+      this.antragZiel = { zielId, zielText, top: rahmen.bottom + scrollY + 6, left: Math.max(16, Math.min(rahmen.left + scrollX, innerWidth - breite - 16)) }
+      this.antragText = ''
+      this.$nextTick(() => this.$refs.antragFeld?.focus())
+    },
+    antragSenden() {
+      this.gespeichertesProtokoll.aenderungsantraege.push({
+        id: crypto.randomUUID(),
+        zielId: this.antragZiel.zielId,
+        zielText: this.antragZiel.zielText,
+        personId: this.person.id,
+        name: this.person.name,
+        text: this.antragText,
+        zeit: new Date().toISOString(),
+        status: 'offen',
+        antwort: '',
+        entschiedenVon: '',
+      })
+      this.antragZiel = null
     },
     // Kurzsitzung: Haupttraktanden fortlaufend während der Sitzung erfassen (ohne Begründung)
     kurzHinzufuegen() {

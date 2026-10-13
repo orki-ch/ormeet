@@ -97,6 +97,16 @@ export function benachrichtigungen() {
           }
         }
       }
+      // Änderungsanträge (bis zur Genehmigung): Sitzungsleitung zur Ansicht, Protokollführung zur Anpassung,
+      // die antragstellende Person erfährt den Entscheid. Der Link führt an die betroffene Stelle im Protokoll.
+      if (p && person && !s.genehmigt) {
+        const fuehrt = s.sitzungsleitung.some((x) => x.id === personId) || s.protokollfuehrung.some((x) => x.id === personId)
+        for (const a of p.aenderungsantraege || []) {
+          const ziel = `/sitzung/${s.id}/protokoll?zu=${a.zielId}`
+          if (fuehrt && a.status === 'offen') melde(`aenderung:${a.id}`, `${a.name} beantragt eine Änderung zu «${a.zielText}» (${sitzungName(s)})`, ziel, g)
+          if (a.personId === personId && a.status !== 'offen') melde(`aenderung:${a.id}:${a.status}`, `Dein Änderungsantrag zu «${a.zielText}» wurde ${a.status === 'uebernommen' ? 'übernommen' : 'abgelehnt'}`, ziel, g)
+        }
+      }
       if (p && person) {
         for (const e of p.eintraege) {
           if (e.typ !== 'pendenz' || e.zugewiesenAn !== personId || e.pendenzStatus === 'erfuellt') continue

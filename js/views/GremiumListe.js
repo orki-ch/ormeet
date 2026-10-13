@@ -36,13 +36,15 @@ export default {
         </router-link>
       </div>
 
-      <section v-if="kurzsitzungen.length || darfKurzAnlegen" class="card">
-        <div class="card-head">
-          <h2 class="card-title">Kurzsitzungen</h2>
+      <template v-if="kurzsitzungen.length || darfKurzAnlegen">
+        <header class="page-header row between" style="margin: 1rem 0 0">
+          <h1 class="title">Kurzsitzungen</h1>
           <button v-if="darfKurzAnlegen" class="btn btn-primary" @click="dialog = true">+ Kurzsitzung</button>
-        </div>
-        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
-      </section>
+        </header>
+        <section class="card">
+          <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
+        </section>
+      </template>
 
       <KurzsitzungDialog v-if="dialog" @schliessen="dialog = false" />
     </div>

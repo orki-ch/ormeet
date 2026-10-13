@@ -302,6 +302,7 @@ export const sitzungenStore = {
       abwesende: sitzung.kurz ? [] : erwarteteIds.filter((id) => !vorprotokoll.anwesendeMitgliederIds.includes(id)),
       gaeste: vorprotokoll.gaeste.map((g) => ({ ...g })),
       eintraege: [],
+      aenderungsantraege: [], // nach Abschluss: { id, zielId, zielText, personId, name, text, zeit, status: offen | uebernommen | abgelehnt, antwort, entschiedenVon }
       zusatztraktanden: [], // im Protokoll hinzugekommene Haupttraktanden: { id, titel, begruendung, nachId } (nachId: Traktandum davor, null = am Anfang)
       dauern: {}, // tatsächliche Dauer pro Traktandum in Minuten (geplante Dauer steht im Vorprotokoll)
       verfolgerKey: neuerKey(), // Live-Ansicht (nur lesen)

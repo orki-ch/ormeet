@@ -40,7 +40,7 @@ export default {
           <div class="zeile oben"><strong>Übersichts-Link</strong><span>Teilt die historische Übersicht eines Themenbereichs (nur lesen). Zu finden im ⋯-Menü der Übersicht.</span></div>
           <div class="zeile oben"><strong>Verfolger-Link</strong><span>Gehört zu einem Protokoll. Zuschauer sehen live, was protokolliert wird – ohne etwas ändern zu können.</span></div>
         </div>
-        <p class="muted">Mit <em>Abmelden</em> oben rechts verlässt du den aktuellen Zugang. Ein Link kann jederzeit erneuert werden; der alte wird damit ungültig.</p>
+        <p class="muted">Das Menü oben rechts (drei Striche) zeigt, wie du angemeldet bist und ob alles gespeichert ist; dort findest du je nach Zugang <em>Mein Konto</em>, <em>Benutzer & Links</em>, <em>Einstellungen</em> und <em>Abmelden</em>, womit du den aktuellen Zugang verlässt. Ein Link kann jederzeit erneuert werden; der alte wird damit ungültig.</p>
       </section>
 
       <section id="konto" class="card stack-sm">
@@ -49,7 +49,7 @@ export default {
           <li><strong>Konto erstellen:</strong> Öffne deinen persönlichen Link. In der Karte <em>Eigenes Konto</em> gibst du E-Mail und Passwort ein – oder du wählst <em>Mit Sublevia / Orki registrieren</em>. Der Link wird mit dem Konto verknüpft. Hast du schon ein Konto, wähle <em>Ich habe schon ein Konto</em>: So kommt ein weiteres Gremium zu deinem Konto dazu. Auch wenn du angemeldet bist und einen persönlichen Link öffnest, fragt Ormeet, ob es ihn mit deinem Konto verknüpfen soll.</li>
           <li><strong>Anmelden:</strong> Auf der Anmeldeseite mit E-Mail und Passwort oder über einen Anbieter. Der Superadmin kann dich unter <em>Benutzer & Links</em> zusätzlich weiteren Gremien zuordnen.</li>
           <li><strong>Gremium wechseln:</strong> Oben rechts in deiner Übersicht wählst du das Gremium. Jedes hat seine eigene Übersicht und einen eigenen Kalender-Abo-Link. <em>Meine Gremien</em> (Haus-Symbol) zeigt alle auf einen Blick.</li>
-          <li><strong>Mein Konto</strong> (Personen-Symbol): Name und Passwort ändern, Anbieter verknüpfen, andere Geräte abmelden.</li>
+          <li><strong>Mein Konto</strong> (im Menü oben rechts): Name und Passwort ändern, Anbieter verknüpfen, andere Geräte abmelden.</li>
           <li><strong>Glocke:</strong> Die Benachrichtigungen zeigen, was dich betrifft – offene Terminfindungen ohne deine Stimme, festgelegte Termine, Sitzungen in den nächsten sieben Tagen, dir zugewiesene Traktanden und Pendenzen, Fristen, abgeschlossene Protokolle, neue Kommentare. Ein Klick führt direkt an die passende Stelle; du siehst dort genau das, was dein Zugang erlaubt. Gelesene Einträge merkt sich dein Browser.</li>
         </ul>
       </section>
@@ -96,6 +96,9 @@ export default {
           <li>Über ⋯ den <em>Verfolger-Link</em> kopieren, wenn Personen live mitlesen sollen.</li>
           <li><strong>Nächster Sitzungstermin:</strong> Mit dem Schalter wählst du <em>Offen lassen</em>, <em>Bestehend</em> (eine schon erfasste Sitzung), <em>Neu</em> (Datum, Zeit, Ort, Vorlage) oder <em>Abstimmung</em> (Termin per Terminfindung suchen). Darunter erscheint nur, was dafür nötig ist; der Termin erscheint im Protokoll und hat schon sein eigenes Vorprotokoll.</li>
           <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden. Starten, abschliessen, wieder öffnen und das Protokoll entfernen kann, wer das Protokoll ganz bearbeiten darf – also auch die Protokollführung, nicht nur die Sitzungsleitung.</li>
+          <li><strong>Änderungsanträge:</strong> Ist eine Sitzung abgeschlossen, können alle Mitglieder mit Konto, die an der Sitzung erwartet waren oder dabei waren, zu jedem Punkt eine Änderung beantragen: Traktandum, Unterpunkt oder Eintrag anklicken, im kleinen Fenster beschreiben, was geändert werden soll, und absenden. Solange der Antrag offen ist, lässt er sich noch anpassen oder zurückziehen.</li>
+          <li>Die Sitzungsleitung und die Protokollführung erhalten eine Benachrichtigung; ein Klick führt direkt an die betroffene Stelle. Oben im Protokoll stehen alle Änderungsanträge, offene sind rot markiert – auch an der Stelle selbst. Die Protokollführung passt das Protokoll direkt an und entscheidet mit <em>Übernommen</em> oder <em>Abgelehnt</em>, auf Wunsch mit einer kurzen Antwort; die antragstellende Person erfährt den Entscheid.</li>
+          <li>Sobald das Protokoll genehmigt ist, sind keine Änderungsanträge und keine Änderungen mehr möglich – auch nicht für die Protokollführung. Kurzsitzungen haben keine Änderungsanträge.</li>
         </ol>
       </section>
 

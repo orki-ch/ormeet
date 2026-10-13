@@ -73,6 +73,27 @@ export function darfEigene(sitzung, dokument) {
   return !personId || freigabeStufe(sitzung, dokument, personId) !== 'lesen'
 }
 
+// Änderungsanträge nach Abschluss einer Sitzung (bis zur Genehmigung, nie bei Kurzsitzungen). Stellen darf ein Mitglied
+// mit verknüpftem Konto, das an der Sitzung erwartet oder anwesend war – sofern es das Protokoll nicht selbst ganz bearbeitet.
+export function aenderungenOffen(sitzung) {
+  return !sitzung.kurz && sitzung.status === 'abgeschlossen' && !istGenehmigt(sitzung)
+}
+
+export function darfAenderungStellen(sitzung, protokoll) {
+  const person = gremienStore.byId(sitzung.gremiumId)?.mitglieder.find((m) => m.id === personIdIm(sitzung.gremiumId))
+  if (!aenderungenOffen(sitzung) || !person?.benutzerId || vollzugriff(sitzung, 'protokoll')) return false
+  return gremienStore.erwarteteMitglieder(sitzung.gremiumId).some((m) => m.id === person.id) || protokoll.anwesende.includes(person.id)
+}
+
+// Entscheiden (übernommen / abgelehnt) darf die Protokollführung bzw. wer das Gremium verwaltet
+export function darfAenderungEntscheiden(sitzung) {
+  if (!aenderungenOffen(sitzung)) return false
+  const rolle = rolleIm(sitzung.gremiumId)
+  if (rolle === 'admin') return true
+  if (rolle === 'gremium') return recht('sitzungen', sitzung.gremiumId) === 'bearbeiten'
+  return sitzung.protokollfuehrung.some((p) => p.id === personIdIm(sitzung.gremiumId))
+}
+
 // Darf das ganze Dokument (Vorprotokoll / Protokoll / Terminfindung) einer Sitzung bearbeitet werden?
 export function vollzugriff(sitzung, dokument = 'protokoll') {
   const rolle = rolleIm(sitzung.gremiumId)

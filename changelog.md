@@ -1,5 +1,12 @@
 # Änderungsverlauf
 
+## 1.5.02
+- Nach einer abgeschlossenen Sitzung können Beteiligte mit Konto zu jedem Punkt im Protokoll eine Änderung beantragen. Die Protokollführung wird benachrichtigt, nimmt die Änderung vor und meldet zurück, ob sie übernommen wurde. Ist das Protokoll genehmigt, sind keine Änderungen mehr möglich.
+- Beim Einladen in eine Kurzsitzung werden passende Konten vorgeschlagen; ein Klick genügt.
+- Das Menü oben rechts ist aufgeräumt: Seltene Punkte, die Anmeldung und der Speicherstand liegen jetzt in einem Menü.
+- Auswahlknöpfe und Kontrollkästchen sehen überall gleich aus.
+- Diverse Anpassungen an der Darstellung.
+
 ## 1.5.01
 - Neu gibt es Kurzsitzungen: kurze, spontane Besprechungen, die sofort protokolliert werden – ohne Vorprotokoll und ohne weitere Sitzungen danach. Sie lassen sich mit oder ohne Gremium anlegen; Teilnehmende werden eingeladen und erhalten einen eigenen Link.
 - Der Superadmin kann sich mit seinem eigenen Konto verbinden und sieht dann seine persönliche Übersicht.

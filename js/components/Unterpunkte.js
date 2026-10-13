@@ -31,12 +31,14 @@ export default {
     imProtokoll: { type: Boolean, default: false },
   },
   emits: ['klick', 'fertig'],
+  inject: { aenderung: { default: null } }, // Protokoll nach Abschluss: Klick auf den Kopf beantragt eine Änderung
   template: `
     <div v-for="(u, j) in liste" :id="u.id" :key="u.id" class="sub" :class="[typKlasse(u), { [klasse]: !geerbt && darf(u) && !imEdit(u), editing: einzeln(u) }]" @click.stop="!imEdit(u) && $emit('klick', u, darf(u))">
-      <div class="sub-kopf">
+      <div class="sub-kopf" @click="!imEdit(u) && !darf(u) && aenderung?.aktiv() && aenderung.oeffnen(u.id, nr(j) + ' ' + u.titel, $event)">
         <span class="nr">{{ nr(j) }}</span>
         <template v-if="imEdit(u)">
           <input v-model.trim="u.titel" class="nahtlos h3 grow" placeholder="Unterpunkt" />
+          <span v-if="aenderung?.anzahl(u.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Punkt">✎ {{ aenderung.anzahl(u.id) }}</span>
           <span class="werkzeuge">
             <MenuDropdown :text="'Personen: ' + (personenText(u.verantwortliche) || 'wie darüber')" panel>
               <label class="stack-xs"><span class="label">Verantwortlich</span><PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Sonst wie darüber" :nur-eigene="nurPerson?.id" /></label>
@@ -57,6 +59,7 @@ export default {
           <h3>{{ u.titel }}</h3>
           <span v-if="u.istAutomatischUebernommen" class="badge gelb">{{ u.antragId ? 'Vertagter Antrag' : 'Pendenz' }}</span>
           <span v-if="!elternTyp && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ PUNKT_TYP[u.typ] }}</span>
+          <span v-if="aenderung?.anzahl(u.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Punkt">✎ {{ aenderung.anzahl(u.id) }}</span>
           <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
         </template>
       </div>

@@ -1,3 +1,5 @@
+import { gremienStore } from '../stores/gremien.js'
+import { sync } from '../stores/sync.js'
 import { neuerKey } from '../utils/keys.js'
 import InfoKnopf from './InfoKnopf.js'
 
@@ -38,12 +40,38 @@ export default {
         <button class="btn btn-primary">Einladen</button>
         <InfoKnopf rechts text="Jede eingeladene Person erhält einen persönlichen Link. Gibt es ein Konto mit derselben E-Mail, erscheint die Kurzsitzung zudem in dessen Übersicht." />
       </form>
+      <!-- Passende Konten als Vorschlag: ein Klick lädt die Person direkt ein -->
+      <div v-if="vorschlaege.length" class="vorschlaege">
+        <button v-for="k in vorschlaege" :key="k.email" type="button" class="vorschlag" @click="kontoEinladen(k)">
+          <strong>{{ k.name }}</strong><span class="leise small">&nbsp;· {{ k.email }}</span>
+        </button>
+      </div>
     </div>
   `,
   data() {
     return { neu: { name: '', email: '' }, kopiert: '' }
   },
+  computed: {
+    // Konten als Vorschlag: der Superadmin kennt alle, sonst nur Konten aus gemeinsamen Gremien / Kurzsitzungen
+    bekannteKonten() {
+      if (sync.zugriff?.rolle === 'admin') return sync.konten.map(({ name, email }) => ({ name, email }))
+      const konten = gremienStore.state.gremien.flatMap((g) => g.mitglieder.filter((m) => m.benutzerId && m.email).map(({ name, email }) => ({ name, email })))
+      return [...new Map(konten.map((k) => [k.email.toLowerCase(), k])).values()]
+    },
+    vorschlaege() {
+      const suche = (this.neu.name + ' ' + this.neu.email).trim().toLowerCase()
+      if (!suche) return []
+      const eingeladen = new Set(this.gremium.mitglieder.map((m) => (m.email || '').toLowerCase()))
+      return this.bekannteKonten
+        .filter((k) => !eingeladen.has(k.email.toLowerCase()) && suche.split(/\s+/).every((w) => (k.name + ' ' + k.email).toLowerCase().includes(w)))
+        .slice(0, 6)
+    },
+  },
   methods: {
+    kontoEinladen(konto) {
+      this.neu = { name: konto.name, email: konto.email }
+      this.einladen()
+    },
     darf(m) {
       return this.voll || m.id === this.personId
     },

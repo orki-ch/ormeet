@@ -643,6 +643,66 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   return $aenderungen;
 }
 
+// --- Änderungsanträge zu abgeschlossenen Protokollen ------------------------------
+// Stellen dürfen Mitglieder mit verknüpftem Konto, die an der Sitzung erwartet waren oder anwesend waren – solange die
+// Sitzung abgeschlossen und das Protokoll nicht genehmigt ist (Kurzsitzungen nie). Entscheiden (übernommen / abgelehnt)
+// darf die Protokollführung bzw. wer das Gremium verwaltet; die Sitzungsleitung sieht sie nur.
+function darfAenderungStellen(array $bundle, array $sitzung, array $protokoll, $personId) {
+  if (!$personId || !empty($sitzung['kurz']) || !empty($sitzung['genehmigt']) || ($sitzung['status'] ?? '') !== 'abgeschlossen') return false;
+  foreach ($bundle['gremium']['mitglieder'] as $m) {
+    if ($m['id'] !== $personId) continue;
+    if (empty($m['benutzerId'])) return false;
+    $erwartet = true;
+    foreach ($bundle['gremium']['rollen'] as $r) if ($r['id'] === ($m['rolleId'] ?? null)) $erwartet = ($r['sollAnwesend'] ?? true) !== false;
+    return $erwartet || in_array($personId, $protokoll['anwesende'] ?? [], true);
+  }
+  return false;
+}
+
+// Bisherige und neue Änderungsanträge zusammenführen: Eigene offene Anträge darf die Person ändern und zurückziehen,
+// neue nur stellen, wenn sie berechtigt ist; Entscheide nur, wer entscheiden darf. Alles andere bleibt, wie es war –
+// so gehen auch keine Anträge verloren, die jemand anderes inzwischen gestellt hat.
+function aenderungsantraegeMerge(array $altListe, array $neuListe, $personId, bool $entscheiden, bool $stellen) {
+  $neuById = indexById($neuListe);
+  $liste = [];
+  foreach ($altListe as $a) {
+    $n = $neuById[$a['id']] ?? null;
+    unset($neuById[$a['id']]);
+    $eigen = $personId && $a['personId'] === $personId && $a['status'] === 'offen';
+    if (!$n) {
+      if (!$eigen) $liste[] = $a; // zurückziehen kann nur, wer ihn gestellt hat
+      continue;
+    }
+    if ($eigen) $a['text'] = (string) ($n['text'] ?? $a['text']);
+    if ($entscheiden && in_array($n['status'] ?? '', ['offen', 'uebernommen', 'abgelehnt'], true)) {
+      foreach (['status', 'antwort', 'entschiedenVon'] as $feld) $a[$feld] = $n[$feld] ?? $a[$feld] ?? '';
+    }
+    $liste[] = $a;
+  }
+  foreach ($neuById as $n) {
+    if ($stellen && ($n['personId'] ?? null) === $personId && ($n['status'] ?? '') === 'offen') $liste[] = $n;
+  }
+  return $liste;
+}
+
+// Für jedes gespeicherte Protokoll die zulässige Liste der Änderungsanträge (vor den übrigen Rechteprüfungen ermittelt)
+function aenderungsantraegeBerechnen(array $bundle, array $aenderungen, array $zugriff) {
+  $sitzungen = indexById($bundle['sitzungen']);
+  $altProtokolle = indexById($bundle['protokolle']);
+  $personId = $zugriff['personId'] ?? null;
+  $ergebnis = [];
+  foreach ($aenderungen['protokolle'] ?? [] as $neu) {
+    $alt = $altProtokolle[$neu['id']] ?? null;
+    $sitzung = $sitzungen[($alt ?? $neu)['sitzungId']] ?? null;
+    if (!$sitzung) continue;
+    $protokollfuehrung = array_column($sitzung['protokollfuehrung'] ?? [], 'id');
+    $entscheiden = in_array($zugriff['rolle'], ['admin', 'gremium'], true) || ($personId && in_array($personId, $protokollfuehrung, true));
+    $stellen = darfAenderungStellen($bundle, $sitzung, $alt ?? $neu, $personId);
+    $ergebnis[$neu['id']] = aenderungsantraegeMerge($alt['aenderungsantraege'] ?? [], $neu['aenderungsantraege'] ?? [], $personId, $entscheiden, $stellen);
+  }
+  return $ergebnis;
+}
+
 // Geheime Schlüssel leeren, die der Zugang nicht sehen darf (leer statt entfernt, damit der Client keine neuen erzeugt)
 // Gremium-Zugang: Links nur zu Bereichen, die er bearbeiten darf – Verfolger- und Übersichts-Links (nur lesen) schon ab «lesen»
 function bereinigen(array $bundle, array $zugriff) {
@@ -1010,6 +1070,7 @@ if ($aktion === 'speichern') {
     $aenderungen['gremium']['kurz'] = $neu ? $neueKurzsitzung : !empty($bundle['gremium']['kurz']);
   }
   foreach (array_keys($aenderungen['sitzungen'] ?? []) as $k) $aenderungen['sitzungen'][$k]['gremiumId'] = $gremiumId; // eine Sitzung bleibt in ihrem Gremium
+  $antraege = aenderungsantraegeBerechnen($bundle, $aenderungen, $zugriff);
   if ($rolle === 'gremium') $aenderungen = gremiumRechteAnwenden($bundle, $aenderungen, $zugriff['rechte']);
   if ($rolle === 'person' || ($rolle === 'freigabe' && isset($zugriff['personId']))) $aenderungen = personRechteAnwenden($bundle, $aenderungen, $zugriff);
   if ($rolle === 'freigabe' && !isset($zugriff['personId'])) {
@@ -1031,6 +1092,9 @@ if ($aktion === 'speichern') {
     $aenderungen = ['vorprotokolle' => $erlaubt, 'sitzungen' => $sitzungen];
   }
 
+  foreach ($aenderungen['protokolle'] ?? [] as $k => $p) {
+    if (isset($antraege[$p['id']])) $aenderungen['protokolle'][$k]['aenderungsantraege'] = $antraege[$p['id']];
+  }
   $aenderungen = genehmigungSchuetzen($bundle, $aenderungen);
   $bundle = einarbeiten($bundle, $aenderungen);
   ftruncate($handle, 0);

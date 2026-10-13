@@ -78,7 +78,7 @@ export default {
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen.</p>
         <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
-            <span class="nowrap"><strong>{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
+            <span class="nowrap"><strong>{{ formatDatum(s.datum) }}</strong><span class="leise">&nbsp;{{ s.zeit }}</span></span>
             <span>{{ s.titel }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span>
               <span v-if="istLeitung(s, person.id)" class="badge brand" style="margin-left: 0.4rem">Leitung / Protokoll</span>
               <span v-else-if="anzahlZugewiesen(s)" class="badge grau" style="margin-left: 0.4rem">{{ anzahlZugewiesen(s) }} Traktanden</span></span>

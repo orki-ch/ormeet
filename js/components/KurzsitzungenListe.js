@@ -17,7 +17,7 @@ export default {
     <p v-if="!sitzungen.length" class="muted small">Noch keine Kurzsitzungen.</p>
     <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
       <div v-for="s in sitzungen" :key="s.id" class="zeile">
-        <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
+        <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise">&nbsp;{{ s.zeit }}</span></span>
         <span>{{ s.titel || 'Kurzsitzung' }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span></span>
         <span><span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(s)]">{{ SITZUNG_STATUS[sitzungStatus(s)] }}</span></span>
         <div class="aktionen">

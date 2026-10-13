@@ -55,7 +55,7 @@ export default {
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen erfasst.</p>
         <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
-            <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise"> {{ s.zeit }}</span></span>
+            <span class="nowrap"><strong :class="{ 'text-warn': !s.datum }">{{ formatDatum(s.datum) }}</strong><span class="leise">&nbsp;{{ s.zeit }}</span></span>
             <span>{{ s.titel }}<span v-if="s.ort" class="leise"> · {{ s.ort }}</span></span>
             <span><span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(s)]">{{ SITZUNG_STATUS[sitzungStatus(s)] }}</span><span v-if="s.genehmigt" class="badge gruen" style="margin-left: 0.25rem" title="Protokoll genehmigt">✓</span></span>
             <div class="aktionen">
@@ -175,7 +175,7 @@ export default {
                 <p class="small muted">Hat sich die Vorlage geändert, kannst du sie auf Sitzungen übertragen, die noch kein Protokoll haben. Kopfdaten und Traktanden des Vorprotokolls werden dabei durch die Vorlage ersetzt; automatisch übernommene Pendenzen und vertagte Anträge bleiben.</p>
                 <div class="row" style="gap: 0.25rem 1.5rem">
                   <label v-for="s in sitzungenOhneProtokoll" :key="s.id" class="check small">
-                    <input v-model="anwendenAuf[v.id]" type="checkbox" :value="s.id" /> {{ formatDatum(s.datum) }}<span class="leise"> {{ s.titel }}{{ s.vorlageId === v.id ? ' · mit dieser Vorlage erfasst' : '' }}</span>
+                    <input v-model="anwendenAuf[v.id]" type="checkbox" :value="s.id" /> {{ formatDatum(s.datum) }}<span class="leise">&nbsp;{{ s.titel }}{{ s.vorlageId === v.id ? ' · mit dieser Vorlage erfasst' : '' }}</span>
                   </label>
                 </div>
                 <div class="row">

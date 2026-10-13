@@ -72,6 +72,7 @@ export function ergaenzeFelder(bundle) {
   bundle.protokolle.forEach((p) => {
     p.verfolgerKey ??= neuerKey()
     p.zusatztraktanden ??= [] // im Protokoll hinzugekommene Haupttraktanden (seit 1.4.13)
+    p.aenderungsantraege ??= [] // Änderungsanträge nach Abschluss der Sitzung (seit 1.5.02)
     if (!p.dauern || Array.isArray(p.dauern)) p.dauern = {} // tatsächliche Dauer pro Traktandum: { [traktandumId]: Minuten }; PHP liefert leer als []
     p.gaeste.forEach(gast)
     p.eintraege.forEach((e) => {
