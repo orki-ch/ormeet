@@ -85,16 +85,17 @@ export default {
         <h2 class="card-title">6. Sitzung protokollieren</h2>
         <ol>
           <li>Im Vorprotokoll <em>Sitzung starten</em> klicken. Anwesenheit und Gäste werden übernommen und können angepasst werden; im Vorprotokoll erfasste Anträge stehen als offene Anträge bereit.</li>
-          <li><strong>Traktandenliste steht fest:</strong> Sobald das Protokoll existiert, ist das Vorprotokoll abgeschlossen und nicht mehr bearbeitbar; im Protokoll lassen sich keine neuen Traktanden anlegen, nur Einträge. Muss die Traktandenliste doch geändert werden, entfernst du das Protokoll über ⋯ → <em>Protokoll entfernen</em> (alle Einträge gehen verloren) – dann ist das Vorprotokoll wieder bearbeitbar.</li>
+          <li><strong>Traktandenliste steht fest:</strong> Sobald das Protokoll existiert, ist das Vorprotokoll abgeschlossen und nicht mehr bearbeitbar; im Protokoll kommen nur noch Einträge und Zusatztraktanden dazu. Muss die Traktandenliste doch geändert werden, entfernst du das Protokoll über ⋯ → <em>Protokoll entfernen</em> (alle Einträge gehen verloren) – dann ist das Vorprotokoll wieder bearbeitbar.</li>
           <li>Bei jedem Traktandum oder Unterpunkt <em>+ Eintrag</em>: Der neue Eintrag öffnet sich direkt – Titel und Inhalt tippst du im Eintrag selbst, Typ (Information, Pendenz), Themenbereich und bei Pendenzen Status, Person und Frist sind Pillen darunter. Ist der Typ beim Traktandum vorgegeben, entfällt die Wahl.</li>
-          <li><strong>Anträge entscheiden:</strong> Die im Vorprotokoll formulierten Anträge stehen im Protokoll bereit – Klick öffnet nur den Beschluss (Offen, Angenommen, Abgelehnt, Vertagt, Sistiert). Bei angenommenen oder abgelehnten Anträgen kannst du die Stimmen (Ja, Nein, Enthaltungen) eintragen; der Beschluss <em>Vertagt</em> bringt den Antrag als neuen, offenen Antrag ins nächste Vorprotokoll. Neue Anträge gibt es im Protokoll nicht – sie gehören ins Vorprotokoll.</li>
+          <li><strong>Anträge entscheiden:</strong> Die im Vorprotokoll formulierten Anträge stehen im Protokoll bereit – Klick öffnet nur den Beschluss (Offen, Angenommen, Abgelehnt, Vertagt, Sistiert). Bei angenommenen oder abgelehnten Anträgen kannst du die Stimmen (Ja, Nein, Enthaltungen) eintragen; der Beschluss <em>Vertagt</em> bringt den Antrag als neuen, offenen Antrag ins nächste Vorprotokoll. Unter dem Beschluss hältst du in einer <em>Notiz</em> fest, was zur Beratung und zum Entscheid wichtig ist; der Antragstext selbst bleibt, wie er im Vorprotokoll stand. Neue Anträge gibt es im Protokoll nicht – sie gehören ins Vorprotokoll.</li>
+          <li><strong>Zusatztraktanden:</strong> Kommt an der Sitzung ein Geschäft dazu, das nicht im Vorprotokoll steht, fügst du unter den Traktanden ein <em>+ Zusatztraktandum</em> hinzu. Es trägt keine Nummer, sondern die Bezeichnung «Zusatztraktandum», und kann an jeder Stelle im Ablauf stehen (Pille <em>Nach …</em>). Im Feld <em>Weshalb kam dieses Traktandum an der Sitzung hinzu?</em> hältst du fest, warum vom Vorprotokoll abgewichen wird; in der Ansicht öffnet sich dieser Text erst auf Klick, im PDF steht er klein unter dem Titel. Einträge erfasst du darin wie bei jedem Traktandum.</li>
           <li><strong>Letztes Protokoll genehmigen:</strong> Die Karte oberhalb der Traktanden zeigt das Protokoll der vorherigen Sitzung. <em>Protokoll genehmigen</em> friert es ein – niemand kann es mehr ändern, nur der Stand seiner Pendenzen wird weiter nachgeführt. Aufheben lässt sich das nur, indem die Sitzung gelöscht wird, an der genehmigt wurde.</li>
           <li>Ein Klick auf einen Eintrag öffnet ihn zum Bearbeiten; er bleibt offen, bis du <em>Fertig</em> klickst oder im selben Traktandum einen anderen Eintrag öffnest.</li>
           <li>Übertragene Pendenzen zeigen den Stand aus der früheren Sitzung; Status, Person und Frist änderst du direkt dort – die Änderung gilt überall.</li>
           <li>Gespeichert wird automatisch (Anzeige oben rechts). <kbd>Ctrl+S</kbd> speichert sofort.</li>
           <li>Über ⋯ den <em>Verfolger-Link</em> kopieren, wenn Personen live mitlesen sollen.</li>
           <li><strong>Nächster Sitzungstermin:</strong> Mit dem Schalter wählst du <em>Offen lassen</em>, <em>Bestehend</em> (eine schon erfasste Sitzung), <em>Neu</em> (Datum, Zeit, Ort, Vorlage) oder <em>Abstimmung</em> (Termin per Terminfindung suchen). Darunter erscheint nur, was dafür nötig ist; der Termin erscheint im Protokoll und hat schon sein eigenes Vorprotokoll.</li>
-          <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden.</li>
+          <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden. Starten, abschliessen, wieder öffnen und das Protokoll entfernen kann, wer das Protokoll ganz bearbeiten darf – also auch die Protokollführung, nicht nur die Sitzungsleitung.</li>
         </ol>
       </section>
 
@@ -121,7 +122,7 @@ export default {
 
       <section id="pdf" class="card stack-sm">
         <h2 class="card-title">9. PDF exportieren</h2>
-        <p>Im Vorprotokoll und im Protokoll über ⋯ → <em>PDF exportieren</em>. Das PDF enthält Kopfdaten, Anwesenheitstabelle, Traktanden mit Einträgen, die Pendenzenliste, den nächsten Termin und den Fusstext des Gremiums.</p>
+        <p>Im Vorprotokoll und im Protokoll über ⋯ → <em>PDF exportieren</em>. Das PDF enthält dieselben Angaben wie die Ansicht: Kopfdaten, Anwesenheitstabelle, den Stand des letzten Protokolls, Traktanden und Zusatztraktanden mit Einträgen (bei Anträgen Beschluss, Abstimmung und Notiz), die Pendenzenliste, den nächsten Termin und den Fusstext des Gremiums. Nur die Darstellung ist fürs Papier angepasst.</p>
       </section>
 
       <section id="bedienung" class="card stack-sm">

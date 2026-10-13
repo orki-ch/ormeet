@@ -562,32 +562,50 @@ function schluesselBewahren(array $alt, array $neu) {
 function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff) {
   $person = personDaten($bundle, $zugriff['personId']);
   $nurVorprotokollId = $zugriff['vorprotokollId'] ?? null; // Gast-Link: nur dieses Vorprotokoll
+  $geloeschteProtokolle = $aenderungen['geloescht']['protokolle'] ?? []; // einzige Löschung, die eine Person darf (siehe unten)
   unset($aenderungen['gremium'], $aenderungen['geloescht']);
   $sitzungen = indexById($bundle['sitzungen']);
 
+  $gastSitzungId = null; // Gast-Link: nur die eigene Sitzung
+  foreach ($bundle['vorprotokolle'] as $vp) if ($vp['id'] === $nurVorprotokollId) $gastSitzungId = $vp['sitzungId'];
+  // Wer ein Dokument einer Sitzung ganz bearbeiten darf (Sitzungsleitung, Protokollführung, Freigabe «alles»),
+  // darf es auch neu anlegen (Sitzung starten) und das Protokoll wieder entfernen – sofern es noch keines gibt
+  $darfAlles = fn($sitzungId, $dokument) => isset($sitzungen[$sitzungId]) && (!$gastSitzungId || $sitzungId === $gastSitzungId)
+    && freigabeStufe($sitzungen[$sitzungId], $dokument, $person['id']) === 'alles';
+  $neuAnlegen = function ($typ, $neu) use ($bundle, $darfAlles) {
+    foreach ($bundle[$typ] as $vorhanden) if ($vorhanden['sitzungId'] === ($neu['sitzungId'] ?? null)) return false;
+    return $darfAlles($neu['sitzungId'] ?? '', $typ === 'protokolle' ? 'protokoll' : 'vorprotokoll');
+  };
+
   $vorprotokolle = [];
+  $altVorprotokolle = indexById($bundle['vorprotokolle']);
   foreach ($aenderungen['vorprotokolle'] ?? [] as $neu) {
     if ($nurVorprotokollId && $neu['id'] !== $nurVorprotokollId) continue;
-    foreach ($bundle['vorprotokolle'] as $alt) {
-      if ($alt['id'] !== $neu['id']) continue;
-      $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'vorprotokoll', $person['id']) : 'eigene';
-      if ($stufe === 'lesen') { $vorprotokolle[] = $alt; continue; }
-      $vorprotokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : vorprotokollMerge($alt, $neu, $person));
+    $alt = $altVorprotokolle[$neu['id']] ?? null;
+    if (!$alt) {
+      if ($neuAnlegen('vorprotokolle', $neu)) $vorprotokolle[] = $neu;
+      continue;
     }
+    $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'vorprotokoll', $person['id']) : 'eigene';
+    if ($stufe === 'lesen') { $vorprotokolle[] = $alt; continue; }
+    $vorprotokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : vorprotokollMerge($alt, $neu, $person));
   }
   $aenderungen['vorprotokolle'] = $vorprotokolle;
 
-  $gastSitzungId = null; // Gast-Link: nur das Protokoll der eigenen Sitzung
-  foreach ($bundle['vorprotokolle'] as $vp) if ($vp['id'] === $nurVorprotokollId) $gastSitzungId = $vp['sitzungId'];
   $protokolle = [];
+  $altProtokolle = indexById($bundle['protokolle']);
   foreach ($aenderungen['protokolle'] ?? [] as $neu) {
-    foreach ($bundle['protokolle'] as $alt) {
-      if ($alt['id'] !== $neu['id'] || ($nurVorprotokollId && $alt['sitzungId'] !== $gastSitzungId)) continue;
-      $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'protokoll', $person['id']) : 'eigene';
-      $protokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : protokollMerge($alt, $neu, $person, $bundle));
+    $alt = $altProtokolle[$neu['id']] ?? null;
+    if (!$alt) {
+      if ($neuAnlegen('protokolle', $neu)) $protokolle[] = $neu;
+      continue;
     }
+    if ($nurVorprotokollId && $alt['sitzungId'] !== $gastSitzungId) continue;
+    $stufe = isset($sitzungen[$alt['sitzungId']]) ? freigabeStufe($sitzungen[$alt['sitzungId']], 'protokoll', $person['id']) : 'eigene';
+    $protokolle[] = schluesselBewahren($alt, $stufe === 'alles' ? $neu : protokollMerge($alt, $neu, $person, $bundle));
   }
   $aenderungen['protokolle'] = $protokolle;
+  $aenderungen['geloescht'] = ['protokolle' => array_values(array_filter($geloeschteProtokolle, fn($id) => isset($altProtokolle[$id]) && $darfAlles($altProtokolle[$id]['sitzungId'], 'protokoll')))];
 
   $liste = [];
   foreach ($aenderungen['sitzungen'] ?? [] as $neu) {
@@ -1034,7 +1052,7 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   if (!preg_match('/^\d+\.\d+\.\d+$/', $aktuell)) antwort(['fehler' => 'Ungültige Versionsangabe bei GitHub'], 502);
   $verfuegbar = version_compare($aktuell, $lokal, '>');
 
-  if ($aktion === 'update_pruefen') antwort(['lokal' => $lokal, 'aktuell' => $aktuell, 'verfuegbar' => $verfuegbar]);
+  if ($aktion === 'update_pruefen') antwort(['lokal' => $lokal, 'aktuell' => $aktuell, 'verfuegbar' => $verfuegbar, 'neuerungen' => $release['body'] ?? '']);
 
   if (!$verfuegbar) antwort(['fehler' => 'Es ist bereits die aktuelle Version installiert'], 400);
 

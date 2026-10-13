@@ -62,8 +62,11 @@ export default {
           unterpunkte(t.untertraktanden, `${i + 1}`)
         })
         const protokoll = sitzungenStore.protokollVonSitzung(sitzung.id)
+        protokoll?.zusatztraktanden.forEach((z) => {
+          if (passt(z.titel, z.begruendung)) treffer.push({ id: z.id, sitzung, art: 'Zusatztraktandum', badge: 'gelb', titel: z.titel, text: z.begruendung, meta: datum, pfad: { path: '/sitzung/' + sitzung.id + '/protokoll', query: { zu: z.id } } })
+        })
         protokoll?.eintraege.forEach((e) => {
-          if (!passt(e.titel, e.inhalt, e.zugewiesenAnName, TYP_LABELS[e.typ], this.status(e))) return
+          if (!passt(e.titel, e.inhalt, e.notiz, e.zugewiesenAnName, TYP_LABELS[e.typ], this.status(e))) return
           treffer.push({ id: e.id, sitzung, art: TYP_LABELS[e.typ], badge: TYP_BADGE[e.typ], titel: e.titel, text: e.inhalt, meta: this.status(e), pfad: { path: '/sitzung/' + sitzung.id + '/protokoll', query: { zu: e.id } } })
         })
       }

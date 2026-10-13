@@ -27,6 +27,8 @@ export default {
           .map((t) => sitzungenStore.eintragById(t.pendenzId))
           .filter(Boolean),
         naechsterTermin: sitzungenStore.sitzungById(sitzung.naechsterTerminId),
+        vorherige: sitzungenStore.vorherigeSitzung(this.sitzungId),
+        herkunft: (eintragId) => sitzungenStore.eintragById(eintragId),
         themenbereichName: (id) => gremium.themenbereiche.find((tb) => tb.id === id)?.name || '',
         rolleName: (id) => gremienStore.rolleName(gremium.id, id),
       }

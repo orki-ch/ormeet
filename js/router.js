@@ -1,7 +1,7 @@
 import { api } from './api.js'
 import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
-import { rolleIm } from './utils/rechte.js'
+import { rolleIm, vollzugriff } from './utils/rechte.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
 import GremiumDetail from './views/GremiumDetail.js'
@@ -131,8 +131,8 @@ router.beforeEach(async (to) => {
   if (rolle === 'person') {
     if (to.path.includes('/themenbereich/')) return true
     if (!sitzungsPfad) return startPfad()
-    // Persönlicher Zugang darf kein Protokoll eröffnen
-    if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId)) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
+    // Ein Protokoll eröffnen (Sitzung starten) darf nur, wer es ganz bearbeiten darf: Sitzungsleitung, Protokollführung, Freigabe «Alles»
+    if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId) && !(sitzung && vollzugriff(sitzung, 'protokoll'))) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
     return true
   }
   if (!rolle) return startPfad()

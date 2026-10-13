@@ -5,11 +5,12 @@ import { allePunkte, istAntragPunkt, kindTyp, personenText } from '../utils/trak
 import { ANTRAG_STATUS, PENDENZ_STATUS, PUNKT_TYP, TYP_BADGE, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import Unterpunkte from '../components/Unterpunkte.js'
+import Zusatztraktanden from '../components/Zusatztraktanden.js'
 
 // Live-Ansicht eines Protokolls über den Verfolger-Link (nur lesen, aktualisiert sich automatisch)
 export default {
   name: 'ProtokollAnsicht',
-  components: { SitzungKopfdaten, Unterpunkte },
+  components: { SitzungKopfdaten, Unterpunkte, Zusatztraktanden },
   props: {
     verfolgerKey: { type: String, required: true },
   },
@@ -32,48 +33,54 @@ export default {
         <p v-if="protokoll.gaeste.length"><span class="muted">Gäste:</span> {{ protokoll.gaeste.map((g) => g.name).join(', ') }}</p>
       </section>
 
-      <section v-for="(t, i) in traktanden" :key="t.id" class="card">
-        <div class="traktandum-kopf">
-          <span class="nr">{{ i + 1 }}.</span>
-          <h2>{{ t.titel }}</h2>
-          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
-          <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
-          <span v-if="t.dauer || protokoll.dauern?.[t.id]" class="leise small nowrap">{{ dauerText(t) }}</span>
-        </div>
-        <p v-if="t.notiz && !istAntragPunkt(t)" class="notiz pre eingerueckt">{{ t.notiz }}</p>
-        <div class="eingerueckt mt-2 stack-sm">
-          <div v-if="uebertragene[t.pendenzId]" class="pendenz-uebertragen">
-            <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
-            <strong>{{ uebertragene[t.pendenzId].titel }}</strong>
-            <span class="muted">· {{ PENDENZ_STATUS[uebertragene[t.pendenzId].pendenzStatus] }} · {{ uebertragene[t.pendenzId].zugewiesenAnName || '–' }}</span>
+      <Zusatztraktanden v-bind="zusatz" :nach-id="null" />
+      <template v-for="(t, i) in traktanden" :key="t.id">
+        <section class="card">
+          <div class="traktandum-kopf">
+            <span class="nr">{{ i + 1 }}.</span>
+            <h2>{{ t.titel }}</h2>
+            <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
+            <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
+            <span v-if="t.dauer || protokoll.dauern?.[t.id]" class="leise small nowrap">{{ dauerText(t) }}</span>
           </div>
-          <div v-for="e in eintraegeVon(t.id)" :key="e.id" class="eintrag" :class="t.typ ? '' : 'typ-' + e.typ">
-            <div class="eintrag-zeile">
-              <span v-if="!t.typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
-              <span class="titel">{{ e.titel }}</span>
-              <span class="leise">{{ meta(e) }}</span>
+          <p v-if="t.notiz && !istAntragPunkt(t)" class="notiz pre eingerueckt">{{ t.notiz }}</p>
+          <div class="eingerueckt mt-2 stack-sm">
+            <div v-if="uebertragene[t.pendenzId]" class="pendenz-uebertragen">
+              <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
+              <strong>{{ uebertragene[t.pendenzId].titel }}</strong>
+              <span class="muted">· {{ PENDENZ_STATUS[uebertragene[t.pendenzId].pendenzStatus] }} · {{ uebertragene[t.pendenzId].zugewiesenAnName || '–' }}</span>
             </div>
-            <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
-          </div>
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
-            <template #default="{ u, typ }">
-              <div v-if="uebertragene[u.pendenzId]" class="pendenz-uebertragen mt-1">
-                <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
-                <strong>{{ uebertragene[u.pendenzId].titel }}</strong>
-                <span class="muted">· {{ PENDENZ_STATUS[uebertragene[u.pendenzId].pendenzStatus] }} · {{ uebertragene[u.pendenzId].zugewiesenAnName || '–' }}</span>
+            <div v-for="e in eintraegeVon(t.id)" :key="e.id" class="eintrag" :class="t.typ ? '' : 'typ-' + e.typ">
+              <div class="eintrag-zeile">
+                <span v-if="!t.typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+                <span class="titel">{{ e.titel }}</span>
+                <span class="leise">{{ meta(e) }}</span>
               </div>
-              <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
-                <div class="eintrag-zeile">
-                  <span v-if="!typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
-                  <span class="titel">{{ e.titel }}</span>
-                  <span class="leise">{{ meta(e) }}</span>
+              <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
+              <p v-if="e.typ === 'antrag' && e.notiz" class="notiz pre"><span class="leise">Notiz:</span> {{ e.notiz }}</p>
+            </div>
+            <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
+              <template #default="{ u, typ }">
+                <div v-if="uebertragene[u.pendenzId]" class="pendenz-uebertragen mt-1">
+                  <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>
+                  <strong>{{ uebertragene[u.pendenzId].titel }}</strong>
+                  <span class="muted">· {{ PENDENZ_STATUS[uebertragene[u.pendenzId].pendenzStatus] }} · {{ uebertragene[u.pendenzId].zugewiesenAnName || '–' }}</span>
                 </div>
-                <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
-              </div>
-            </template>
-          </Unterpunkte>
-        </div>
-      </section>
+                <div v-for="e in eintraegeVon(u.id)" :key="e.id" class="eintrag" :class="typ ? '' : 'typ-' + e.typ">
+                  <div class="eintrag-zeile">
+                    <span v-if="!typ" class="badge" :class="TYP_BADGE[e.typ]">{{ TYP_LABELS[e.typ] }}</span>
+                    <span class="titel">{{ e.titel }}</span>
+                    <span class="leise">{{ meta(e) }}</span>
+                  </div>
+                  <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
+                  <p v-if="e.typ === 'antrag' && e.notiz" class="notiz pre"><span class="leise">Notiz:</span> {{ e.notiz }}</p>
+                </div>
+              </template>
+            </Unterpunkte>
+          </div>
+        </section>
+        <Zusatztraktanden v-bind="zusatz" :nach-id="t.id" />
+      </template>
 
       <section v-if="naechsterTermin" class="card small">
         <h2 class="card-title">Nächster Sitzungstermin</h2>
@@ -107,6 +114,9 @@ export default {
         if (treffer) map[t.pendenzId] = treffer.eintrag
       })
       return map
+    },
+    zusatz() {
+      return { protokoll: this.protokoll, traktanden: this.traktanden, gremium: this.gremium, personen: gremienStore.personen(this.gremium.id, this.protokoll.gaeste) }
     },
     naechsterTermin() {
       return sitzungenStore.sitzungById(this.sitzung.naechsterTerminId)

@@ -9,6 +9,7 @@ const STYLES = {
   h4: { fontSize: 10, bold: true, margin: [10, 6, 0, 2] },
   klein: { fontSize: 9, color: '#555555' },
   notiz: { fontSize: 9, color: '#555555', italics: true, margin: [10, 0, 0, 2] },
+  winzig: { fontSize: 7, color: '#777777' },
   tabellenKopf: { bold: true, fillColor: '#eeeeee' },
 }
 
@@ -116,7 +117,6 @@ function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, ue
 
 function eintragBlock(eintrag, label = TYP_LABELS[eintrag.typ]) {
   let status = ''
-  if (eintrag.typ === 'antrag') status = [`Beschluss: ${ANTRAG_STATUS[eintrag.antragStatus]}`, stimmenText(eintrag)].filter(Boolean).join(' · ')
   if (eintrag.typ === 'pendenz') {
     status = [PENDENZ_STATUS[eintrag.pendenzStatus], eintrag.zugewiesenAnName, eintrag.faelligBis && `bis ${formatDatum(eintrag.faelligBis)}`]
       .filter(Boolean)
@@ -127,9 +127,20 @@ function eintragBlock(eintrag, label = TYP_LABELS[eintrag.typ]) {
     stack: [
       { text: [{ text: `${label}: `, bold: true }, eintrag.titel] },
       ...(eintrag.inhalt ? [{ text: eintrag.inhalt }] : []),
+      ...(eintrag.typ === 'antrag' ? beschlussBloecke(eintrag) : []),
       ...(status ? [{ text: status, style: 'klein' }] : []),
     ],
   }
+}
+
+// Beschluss, Abstimmung und Notiz eines Antrags – wie in der Ansicht
+function beschlussBloecke(eintrag) {
+  const stimmen = stimmenText(eintrag)
+  return [
+    { text: [{ text: 'Beschluss: ', bold: true }, ANTRAG_STATUS[eintrag.antragStatus]], margin: [0, 2, 0, 0] },
+    ...(stimmen ? [{ text: [{ text: 'Abstimmung: ', bold: true }, stimmen] }] : []),
+    ...(eintrag.notiz ? [{ text: [{ text: 'Notiz: ', bold: true }, eintrag.notiz] }] : []),
+  ]
 }
 
 function dokument(fusszeile, content) {
@@ -175,22 +186,36 @@ export function vorprotokollDokument({ gremium, sitzung, vorprotokoll, erwartete
   ])
 }
 
-export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, uebertragenePendenzen, naechsterTermin, themenbereichName, rolleName }) {
+export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, uebertragenePendenzen, naechsterTermin, themenbereichName, rolleName, vorherige, herkunft }) {
   const mitglieder = (ids) => gremium.mitglieder.filter((m) => ids.includes(m.id))
   const eintraegeVon = (traktandumId) => protokoll.eintraege.filter((e) => e.traktandumId === traktandumId).map((e) => eintragBlock(e))
+
+  // Zusatztraktanden (an der Sitzung hinzugekommen) nach dem Traktandum nachId; Begründung sehr klein
+  const zusatzBloecke = (nachId) =>
+    (protokoll.zusatztraktanden || [])
+      .filter((z) => z.nachId === nachId)
+      .flatMap((z) => [
+        { text: [{ text: 'Zusatztraktandum: ', bold: true }, z.titel || 'Ohne Titel'], style: 'h3' },
+        { text: `Hinzugefügt an der Sitzung${z.begruendung ? ': ' + z.begruendung : ' (ohne Begründung)'}`, style: 'winzig', margin: [10, 0, 0, 4] },
+        ...eintraegeVon(z.id),
+      ])
 
   const dauern = protokoll.dauern || {}
   const traktandenBloecke = vorprotokoll.traktanden.flatMap((t, i) => {
     const bloecke = [{ text: traktandumTitel(`${i + 1}.`, t, themenbereichName, dauern[t.id]), style: 'h3' }]
     if (t.notiz && !istAntragPunkt(t)) bloecke.push({ text: t.notiz, style: 'notiz' })
+    // Übernommene Pendenz bzw. vertagter Antrag aus einer früheren Sitzung
     const uebertragen = (punkt) => {
       const treffer = punkt.pendenzId && uebertragenePendenzen.find((p) => p.eintrag.id === punkt.pendenzId)
-      return treffer ? eintragBlock(treffer.eintrag, 'Übertragene Pendenz') : null
+      if (treffer) return eintragBlock(treffer.eintrag, 'Übertragene Pendenz')
+      const antrag = punkt.antragId && herkunft(punkt.antragId)
+      return antrag ? { text: `Vertagt an der Sitzung vom ${formatDatum(antrag.sitzung.datum)} – hier als neuer Antrag entschieden.`, style: 'klein' } : null
     }
     const pendenz = uebertragen(t)
     if (pendenz) bloecke.push(pendenz)
     bloecke.push(...eintraegeVon(t.id))
     bloecke.push(...unterpunktBloecke(t.untertraktanden, `${i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen))
+    bloecke.push(...zusatzBloecke(t.id))
     return bloecke
   })
 
@@ -206,7 +231,14 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
   return dokument(`Protokoll ${gremium.name}`, [
     ...kopfdaten('Protokoll', gremium, sitzung),
     ...anwesenheiten(mitglieder(protokoll.anwesende), mitglieder(protokoll.abwesende), protokoll.gaeste, rolleName),
+    ...(vorherige
+      ? [
+          { text: 'Letztes Protokoll', style: 'h2' },
+          { text: `${vorherige.titel || 'Sitzung'} vom ${formatDatum(vorherige.datum)}: ${vorherige.genehmigt ? `genehmigt an der Sitzung vom ${formatDatum(vorherige.genehmigt.datum)}` : 'noch nicht genehmigt'}` },
+        ]
+      : []),
     { text: 'Traktanden', style: 'h2' },
+    ...zusatzBloecke(null),
     ...traktandenBloecke,
     ...dauerBlock,
     ...(allePendenzen.length ? [{ text: 'Pendenzenliste', style: 'h2' }, pendenzenTabelle(allePendenzen)] : []),

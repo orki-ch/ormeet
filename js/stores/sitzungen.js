@@ -277,6 +277,7 @@ export const sitzungenStore = {
       abwesende: erwarteteIds.filter((id) => !vorprotokoll.anwesendeMitgliederIds.includes(id)),
       gaeste: vorprotokoll.gaeste.map((g) => ({ ...g })),
       eintraege: [],
+      zusatztraktanden: [], // im Protokoll hinzugekommene Haupttraktanden: { id, titel, begruendung, nachId } (nachId: Traktandum davor, null = am Anfang)
       dauern: {}, // tatsächliche Dauer pro Traktandum in Minuten (geplante Dauer steht im Vorprotokoll)
       verfolgerKey: neuerKey(), // Live-Ansicht (nur lesen)
     }
@@ -319,6 +320,7 @@ export const sitzungenStore = {
             inhalt: punkt.notiz,
             antragStatus: 'offen',
             stimmen: { ja: null, nein: null, enthaltung: null },
+            notiz: '', // Notiz zu Beratung und Beschluss (im Protokoll)
             vorherigerAntragId: null,
           }),
         ),
@@ -345,6 +347,7 @@ export const sitzungenStore = {
           inhalt: original.inhalt,
           antragStatus: 'offen',
           stimmen: { ja: null, nein: null, enthaltung: null },
+          notiz: '', // Notiz zu Beratung und Beschluss (im Protokoll)
           vorherigerAntragId: original.id,
         })
       })

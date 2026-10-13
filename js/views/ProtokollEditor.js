@@ -13,10 +13,11 @@ import PendenzUebertragen from '../components/PendenzUebertragen.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import TeilenKarte from '../components/TeilenKarte.js'
 import Unterpunkte from '../components/Unterpunkte.js'
+import Zusatztraktanden from '../components/Zusatztraktanden.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -41,7 +42,7 @@ export default {
             <button v-if="voll && sitzung.status !== 'abgeschlossen'" class="btn btn-primary" @click="abschliessen">Sitzung abschliessen</button>
             <MenuDropdown>
               <button class="menu-item" @click="speichern">Jetzt speichern <span class="leise">Ctrl+S</span></button>
-              <PdfExportButton typ="protokoll" :sitzung-id="sitzungId" class="menu-item" />
+              <PdfExportButton typ="protokoll" :sitzung-id="sitzungId" class="menu-item" @click.capture="speichern" />
               <button v-if="linksSichtbar" class="menu-item" @click="verfolgerLinkKopieren">Verfolger-Link kopieren</button>
               <button class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
               <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">Sitzung wieder öffnen</button>
@@ -83,50 +84,58 @@ export default {
         <p v-if="!vorherige.genehmigt" class="muted small mt-2">Genehmigt heisst: Das Protokoll wird eingefroren und kann von niemandem mehr geändert werden – nur der Stand der Pendenzen wird weiter nachgeführt. Aufheben lässt sich das nur, indem diese Sitzung gelöscht wird.</p>
       </section>
 
-      <!-- Traktanden mit Einträgen -->
-      <section v-for="(t, i) in traktanden" :id="t.id" :key="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
-        <div class="traktandum-kopf">
-          <span class="nr">{{ i + 1 }}.</span>
-          <h2>{{ t.titel }}</h2>
-          <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
-          <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
-          <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
-        </div>
-        <p v-if="t.notiz && !istAntragPunkt(t)" class="notiz pre eingerueckt">{{ t.notiz }}</p>
+      <!-- Traktanden mit Einträgen; Zusatztraktanden (an der Sitzung hinzugekommen) stehen an ihrer Stelle im Ablauf -->
+      <Zusatztraktanden v-bind="zusatz" :nach-id="null" @aktiv="(id) => (zusatzAktiv = id)" />
+      <template v-for="(t, i) in traktanden" :key="t.id">
+        <section :id="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
+          <div class="traktandum-kopf">
+            <span class="nr">{{ i + 1 }}.</span>
+            <h2>{{ t.titel }}</h2>
+            <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
+            <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
+            <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
+          </div>
+          <p v-if="t.notiz && !istAntragPunkt(t)" class="notiz pre eingerueckt">{{ t.notiz }}</p>
 
-        <div class="eingerueckt mt-2 stack-sm">
-          <!-- Übertragene Pendenz aus früherer Sitzung (Status wird am Original aktualisiert) -->
-          <PendenzUebertragen v-if="uebertragene[t.pendenzId]" :eintrag="uebertragene[t.pendenzId].eintrag" :sitzung="uebertragene[t.pendenzId].sitzung" :personen="personen" :darf="darfTraktandum(t)" />
+          <div class="eingerueckt mt-2 stack-sm">
+            <!-- Übertragene Pendenz aus früherer Sitzung (Status wird am Original aktualisiert) -->
+            <PendenzUebertragen v-if="uebertragene[t.pendenzId]" :eintrag="uebertragene[t.pendenzId].eintrag" :sitzung="uebertragene[t.pendenzId].sitzung" :personen="personen" :darf="darfTraktandum(t)" />
 
-          <!-- Vertagter Antrag aus früherer Sitzung: wird hier als neuer Antrag entschieden -->
-          <p v-if="uebertrageneAntraege[t.antragId]" class="pendenz-uebertragen">
-            <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
-            an der Sitzung vom {{ formatDatum(uebertrageneAntraege[t.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
-          </p>
+            <!-- Vertagter Antrag aus früherer Sitzung: wird hier als neuer Antrag entschieden -->
+            <p v-if="uebertrageneAntraege[t.antragId]" class="pendenz-uebertragen">
+              <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
+              an der Sitzung vom {{ formatDatum(uebertrageneAntraege[t.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
+            </p>
 
-          <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
-          <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
+            <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
+            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
 
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
-            <template #default="{ u, typ, darf }">
-              <!-- Übernommene Pendenzen und vertagte Anträge stehen seit 1.4.09 dort, wo sie zuletzt waren – auch als Unterpunkt -->
-              <PendenzUebertragen v-if="uebertragene[u.pendenzId]" class="mt-1" :eintrag="uebertragene[u.pendenzId].eintrag" :sitzung="uebertragene[u.pendenzId].sitzung" :personen="personen" :darf="darf" />
-              <p v-if="uebertrageneAntraege[u.antragId]" class="pendenz-uebertragen mt-1">
-                <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
-                an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
-              </p>
-              <div v-if="typ !== 'antraege'" class="mt-1">
-                <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
-              </div>
-            </template>
-          </Unterpunkte>
-        </div>
-        <!-- Zeit unten rechts an der Karte -->
-        <div v-if="t.dauer" class="dauer-zeile small">
-          <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
-          <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
-        </div>
-      </section>
+            <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
+              <template #default="{ u, typ, darf }">
+                <!-- Übernommene Pendenzen und vertagte Anträge stehen seit 1.4.09 dort, wo sie zuletzt waren – auch als Unterpunkt -->
+                <PendenzUebertragen v-if="uebertragene[u.pendenzId]" class="mt-1" :eintrag="uebertragene[u.pendenzId].eintrag" :sitzung="uebertragene[u.pendenzId].sitzung" :personen="personen" :darf="darf" />
+                <p v-if="uebertrageneAntraege[u.antragId]" class="pendenz-uebertragen mt-1">
+                  <span class="badge violett" style="margin-right: 0.25rem">Vertagt</span>
+                  an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
+                </p>
+                <div v-if="typ !== 'antraege'" class="mt-1">
+                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
+                </div>
+              </template>
+            </Unterpunkte>
+          </div>
+          <!-- Zeit unten rechts an der Karte -->
+          <div v-if="t.dauer" class="dauer-zeile small">
+            <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
+            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
+          </div>
+        </section>
+        <Zusatztraktanden v-bind="zusatz" :nach-id="t.id" @aktiv="(id) => (zusatzAktiv = id)" />
+      </template>
+      <div v-if="voll">
+        <button class="btn btn-ghost" @click="zusatzHinzufuegen">+ Zusatztraktandum</button>
+        <p class="muted small mt-1">Für Geschäfte, die erst an der Sitzung dazukommen. Die Stelle im Ablauf und den Grund für die Abweichung vom Vorprotokoll legst du beim Bearbeiten fest.</p>
+      </div>
 
       <p v-if="geplanteDauer" class="muted small">
         Dauer insgesamt: geplant {{ formatDauer(geplanteDauer) || '–' }} · tatsächlich {{ formatDauer(tatsaechlicheDauer) || '–' }}
@@ -181,6 +190,7 @@ export default {
       gespeichertUm: '',
       speicherTimer: null,
       linkKopiert: false,
+      zusatzAktiv: null, // ID des Zusatztraktandums in Bearbeitung
       neuerTermin: { datum: '', zeit: '', ort: '', vorlageId: '' },
       terminModus: 'offen', // offen | bestehend | neu | abstimmung
       TERMIN_MODI: { offen: 'Offen lassen', bestehend: 'Bestehend', neu: 'Neu', abstimmung: 'Abstimmung' },
@@ -231,7 +241,11 @@ export default {
     },
     // Löschen nimmt der Server nur von Admin / Gremium-Zugang an
     darfEntfernen() {
-      return this.voll && this.linksSichtbar
+      return this.voll
+    },
+    // Gemeinsame Angaben für alle Stellen, an denen Zusatztraktanden stehen können
+    zusatz() {
+      return { protokoll: this.protokoll, traktanden: this.traktanden, gremium: this.gremium, personen: this.personen, voll: this.voll, aktivId: this.zusatzAktiv }
     },
     zurueck() {
       return zurueckZu(this.gremium.id).pfad
@@ -339,6 +353,7 @@ export default {
       return new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
     },
     tastendruck(event) {
+      if (event.key === 'Escape') this.zusatzAktiv = null
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault()
         this.speichern()
@@ -350,6 +365,13 @@ export default {
       this.gespeichert = true
       this.gespeichertUm = this.uhrzeit()
       serverSpeichern()
+    },
+    // Neues Zusatztraktandum am Ende des Ablaufs, direkt in Bearbeitung
+    zusatzHinzufuegen() {
+      const zusatz = { id: crypto.randomUUID(), titel: '', begruendung: '', nachId: this.traktanden.at(-1)?.id || null }
+      this.protokoll.zusatztraktanden.push(zusatz)
+      this.zusatzAktiv = zusatz.id
+      this.$nextTick(() => document.getElementById(zusatz.id)?.querySelector('.nahtlos')?.focus())
     },
     // Live-Ansicht (nur lesen) für Zuschauer
     verfolgerLinkKopieren() {

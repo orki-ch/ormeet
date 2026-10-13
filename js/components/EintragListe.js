@@ -61,6 +61,9 @@ export default {
         </form>
         <textarea v-if="aktiv === e.id && e.typ !== 'antrag'" v-model.trim="e.inhalt" v-wachsen class="nahtlos notiz" rows="1" placeholder="Inhalt / Beschreibung …"></textarea>
         <p v-else-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
+        <!-- Antrag: Antragstext bleibt wie im Vorprotokoll, Beratung und Beschluss lassen sich hier notieren -->
+        <textarea v-if="aktiv === e.id && e.typ === 'antrag'" v-model.trim="e.notiz" v-wachsen class="nahtlos notiz" rows="1" placeholder="Notiz zu Beratung und Beschluss …"></textarea>
+        <p v-else-if="e.typ === 'antrag' && e.notiz" class="notiz pre"><span class="leise">Notiz:</span> {{ e.notiz }}</p>
         <div v-if="aktiv === e.id" class="row mt-1">
           <template v-if="e.typ === 'antrag'">
             <select v-model="e.antragStatus" class="btn-pille" title="Beschluss – Vertagt: kommt als neuer Antrag ins nächste Vorprotokoll">
@@ -83,7 +86,7 @@ export default {
         </div>
       </div>
 
-      <button v-if="!nurLesen && typ !== 'antrag' && typ !== 'antraege'" class="btn btn-ghost" style="margin-left: -0.65rem" @click="hinzufuegen">+ {{ typ ? TYP_LABELS[typ] : 'Eintrag' }}</button>
+      <button v-if="!nurLesen && typ !== 'antrag' && typ !== 'antraege'" class="btn btn-ghost" @click="hinzufuegen">+ {{ typ ? TYP_LABELS[typ] : 'Eintrag' }}</button>
     </div>
   `,
   data() {
@@ -150,6 +153,7 @@ export default {
         eintrag.antragStatus ||= 'offen'
         eintrag.stimmen ||= { ja: null, nein: null, enthaltung: null }
         eintrag.vorherigerAntragId ??= null
+        eintrag.notiz ??= ''
       }
       if (eintrag.typ === 'pendenz' && !eintrag.pendenzStatus) {
         Object.assign(eintrag, { pendenzStatus: 'offen', zugewiesenAn: null, zugewiesenAnName: '', faelligBis: '' })
