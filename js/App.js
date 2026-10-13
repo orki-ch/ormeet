@@ -22,6 +22,10 @@ export default {
             <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="startPfad.startsWith('/meine') ? 'Meine Übersicht' : 'Gremien'">
               <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
             </router-link>
+            <!-- Superadmin mit verknüpftem Konto: persönliche Übersicht dieses Kontos -->
+            <router-link v-if="sync.zugriff?.rolle === 'admin' && sync.zugriff.konto" to="/uebersicht" class="icon-btn" data-tip="Meine Übersicht">
+              <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
+            </router-link>
             <Benachrichtigungen v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" />
             <router-link v-if="sync.zugriff?.rolle === 'admin'" to="/benutzer" class="icon-btn" data-tip="Benutzer & Links">
               <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.5a5 5 0 0 1 6 5"/></svg>

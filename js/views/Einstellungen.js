@@ -1,5 +1,6 @@
 import { api, appStand } from '../api.js'
 import { updateStand, updatePruefen } from '../stores/updates.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 // Aufzählungspunkte («- …») eines Änderungstexts
 function punkte(text) {
@@ -9,6 +10,7 @@ function punkte(text) {
 // Superadmin: Version, Update-Prüfung und Installation
 export default {
   name: 'Einstellungen',
+  components: { InfoKnopf },
   template: `
     <div class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
@@ -51,7 +53,7 @@ export default {
             </div>
           </div>
         </details>
-        <p class="hint" style="margin: 0">Vor einem Update empfiehlt sich eine Sicherung des Ordners <code>data/</code> und der Datei <code>schluessel.php</code>. Nach der Installation lädt die Seite neu.</p>
+        <div><InfoKnopf label="Technischer Hinweis" text="Vor einem Update empfiehlt sich eine Sicherung des Ordners data/ und der Datei schluessel.php. Nach der Installation lädt die Seite neu." /></div>
       </section>
 
       <form v-if="sso" class="card stack" @submit.prevent="ssoSpeichern">

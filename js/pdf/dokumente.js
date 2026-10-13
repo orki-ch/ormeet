@@ -36,21 +36,22 @@ function kopfdaten(art, gremium, sitzung) {
   if (sitzung.bemerkungen) zeilen.push(['Spezielles', sitzung.bemerkungen])
   if (art === 'Protokoll' && sitzung.genehmigt) zeilen.push(['Genehmigt', `an der Sitzung vom ${formatDatum(sitzung.genehmigt.datum)}`])
   return [
-    { text: `${art} – ${gremium.name}`, style: 'titel' },
+    { text: gremium.kurz ? art : `${art} – ${gremium.name}`, style: 'titel' }, // Kurzsitzung ohne Gremium: kein Gremiumsname
     { text: sitzung.titel || ' ', style: 'untertitel' },
     { table: { widths: ['auto', '*'], body: zeilen.map(([k, v]) => [{ text: k, bold: true }, v]) }, layout: 'noBorders' },
   ]
 }
 
-function anwesenheiten(anwesend, abwesend, gaeste, rolleName) {
+// kurz: Kurzsitzung – es gibt nur Teilnehmende, niemand gilt als entschuldigt
+function anwesenheiten(anwesend, abwesend, gaeste, rolleName, kurz = false) {
   const bloecke = [
-    { text: 'Anwesend', style: 'h2' },
+    { text: kurz ? 'Teilnehmende' : 'Anwesend', style: 'h2' },
     tabelle(
       ['Name', 'Rolle', 'Stimmrecht'],
       anwesend.map((m) => [m.name, rolleName(m.rolleId), m.hatStimmrecht ? 'stimmberechtigt' : 'ohne Stimmrecht']),
       ['*', '*', 'auto'],
     ),
-    { text: `Entschuldigt / abwesend: ${abwesend.map((m) => m.name).join(', ') || '–'}` },
+    ...(kurz ? [] : [{ text: `Entschuldigt / abwesend: ${abwesend.map((m) => m.name).join(', ') || '–'}` }]),
   ]
   if (gaeste.length) {
     bloecke.push({ text: `Gäste: ${gaeste.map((g) => (g.organisation ? `${g.name} (${g.organisation})` : g.name)).join(', ')}`, margin: [0, 2, 0, 0] })
@@ -228,9 +229,9 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
     ...protokoll.eintraege.filter((e) => e.typ === 'pendenz').map((eintrag) => ({ eintrag, sitzung })),
   ]
 
-  return dokument(`Protokoll ${gremium.name}`, [
-    ...kopfdaten('Protokoll', gremium, sitzung),
-    ...anwesenheiten(mitglieder(protokoll.anwesende), mitglieder(protokoll.abwesende), protokoll.gaeste, rolleName),
+  return dokument(sitzung.kurz ? `Kurzsitzung ${sitzung.titel}` : `Protokoll ${gremium.name}`, [
+    ...kopfdaten(sitzung.kurz ? 'Kurzsitzung' : 'Protokoll', gremium, sitzung),
+    ...anwesenheiten(mitglieder(protokoll.anwesende), mitglieder(protokoll.abwesende), protokoll.gaeste, rolleName, sitzung.kurz),
     ...(vorherige
       ? [
           { text: 'Letztes Protokoll', style: 'h2' },

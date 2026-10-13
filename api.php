@@ -170,7 +170,7 @@ function benutzerByEmail(array $benutzer, $email) {
 }
 
 function neuerBenutzer($name, $email) {
-  return ['id' => uuid(), 'name' => $name, 'email' => $email, 'passwortHash' => '', 'sso' => [], 'darfGremienAnlegen' => false,
+  return ['id' => uuid(), 'name' => $name, 'email' => $email, 'passwortHash' => '', 'sso' => [], 'darfGremienAnlegen' => false, 'darfKurzsitzungenAnlegen' => false,
           'erstelltAm' => date('c'), 'letzteAnmeldung' => '', 'anmeldungen' => []];
 }
 
@@ -195,8 +195,17 @@ function superadminLesen() {
   return jsonLesen(SUPERADMIN_DATEI, ['anmeldungen' => []]);
 }
 
+// Ist der Superadmin mit einem Konto verknüpft (Benutzer > Konten), bekommt er dessen persönliche Übersicht (konto)
 function superadminZugriff($token) {
-  foreach (superadminLesen()['anmeldungen'] as $a) if (hash_equals($a['token'], $token)) return ['rolle' => 'admin'];
+  $superadmin = superadminLesen();
+  foreach ($superadmin['anmeldungen'] as $a) {
+    if (!hash_equals($a['token'], $token)) continue;
+    $benutzer = benutzerLesen();
+    $i = benutzerById($benutzer, $superadmin['benutzerId'] ?? '');
+    if ($i === null) return ['rolle' => 'admin'];
+    $b = $benutzer[$i];
+    return ['rolle' => 'admin', 'konto' => ['benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
+  }
   return null;
 }
 
@@ -220,7 +229,8 @@ function fehlversuch($text) {
 
 // Konto ohne Geheimnisse (für Superadmin und Kontoinhaber)
 function benutzerOeffentlich(array $b) {
-  return ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'], 'hatPasswort' => $b['passwortHash'] !== '',
+  return ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
+          'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']), 'hatPasswort' => $b['passwortHash'] !== '',
           'sso' => array_keys($b['sso']), 'erstelltAm' => $b['erstelltAm'], 'letzteAnmeldung' => $b['letzteAnmeldung'], 'geraete' => count($b['anmeldungen'])];
 }
 
@@ -238,19 +248,21 @@ function ssoAktiv() {
   return $aktiv;
 }
 
-// Gremien eines Kontos: eigene (Eigentümer) und solche, in denen ein Mitglied mit dem Konto verknüpft ist
-function benutzerGremien($benutzerId) {
+// Gremien eines Kontos: eigene (Eigentümer) und solche, in denen ein Mitglied mit dem Konto verknüpft ist.
+// Kurzsitzungen ohne Gremium: Eingeladene mit derselben E-Mail wie das Konto gelten als verknüpft.
+function benutzerGremien($benutzerId, $email = '') {
   $liste = [];
   foreach (alleBundles() as $bundle) {
     $g = $bundle['gremium'];
     if (($g['eigentuemerId'] ?? null) === $benutzerId) {
-      $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'eigentuemer'];
+      $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'eigentuemer', 'kurz' => !empty($g['kurz'])];
       continue;
     }
     foreach ($g['mitglieder'] as $m) {
-      if (($m['benutzerId'] ?? null) === $benutzerId) {
+      $perEmail = !empty($g['kurz']) && $email !== '' && strcasecmp(trim($m['email'] ?? ''), $email) === 0;
+      if (($m['benutzerId'] ?? null) === $benutzerId || $perEmail) {
         // zugangsKey: persönlicher Link des Mitglieds – dient dem Konto als Kalender-Abo (statt des Konto-Tokens)
-        $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'mitglied', 'personId' => $m['id'], 'personName' => $m['name'], 'zugangsKey' => $m['zugangsKey'] ?? ''];
+        $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'mitglied', 'personId' => $m['id'], 'personName' => $m['name'], 'zugangsKey' => $m['zugangsKey'] ?? '', 'kurz' => !empty($g['kurz'])];
         break;
       }
     }
@@ -396,6 +408,7 @@ function istLeitung(array $sitzung, $personId) {
 // Freigabestufe einer Person für ein Dokument (vorprotokoll / protokoll): in der Sitzung gesetzte Freigabe,
 // sonst Standard – Leitung «alles», alle anderen «eigene» (zugewiesene Traktanden). «lesen» sperrt alles.
 function freigabeStufe(array $sitzung, string $dokument, $personId) {
+  if (!empty($sitzung['kurz'])) $dokument = 'protokoll'; // Kurzsitzung: nur ein Dokument, Traktanden liegen im versteckten Vorprotokoll
   $stufe = $sitzung['freigaben'][$dokument][$personId] ?? null;
   if (in_array($stufe, ['lesen', 'eigene', 'alles'], true)) return $stufe;
   return istLeitung($sitzung, $personId) ? 'alles' : 'eigene';
@@ -700,7 +713,8 @@ function kontoZugriff($token, array $benutzer) {
     foreach ($b['anmeldungen'] as $a) {
       if (hash_equals($a['token'], $token)) {
         return ['rolle' => 'benutzer', 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
-                'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'gremien' => benutzerGremien($b['id'])];
+                'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']),
+                'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'gremien' => benutzerGremien($b['id'], $b['email'])];
       }
     }
   }
@@ -883,7 +897,7 @@ if ($aktion === 'ical') {
 
   foreach ($bundle['sitzungen'] as $s) {
     $titel = ($s['titel'] ?: 'Sitzung') . ' – ' . $gremiumName;
-    $vp = "Vorprotokoll: " . $link('/sitzung/' . $s['id'] . '/vorprotokoll');
+    $vp = empty($s['kurz']) ? "Vorprotokoll: " . $link('/sitzung/' . $s['id'] . '/vorprotokoll') : 'Kurzsitzung'; // Kurzsitzungen haben nur ein Protokoll
     if ($s['datum']) {
       $events .= icalEvent('sitzung-' . $s['id'], $s['datum'], $s['zeit'] ?: null, null, $titel, $vp . "\nProtokoll: " . $link('/sitzung/' . $s['id'] . '/protokoll'), $s['ort'], 'CONFIRMED');
     } elseif (!empty($s['terminfindung']) && $s['terminfindung']['status'] === 'offen') {
@@ -935,8 +949,14 @@ if ($aktion === 'laden') {
     $bundles[0]['protokolle'] = [];
   }
   if ($rolle === 'freigabe') {
-    // Vorprotokoll-Link: aus den Protokollen nur Pendenzen und vertagte / neu behandelte Anträge mitgeben (für den Übertrag)
+    // Vorprotokoll-Link: aus den Protokollen nur Pendenzen und vertagte / neu behandelte Anträge mitgeben (für den Übertrag) –
+    // ausser dem Protokoll der eigenen Kurzsitzung, das der Gast ganz sieht
+    $eigeneSitzungId = null;
+    foreach ($bundles[0]['vorprotokolle'] as $vp) if ($vp['id'] === $zugriff['vorprotokollId']) $eigeneSitzungId = $vp['sitzungId'];
+    $kurz = [];
+    foreach ($bundles[0]['sitzungen'] as $s) if (!empty($s['kurz'])) $kurz[$s['id']] = true;
     foreach ($bundles[0]['protokolle'] as &$protokoll) {
+      if ($protokoll['sitzungId'] === $eigeneSitzungId && isset($kurz[$eigeneSitzungId])) continue;
       $protokoll['eintraege'] = array_values(array_filter($protokoll['eintraege'], fn($e) => $e['typ'] === 'pendenz' || ($e['typ'] === 'antrag' && (($e['antragStatus'] ?? '') === 'vertagt' || !empty($e['vorherigerAntragId'])))));
     }
   }
@@ -960,8 +980,9 @@ if ($aktion === 'speichern') {
 
   $datei = dateiVon($gremiumId);
   $neu = !file_exists($datei);
-  if ($neu && $konto && !empty($konto['darfGremienAnlegen']) && isset($aenderungen['gremium'])) {
-    // Konto mit Freigabe legt ein eigenes Gremium an
+  $neueKurzsitzung = !empty($aenderungen['gremium']['kurz']); // Kurzsitzung ohne Gremium: eigener, versteckter Behälter
+  if ($neu && $konto && !empty($konto[$neueKurzsitzung ? 'darfKurzsitzungenAnlegen' : 'darfGremienAnlegen']) && isset($aenderungen['gremium'])) {
+    // Konto mit Freigabe legt ein eigenes Gremium bzw. eine Kurzsitzung ohne Gremium an
     $zugriff = ['rolle' => 'admin', 'gremiumId' => $gremiumId, 'eigentuemer' => true];
     $rolle = 'admin';
     $istAdmin = true;
@@ -977,13 +998,16 @@ if ($aktion === 'speichern') {
 
   if (isset($aenderungen['gremium'])) {
     // Eigentümer und Konto-Verknüpfungen setzt nur der Superadmin; ein Eigentümer behält sein eigenes Gremium
-    if ($neu) $aenderungen['gremium']['eigentuemerId'] = $konto['benutzerId'] ?? null;
+    // Kurzsitzung des Superadmins: gehört dem mit ihm verknüpften Konto (erscheint so in seiner Übersicht)
+    if ($neu) $aenderungen['gremium']['eigentuemerId'] = $konto['benutzerId'] ?? ($neueKurzsitzung ? ($zugriff['konto']['benutzerId'] ?? null) : null);
     elseif (!$istSuperadmin) {
       $aenderungen['gremium']['eigentuemerId'] = $bundle['gremium']['eigentuemerId'] ?? null;
       $alteKonten = array_column($bundle['gremium']['mitglieder'], 'benutzerId', 'id');
       foreach ($aenderungen['gremium']['mitglieder'] as &$m) $m['benutzerId'] = $alteKonten[$m['id']] ?? null;
       unset($m);
     }
+    // Ob ein Gremium eine Kurzsitzung ohne Gremium ist, steht beim Anlegen fest
+    $aenderungen['gremium']['kurz'] = $neu ? $neueKurzsitzung : !empty($bundle['gremium']['kurz']);
   }
   foreach (array_keys($aenderungen['sitzungen'] ?? []) as $k) $aenderungen['sitzungen'][$k]['gremiumId'] = $gremiumId; // eine Sitzung bleibt in ihrem Gremium
   if ($rolle === 'gremium') $aenderungen = gremiumRechteAnwenden($bundle, $aenderungen, $zugriff['rechte']);
@@ -1171,7 +1195,7 @@ if ($aktion === 'verknuepfen') {
 }
 
 // --- Benutzerverwaltung und Einstellungen (nur Superadmin) --------
-if (in_array($aktion, ['benutzer_aendern', 'benutzer_loeschen', 'einstellungen_lesen', 'einstellungen_speichern'], true) && !$istSuperadmin) {
+if (in_array($aktion, ['benutzer_aendern', 'benutzer_loeschen', 'einstellungen_lesen', 'einstellungen_speichern', 'superadmin_konto'], true) && !$istSuperadmin) {
   antwort(['fehler' => 'Nur der Superadmin kann Konten und Einstellungen verwalten'], 403);
 }
 
@@ -1181,6 +1205,7 @@ if ($aktion === 'benutzer_aendern') {
   if ($i === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
   $b = &$benutzer[$i];
   if (isset($eingabe['darfGremienAnlegen'])) $b['darfGremienAnlegen'] = (bool) $eingabe['darfGremienAnlegen'];
+  if (isset($eingabe['darfKurzsitzungenAnlegen'])) $b['darfKurzsitzungenAnlegen'] = (bool) $eingabe['darfKurzsitzungenAnlegen'];
   if (isset($eingabe['name']) && trim($eingabe['name']) !== '') $b['name'] = trim($eingabe['name']);
   if (isset($eingabe['passwortNeu'])) {
     if (strlen($eingabe['passwortNeu']) < 8) antwort(['fehler' => 'Das Passwort braucht mindestens 8 Zeichen'], 400);
@@ -1190,6 +1215,16 @@ if ($aktion === 'benutzer_aendern') {
   unset($b);
   benutzerSchreiben($benutzer);
   antwort(['ok' => true, 'benutzer' => benutzerOeffentlich($benutzer[$i])]);
+}
+
+// Superadmin mit einem Konto verknüpfen (oder lösen): er sieht dann dessen persönliche Übersicht
+if ($aktion === 'superadmin_konto') {
+  $id = $eingabe['benutzerId'] ?? null;
+  if ($id !== null && benutzerById(benutzerLesen(), $id) === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
+  $superadmin = superadminLesen();
+  $superadmin['benutzerId'] = $id;
+  jsonSchreiben(SUPERADMIN_DATEI, $superadmin);
+  antwort(['ok' => true]);
 }
 
 if ($aktion === 'benutzer_loeschen') {

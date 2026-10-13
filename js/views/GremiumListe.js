@@ -2,9 +2,17 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync } from '../stores/sync.js'
 import { rolleIm } from '../utils/rechte.js'
+import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
+import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 
+// Übersicht: Gremien und darunter die Kurzsitzungen ohne Gremium. persoenlich: Übersicht des Superadmins über das mit
+// ihm verknüpfte Konto – genau wie ein Konto sie sieht (sein Superadmin-Zugriff spielt dort keine Rolle).
 export default {
   name: 'GremiumListe',
+  components: { KurzsitzungDialog, KurzsitzungenListe },
+  props: {
+    persoenlich: { type: Boolean, default: false },
+  },
   template: `
     <div class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
@@ -18,38 +26,65 @@ export default {
         <button class="btn btn-primary">Gremium anlegen</button>
       </form>
 
-      <p v-if="!gremien.length" class="muted">{{ konto ? 'Du bist noch in keinem Gremium hinterlegt. Öffne den persönlichen Link, den du erhalten hast, um ihn mit deinem Konto zu verknüpfen.' : 'Noch keine Gremien vorhanden.' }}</p>
+      <p v-if="!gremien.length && !(konto && kurzsitzungen.length)" class="muted">{{ konto ? 'Du bist noch in keinem Gremium hinterlegt. Öffne den persönlichen Link, den du erhalten hast, um ihn mit deinem Konto zu verknüpfen.' : 'Noch keine Gremien vorhanden.' }}</p>
 
       <div class="grid-karten">
         <router-link v-for="g in gremien" :key="g.id" :to="ziel(g)" class="card karte-link">
           <h2>{{ g.name }}</h2>
           <p class="muted small mt-1">{{ g.beschreibung }}</p>
-          <p class="leise small mt-2">{{ g.mitglieder.length }} Mitglieder · {{ anzahlSitzungen(g.id) }} Sitzungen<span v-if="konto"> · {{ rolleIm(g.id) === 'admin' ? 'verwalten' : 'Mitglied' }}</span></p>
+          <p class="leise small mt-2">{{ g.mitglieder.length }} Mitglieder · {{ anzahlSitzungen(g.id) }} Sitzungen<span v-if="konto"> · {{ eintrag(g.id)?.rolle === 'eigentuemer' ? 'verwalten' : 'Mitglied' }}</span></p>
         </router-link>
       </div>
+
+      <section v-if="kurzsitzungen.length || darfKurzAnlegen" class="card">
+        <div class="card-head">
+          <h2 class="card-title">Kurzsitzungen</h2>
+          <button v-if="darfKurzAnlegen" class="btn btn-primary" @click="dialog = true">+ Kurzsitzung</button>
+        </div>
+        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
+      </section>
+
+      <KurzsitzungDialog v-if="dialog" @schliessen="dialog = false" />
     </div>
   `,
   data() {
-    return { name: '', beschreibung: '' }
+    return { name: '', beschreibung: '', dialog: false }
   },
   computed: {
-    gremien() {
-      return gremienStore.state.gremien
-    },
+    // Konto, dessen Übersicht gezeigt wird (eigenes Konto bzw. das mit dem Superadmin verknüpfte)
     konto() {
-      return sync.zugriff?.rolle === 'benutzer' ? sync.zugriff : null
+      return this.persoenlich ? sync.zugriff?.konto : sync.zugriff?.rolle === 'benutzer' ? sync.zugriff : null
+    },
+    gremien() {
+      const ids = this.konto && new Set(this.konto.gremien.map((g) => g.gremiumId))
+      return gremienStore.state.gremien.filter((g) => !g.kurz && (!ids || ids.has(g.id)))
+    },
+    // Kurzsitzungen ohne Gremium (ihr Behälter ist ein verstecktes Gremium)
+    kurzsitzungen() {
+      const ids = this.konto && new Set(this.konto.gremien.map((g) => g.gremiumId))
+      return sitzungenStore.kurzsitzungen().filter((s) => gremienStore.byId(s.gremiumId)?.kurz && (!ids || ids.has(s.gremiumId)))
     },
     darfAnlegen() {
-      return sync.zugriff?.rolle === 'admin' || !!this.konto?.darfGremienAnlegen
+      return !this.persoenlich && (sync.zugriff?.rolle === 'admin' || !!this.konto?.darfGremienAnlegen)
+    },
+    darfKurzAnlegen() {
+      return sync.zugriff?.rolle === 'admin' || !!this.konto?.darfKurzsitzungenAnlegen
     },
   },
   methods: {
-    rolleIm,
     anzahlSitzungen(gremiumId) {
       return sitzungenStore.sitzungenVonGremium(gremiumId).length
     },
+    eintrag(gremiumId) {
+      return this.konto?.gremien.find((g) => g.gremiumId === gremiumId)
+    },
     ziel(gremium) {
+      if (this.persoenlich) return this.eintrag(gremium.id)?.rolle === 'mitglied' ? '/meine/' + gremium.id : '/gremium/' + gremium.id
       return rolleIm(gremium.id) === 'person' ? '/meine/' + gremium.id : '/gremium/' + gremium.id
+    },
+    // Löschen darf, wer die Kurzsitzung verwaltet (Superadmin, Eigentümer); in der persönlichen Übersicht nur das Konto
+    darfLoeschen(s) {
+      return this.persoenlich ? this.eintrag(s.gremiumId)?.rolle === 'eigentuemer' : rolleIm(s.gremiumId) === 'admin'
     },
     erstellen() {
       const gremium = gremienStore.erstelle(this.name, this.beschreibung)

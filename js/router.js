@@ -1,6 +1,7 @@
 import { api } from './api.js'
 import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
+import { gremienStore } from './stores/gremien.js'
 import { rolleIm, vollzugriff } from './utils/rechte.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
@@ -26,6 +27,8 @@ const router = VueRouter.createRouter({
     { path: '/datenschutz', component: Datenschutz },
     { path: '/', component: GremiumListe },
     { path: '/meine/:gremiumId?', component: PersonSeite, props: true },
+    // Persönliche Übersicht des Superadmins (über das mit ihm verknüpfte Konto)
+    { path: '/uebersicht', component: GremiumListe, props: { persoenlich: true } },
     { path: '/konto', component: Konto },
     { path: '/einstellungen', component: Einstellungen },
     { path: '/benutzer', component: Benutzer },
@@ -95,7 +98,10 @@ router.beforeEach(async (to) => {
   }
   if (to.name === 'freigabe') {
     const key = to.params.freigabeLinkKey
-    return mitLinkAnmelden(key, () => sitzungenStore.vorprotokollByKey(key) || sitzungenStore.vorprotokollByPersonKey(key))
+    await mitLinkAnmelden(key, () => sitzungenStore.vorprotokollByKey(key) || sitzungenStore.vorprotokollByPersonKey(key))
+    // Gast-Link einer Kurzsitzung: es gibt kein Vorprotokoll, nur Terminfindung bzw. Protokoll
+    const sitzung = sitzungenStore.sitzungById(sitzungenStore.vorprotokollById(sync.zugriff?.vorprotokollId)?.sitzungId)
+    return sitzung?.kurz ? kurzPfad(sitzung) : true
   }
   if (to.name === 'verfolgen') {
     return mitLinkAnmelden(to.params.verfolgerKey, () => sitzungenStore.protokollByVerfolgerKey(to.params.verfolgerKey))
@@ -109,8 +115,10 @@ router.beforeEach(async (to) => {
   const sitzungsPfad = to.path.startsWith('/sitzung/')
   const sitzung = sitzungsPfad ? sitzungenStore.sitzungById(to.params.sitzungId) : null
 
+  // Kurzsitzungen haben kein Vorprotokoll
+  if (sitzung?.kurz && to.path.endsWith('/vorprotokoll')) return kurzPfad(sitzung)
   // Ohne festen Termin gibt es kein Protokoll
-  if (sitzung && to.path.endsWith('/protokoll') && !sitzung.datum) return `/sitzung/${sitzung.id}/vorprotokoll`
+  if (sitzung && to.path.endsWith('/protokoll') && !sitzung.datum) return sitzung.kurz ? kurzPfad(sitzung) : `/sitzung/${sitzung.id}/vorprotokoll`
 
   if (zugriff.rolle === 'verfolger') return `/verfolgen/${api.token}`
   if (zugriff.rolle === 'themenbereich') return `/themenbereich/${api.token}`
@@ -118,15 +126,18 @@ router.beforeEach(async (to) => {
     // Vorprotokoll-Link: zusätzlich die Terminfindung der zugehörigen Sitzung
     const vp = sitzungenStore.vorprotokollById(zugriff.vorprotokollId)
     if (to.path === `/sitzung/${vp?.sitzungId}/terminfindung`) return true
+    const eigene = sitzungenStore.sitzungById(vp?.sitzungId)
+    if (eigene?.kurz) return to.path === `/sitzung/${eigene.id}/protokoll` || kurzPfad(eigene)
     return `/freigabe/${api.token}`
   }
-  if (['/einstellungen', '/benutzer'].includes(to.path) && zugriff.rolle !== 'admin') return startPfad()
+  if (['/einstellungen', '/benutzer', '/uebersicht'].includes(to.path) && zugriff.rolle !== 'admin') return startPfad()
+  if (to.path === '/uebersicht' && !zugriff.konto) return '/'
   if (to.path === '/konto') return zugriff.rolle === 'benutzer' ? true : startPfad()
 
   // Wirksame Rolle im betroffenen Gremium (Konto: je Gremium Eigentümer oder Mitglied)
   const gremiumId = sitzung?.gremiumId || to.params.gremiumId || zugriff.gremiumId
   const rolle = rolleIm(gremiumId)
-  if (zugriff.rolle === 'person' && to.path === '/meine') return true
+  if (zugriff.rolle === 'person' && to.path === '/meine') return gremienStore.byId(zugriff.gremiumId)?.kurz ? startPfad() : true
   if (zugriff.rolle === 'benutzer' && (to.path === '/' || to.path.startsWith('/meine'))) return to.params.gremiumId && rolle !== 'person' ? '/' : true
   if (rolle === 'person') {
     if (to.path.includes('/themenbereich/')) return true
@@ -153,14 +164,25 @@ router.beforeEach(async (to) => {
 export function startPfad() {
   const zugriff = sync.zugriff
   if (!zugriff) return '/login'
-  if (zugriff.rolle === 'person') return '/meine'
+  if (zugriff.rolle === 'person') {
+    // Eingeladene einer Kurzsitzung ohne Gremium: direkt zur Kurzsitzung
+    const kurz = gremienStore.byId(zugriff.gremiumId)?.kurz && sitzungenStore.kurzsitzungen(zugriff.gremiumId)[0]
+    return kurz ? kurzPfad(kurz) : '/meine'
+  }
   if (zugriff.rolle === 'benutzer') {
-    const mitglied = zugriff.gremien.filter((g) => g.rolle === 'mitglied')
-    if (mitglied.length === zugriff.gremien.length && mitglied.length === 1 && !zugriff.darfGremienAnlegen) return `/meine/${mitglied[0].gremiumId}`
+    const gremien = zugriff.gremien.filter((g) => !g.kurz)
+    const mitglied = gremien.filter((g) => g.rolle === 'mitglied')
+    const nurEines = mitglied.length === gremien.length && mitglied.length === 1 && gremien.length === zugriff.gremien.length
+    if (nurEines && !zugriff.darfGremienAnlegen && !zugriff.darfKurzsitzungenAnlegen) return `/meine/${mitglied[0].gremiumId}`
     return '/'
   }
   if (zugriff.rolle === 'gremium') return `/gremium/${zugriff.gremiumId}`
   return '/'
+}
+
+// Kurzsitzung öffnen: solange der Termin gesucht wird die Terminfindung, sonst das Protokoll
+export function kurzPfad(sitzung) {
+  return `/sitzung/${sitzung.id}/${sitzung.terminfindung?.status === 'offen' || !sitzung.datum ? 'terminfindung' : 'protokoll'}`
 }
 
 export default router

@@ -36,7 +36,7 @@ export default {
     },
     // Neueste Sitzung zuerst
     sitzungen() {
-      return [...sitzungenStore.sitzungenVonGremium(this.gremiumId)].sort((a, b) => (b.datum || '9999').localeCompare(a.datum || '9999'))
+      return [...sitzungenStore.sitzungenVonGremium(this.gremiumId), ...sitzungenStore.kurzsitzungen(this.gremiumId)].sort((a, b) => (b.datum || '9999').localeCompare(a.datum || '9999'))
     },
     treffer() {
       const woerter = this.begriff.toLowerCase().split(/\s+/).filter(Boolean)

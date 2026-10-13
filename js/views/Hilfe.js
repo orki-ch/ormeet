@@ -32,8 +32,8 @@ export default {
         <h2 class="card-title">2. Wer hat Zugriff?</h2>
         <p class="muted">Ormeet funktioniert mit Passwort und Links – ein Konto braucht niemand. Wer einen Link hat, hat den dazugehörigen Zugriff – gib Links deshalb nur an die richtigen Personen weiter. Wer mag, legt sich über seinen persönlichen Link zusätzlich ein Konto an (Kapitel 3).</p>
         <div class="zeilen" style="--spalten: 10rem 1fr">
-          <div class="zeile oben"><strong>Superadmin</strong><span>Meldet sich mit dem Passwort an. Sieht alle Gremien, kann sie anlegen, löschen und teilen und verwaltet unter <em>Benutzer & Links</em> alle Konten und Links.</span></div>
-          <div class="zeile oben"><strong>Konto</strong><span>Anmeldung mit E-Mail und Passwort oder über einen Anbieter (Sublevia, Orki). Ein Konto bündelt alle persönlichen Links einer Person: In der Übersicht wechselt sie zwischen ihren Gremien, jedes mit eigenem Kalender-Abo. Erlaubt es der Superadmin, kann sie eigene Gremien anlegen und verwaltet diese vollständig – andere Gremien sieht sie weiterhin nur, wo sie als Mitglied hinterlegt ist.</span></div>
+          <div class="zeile oben"><strong>Superadmin</strong><span>Meldet sich mit dem Passwort an. Sieht alle Gremien, kann sie anlegen, löschen und teilen und verwaltet unter <em>Benutzer & Links</em> alle Konten und Links. Verknüpft er dort mit <em>Das bin ich</em> sein eigenes Konto, erscheint oben das Symbol <em>Meine Übersicht</em>: Es zeigt genau, woran dieses Konto beteiligt ist – unabhängig vom Superadmin-Zugriff.</span></div>
+          <div class="zeile oben"><strong>Konto</strong><span>Anmeldung mit E-Mail und Passwort oder über einen Anbieter (Sublevia, Orki). Ein Konto bündelt alle persönlichen Links einer Person: In der Übersicht wechselt sie zwischen ihren Gremien, jedes mit eigenem Kalender-Abo. Erlaubt es der Superadmin, kann sie eigene Gremien bzw. Kurzsitzungen ohne Gremium anlegen und verwaltet diese vollständig – andere Gremien sieht sie weiterhin nur, wo sie als Mitglied hinterlegt ist.</span></div>
           <div class="zeile oben"><strong>Gremium-Link</strong><span>Wird im Gremium unter <em>Teilen</em> erstellt. Pro Link legst du fest, welche Bereiche sichtbar sind und ob sie bearbeitet werden dürfen – z. B. «Aktuariat» mit vollem Zugriff auf Sitzungen.</span></div>
           <div class="zeile oben"><strong>Persönlicher Link</strong><span>Jedes Mitglied hat einen zentralen Link (im Mitglieder-Dialog). Er zeigt eine eigene Übersicht mit Sitzungen, Terminfindungen und Pendenzen sowie einen <em>Kalender-Abo-Link</em> (Sitzungen, eigene Pendenzen, provisorische Termine mit Ja/Vielleicht – jeweils mit Link zum Vorprotokoll). Bearbeiten kann die Person, was ihr bei Traktanden zugewiesen ist – im Vorprotokoll und im Protokoll. Ist sie bei einer Sitzung als Sitzungsleitung oder Protokollführung eingetragen, hat sie dort vollen Zugriff.</span></div>
           <div class="zeile oben"><strong>Freigabe-Link</strong><span>Gehört zu einem Vorprotokoll. Der <em>allgemeine</em> Link erlaubt das Bearbeiten des ganzen Vorprotokolls. Gäste erhalten einen eigenen Link mit denselben Regeln wie beim persönlichen Link, beschränkt auf dieses Vorprotokoll.</span></div>
@@ -88,7 +88,7 @@ export default {
           <li><strong>Traktandenliste steht fest:</strong> Sobald das Protokoll existiert, ist das Vorprotokoll abgeschlossen und nicht mehr bearbeitbar; im Protokoll kommen nur noch Einträge und Zusatztraktanden dazu. Muss die Traktandenliste doch geändert werden, entfernst du das Protokoll über ⋯ → <em>Protokoll entfernen</em> (alle Einträge gehen verloren) – dann ist das Vorprotokoll wieder bearbeitbar.</li>
           <li>Bei jedem Traktandum oder Unterpunkt <em>+ Eintrag</em>: Der neue Eintrag öffnet sich direkt – Titel und Inhalt tippst du im Eintrag selbst, Typ (Information, Pendenz), Themenbereich und bei Pendenzen Status, Person und Frist sind Pillen darunter. Ist der Typ beim Traktandum vorgegeben, entfällt die Wahl.</li>
           <li><strong>Anträge entscheiden:</strong> Die im Vorprotokoll formulierten Anträge stehen im Protokoll bereit – Klick öffnet nur den Beschluss (Offen, Angenommen, Abgelehnt, Vertagt, Sistiert). Bei angenommenen oder abgelehnten Anträgen kannst du die Stimmen (Ja, Nein, Enthaltungen) eintragen; der Beschluss <em>Vertagt</em> bringt den Antrag als neuen, offenen Antrag ins nächste Vorprotokoll. Unter dem Beschluss hältst du in einer <em>Notiz</em> fest, was zur Beratung und zum Entscheid wichtig ist; der Antragstext selbst bleibt, wie er im Vorprotokoll stand. Neue Anträge gibt es im Protokoll nicht – sie gehören ins Vorprotokoll.</li>
-          <li><strong>Zusatztraktanden:</strong> Kommt an der Sitzung ein Geschäft dazu, das nicht im Vorprotokoll steht, fügst du unter den Traktanden ein <em>+ Zusatztraktandum</em> hinzu. Es trägt keine Nummer, sondern die Bezeichnung «Zusatztraktandum», und kann an jeder Stelle im Ablauf stehen (Pille <em>Nach …</em>). Im Feld <em>Weshalb kam dieses Traktandum an der Sitzung hinzu?</em> hältst du fest, warum vom Vorprotokoll abgewichen wird; in der Ansicht öffnet sich dieser Text erst auf Klick, im PDF steht er klein unter dem Titel. Einträge erfasst du darin wie bei jedem Traktandum.</li>
+          <li><strong>Zusatztraktanden:</strong> Kommt an der Sitzung ein Geschäft dazu, das nicht im Vorprotokoll steht, klickst du auf die kleine Pille <em>+ Zusatztraktandum</em> im Zwischenraum unter einem Traktandum; das Zusatztraktandum steht dann direkt danach. Es trägt keine Nummer, sondern die Bezeichnung «Zusatztraktandum», und kann an jeder Stelle im Ablauf stehen (Pille <em>Nach …</em>). Im Feld <em>Weshalb kam dieses Traktandum an der Sitzung hinzu?</em> hältst du fest, warum vom Vorprotokoll abgewichen wird; in der Ansicht öffnet sich dieser Text erst auf Klick, im PDF steht er klein unter dem Titel. Einträge erfasst du darin wie bei jedem Traktandum.</li>
           <li><strong>Letztes Protokoll genehmigen:</strong> Die Karte oberhalb der Traktanden zeigt das Protokoll der vorherigen Sitzung. <em>Protokoll genehmigen</em> friert es ein – niemand kann es mehr ändern, nur der Stand seiner Pendenzen wird weiter nachgeführt. Aufheben lässt sich das nur, indem die Sitzung gelöscht wird, an der genehmigt wurde.</li>
           <li>Ein Klick auf einen Eintrag öffnet ihn zum Bearbeiten; er bleibt offen, bis du <em>Fertig</em> klickst oder im selben Traktandum einen anderen Eintrag öffnest.</li>
           <li>Übertragene Pendenzen zeigen den Stand aus der früheren Sitzung; Status, Person und Frist änderst du direkt dort – die Änderung gilt überall.</li>
@@ -99,8 +99,19 @@ export default {
         </ol>
       </section>
 
+      <section id="kurzsitzungen" class="card stack-sm">
+        <h2 class="card-title">7. Kurzsitzungen</h2>
+        <ul>
+          <li><strong>Wozu:</strong> Für kurze, spontane Besprechungen, die einfach festgehalten werden sollen. Eine Kurzsitzung steht immer für sich: Sie hat kein Vorprotokoll, keinen nächsten Termin, keine Genehmigung, und offene Pendenzen oder vertagte Anträge werden nirgends hin übernommen.</li>
+          <li><strong>Ohne Gremium:</strong> Auf der Startseite unter <em>Kurzsitzungen</em> auf <em>+ Kurzsitzung</em> klicken. Das dürfen die Verwaltung (Superadmin) und Konten, denen sie das erlaubt hat. Teilnehmende lädst du im Protokoll mit Name und E-Mail ein; jede Person erhält einen persönlichen Link. Hat sie ein Konto mit derselben E-Mail, erscheint die Kurzsitzung zudem in ihrer Übersicht.</li>
+          <li><strong>Mit Gremium:</strong> Im Gremium im Reiter <em>Kurzsitzungen</em>. Die Teilnehmenden wählst du aus den Mitgliedern; Gäste kommen wie gewohnt dazu und erhalten einen eigenen Link. Mitglieder sehen die Kurzsitzung in ihrer Übersicht, wenn sie teilnehmen.</li>
+          <li><strong>Termin:</strong> Standardmässig findet die Kurzsitzung heute zur nächsten vollen Viertelstunde statt – so beginnt das Protokoll sofort. Alternativ suchst du den Termin per Abstimmung; die Teilnehmenden stimmen dann wie bei einer normalen Sitzung ab.</li>
+          <li><strong>Protokollieren:</strong> Mit <em>+ Traktandum</em> erfasst du die Traktanden fortlaufend während der Besprechung. Darunter kommen Einträge wie in jedem Protokoll; Anträge entstehen hier direkt samt Beschluss, Abstimmung und Notiz. Leitung und Protokollführung ist, wer die Kurzsitzung angelegt hat. Wer was darf, legst du pro Person in der Karte <em>Protokoll teilen</em> fest.</li>
+        </ul>
+      </section>
+
       <section id="terminfindung" class="card stack-sm">
-        <h2 class="card-title">7. Termin finden</h2>
+        <h2 class="card-title">8. Termin finden</h2>
         <ol>
           <li>Beim Erfassen der Sitzung <em>Termin per Abstimmung finden</em> wählen. Die Sitzung erscheint mit Status «In Planung» und «Termin offen».</li>
           <li>Auf der Terminfindungs-Seite Vorschläge erfassen: Tage im Mini-Kalender anklicken (nochmals klicken entfernt sie) oder ein Datum von Hand mit «+» hinzufügen. Jeder Vorschlag hat in der Liste ein eigenes Datum-Zeit-Feld und optional «Bis». Die Zeit rechts gilt für neue Vorschläge; angekreuzte Vorschläge übernehmen sie mit «Auf ausgewählte übertragen». Einstellungen: nur eine Option mit «Ja», verdeckte Abstimmung, nachträgliches Ändern erlauben.</li>
@@ -111,7 +122,7 @@ export default {
       </section>
 
       <section id="pendenzen" class="card stack-sm">
-        <h2 class="card-title">8. Pendenzen und Themenbereiche</h2>
+        <h2 class="card-title">9. Pendenzen und Themenbereiche</h2>
         <ul>
           <li>Eine Pendenz hat Status (offen, in Bearbeitung, erfüllt), eine zugewiesene Person und eine Frist.</li>
           <li>Solange sie nicht erfüllt ist, wird sie in jedes neue Vorprotokoll des Gremiums übernommen.</li>
@@ -121,12 +132,12 @@ export default {
       </section>
 
       <section id="pdf" class="card stack-sm">
-        <h2 class="card-title">9. PDF exportieren</h2>
+        <h2 class="card-title">10. PDF exportieren</h2>
         <p>Im Vorprotokoll und im Protokoll über ⋯ → <em>PDF exportieren</em>. Das PDF enthält dieselben Angaben wie die Ansicht: Kopfdaten, Anwesenheitstabelle, den Stand des letzten Protokolls, Traktanden und Zusatztraktanden mit Einträgen (bei Anträgen Beschluss, Abstimmung und Notiz), die Pendenzenliste, den nächsten Termin und den Fusstext des Gremiums. Nur die Darstellung ist fürs Papier angepasst.</p>
       </section>
 
       <section id="bedienung" class="card stack-sm">
-        <h2 class="card-title">10. Bedienprinzip</h2>
+        <h2 class="card-title">11. Bedienprinzip</h2>
         <ul>
           <li><strong>Klick = bearbeiten.</strong> Listen zeigen eine ruhige Vorschau. Ein Klick öffnet genau dieses Element. Es bleibt offen, bis du <em>Fertig</em> klickst, Escape drückst oder ein anderes Element öffnest.</li>
           <li><strong>Farbiger Rahmen = darfst du bearbeiten.</strong> Im Vorprotokoll wie im Protokoll zeigt der Rahmen, welche Bereiche du ändern kannst.</li>
@@ -137,7 +148,7 @@ export default {
       </section>
 
       <section id="fragen" class="card stack-sm">
-        <h2 class="card-title">11. Häufige Fragen</h2>
+        <h2 class="card-title">12. Häufige Fragen</h2>
         <dl>
           <div><dt>Ich habe einen Link weitergegeben, der nicht mehr gültig sein soll.</dt><dd>Im Gremium unter <em>Teilen</em> (bzw. bei Freigabe-Links im Vorprotokoll) den Link erneuern – der alte funktioniert dann nicht mehr.</dd></div>
           <div><dt>Warum sehe ich ein Traktandum nur grau?</dt><dd>Über deinen Link darfst du es nicht bearbeiten. Die verantwortliche Person oder das Aktuariat kann dich unter «Dürfen zusätzlich bearbeiten» eintragen – einzeln, per Rolle oder Gruppe.</dd></div>
@@ -157,6 +168,7 @@ export default {
         { id: 'gremium', titel: 'Gremium einrichten' },
         { id: 'sitzung', titel: 'Sitzung erfassen und Vorprotokoll' },
         { id: 'protokoll', titel: 'Sitzung protokollieren' },
+        { id: 'kurzsitzungen', titel: 'Kurzsitzungen' },
         { id: 'terminfindung', titel: 'Termin finden' },
         { id: 'pendenzen', titel: 'Pendenzen und Themenbereiche' },
         { id: 'pdf', titel: 'PDF exportieren' },

@@ -14,21 +14,24 @@ import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import TeilenKarte from '../components/TeilenKarte.js'
 import Unterpunkte from '../components/Unterpunkte.js'
 import Zusatztraktanden from '../components/Zusatztraktanden.js'
+import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
+import { neuerKey } from '../utils/keys.js'
+import { neuesTraktandum } from '../utils/traktanden.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden, KurzTeilnehmende },
   props: {
     sitzungId: { type: String, required: true },
   },
   template: `
     <div v-if="protokoll" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
-        <router-link :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
+        <router-link v-if="zurueck" :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
         <div class="kopf">
           <div>
             <p class="kicker">
-              Protokoll · {{ formatDatum(sitzung.datum) }}
+              {{ kurz ? 'Kurzsitzung' : 'Protokoll' }} · {{ formatDatum(sitzung.datum) }}
               <span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(sitzung)]" style="margin-left: 0.25rem">{{ SITZUNG_STATUS[sitzungStatus(sitzung)] }}</span>
             </p>
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
@@ -39,14 +42,14 @@ export default {
           </div>
           <div class="actions">
             <span class="small" :class="speicherKlasse" title="Ctrl+S speichert sofort">● {{ speicherText }}</span>
-            <button v-if="voll && sitzung.status !== 'abgeschlossen'" class="btn btn-primary" @click="abschliessen">Sitzung abschliessen</button>
+            <button v-if="voll && sitzung.status !== 'abgeschlossen'" class="btn btn-primary" @click="abschliessen">{{ kurz ? 'Kurzsitzung abschliessen' : 'Sitzung abschliessen' }}</button>
             <MenuDropdown>
               <button class="menu-item" @click="speichern">Jetzt speichern <span class="leise">Ctrl+S</span></button>
               <PdfExportButton typ="protokoll" :sitzung-id="sitzungId" class="menu-item" @click.capture="speichern" />
               <button v-if="linksSichtbar" class="menu-item" @click="verfolgerLinkKopieren">Verfolger-Link kopieren</button>
-              <button class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
-              <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">Sitzung wieder öffnen</button>
-              <button v-if="darfEntfernen" class="menu-item menu-item-danger" @click="entfernen">Protokoll entfernen</button>
+              <button v-if="!kurz" class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
+              <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">{{ kurz ? 'Kurzsitzung' : 'Sitzung' }} wieder öffnen</button>
+              <button v-if="darfEntfernen && !kurz" class="menu-item menu-item-danger" @click="entfernen">Protokoll entfernen</button>
               <span v-if="genehmigt" class="menu-item leise">Genehmigt – nur lesbar</span>
             </MenuDropdown>
           </div>
@@ -55,7 +58,15 @@ export default {
 
       <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" />
 
-      <section class="card" :class="{ bearbeitbar: voll || person }">
+      <section v-if="kurz" class="card" :class="{ bearbeitbar: voll || person }">
+        <h2 class="card-title">Teilnehmende</h2>
+        <KurzTeilnehmende :gremium="gremium" :ziel="protokoll" feld="anwesende" :voll="voll" :person-id="eigene ? person?.id : null" :links-sichtbar="linksSichtbar" />
+        <div class="row mt-3">
+          <strong class="small">Gäste</strong>
+          <GaesteListe :gaeste="protokoll.gaeste" :nur-lesen="!voll" />
+        </div>
+      </section>
+      <section v-else class="card" :class="{ bearbeitbar: voll || person }">
         <h2 class="card-title">Anwesenheit</h2>
         <div class="row" style="gap: 0.25rem 1.5rem">
           <label v-for="m in gremium.mitglieder" :key="m.id" class="check" :class="{ aus: !darfAnwesenheit(m) }">
@@ -85,12 +96,23 @@ export default {
       </section>
 
       <!-- Traktanden mit Einträgen; Zusatztraktanden (an der Sitzung hinzugekommen) stehen an ihrer Stelle im Ablauf -->
-      <Zusatztraktanden v-bind="zusatz" :nach-id="null" @aktiv="(id) => (zusatzAktiv = id)" />
+      <Zusatztraktanden v-if="!kurz" v-bind="zusatz" :nach-id="null" @aktiv="(id) => (zusatzAktiv = id)" />
       <template v-for="(t, i) in traktanden" :key="t.id">
-        <section :id="t.id" class="card" :class="{ bearbeitbar: darfTraktandum(t) }">
-          <div class="traktandum-kopf">
+        <section :id="t.id" class="card mit-pille" :class="{ bearbeitbar: darfTraktandum(t) }">
+          <!-- Kurzsitzung: Haupttraktanden entstehen hier; Klick auf den Titel öffnet ihn zum Bearbeiten -->
+          <div class="traktandum-kopf" :class="{ 'zusatz-kopf': kurz && voll && kurzAktiv !== t.id }" @click="kurz && voll && kurzAktiv !== t.id && kurzOeffnen(t)">
             <span class="nr">{{ i + 1 }}.</span>
-            <h2>{{ t.titel }}</h2>
+            <template v-if="kurz && kurzAktiv === t.id">
+              <input v-model.trim="t.titel" class="nahtlos h2 grow" placeholder="Traktandum" />
+              <span class="werkzeuge">
+                <MenuDropdown>
+                  <button class="menu-item" :disabled="i === 0" @click="kurzVerschieben(i, -1)">↑ Nach oben</button>
+                  <button class="menu-item" :disabled="i === traktanden.length - 1" @click="kurzVerschieben(i, 1)">↓ Nach unten</button>
+                  <button class="menu-item menu-item-danger" @click="kurzLoeschen(t)">Traktandum löschen</button>
+                </MenuDropdown>
+              </span>
+            </template>
+            <h2 v-else :class="{ leer: !t.titel }">{{ t.titel || 'Ohne Titel' }}</h2>
             <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
             <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
             <span v-if="t.themenbereichId" class="badge" :style="themenbereichStil(t.themenbereichId)">{{ themenbereichName(t.themenbereichId) }}</span>
@@ -108,7 +130,7 @@ export default {
             </p>
 
             <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
-            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" />
+            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" />
 
             <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
               <template #default="{ u, typ, darf }">
@@ -129,12 +151,16 @@ export default {
             <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
             <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
           </div>
+          <div v-if="kurz && kurzAktiv === t.id" class="row mt-1">
+            <button class="btn ml-auto" @click="kurzSchliessen(t)">Fertig</button>
+          </div>
+          <!-- Neues Zusatztraktandum direkt nach diesem Traktandum: dezente Pille im Zwischenraum zur nächsten Karte -->
+          <button v-if="voll && !kurz" type="button" class="zusatz-pille" @click="zusatzHinzufuegen(t.id)">+ Zusatztraktandum</button>
         </section>
-        <Zusatztraktanden v-bind="zusatz" :nach-id="t.id" @aktiv="(id) => (zusatzAktiv = id)" />
+        <Zusatztraktanden v-if="!kurz" v-bind="zusatz" :nach-id="t.id" @aktiv="(id) => (zusatzAktiv = id)" />
       </template>
-      <div v-if="voll">
-        <button class="btn btn-ghost" @click="zusatzHinzufuegen">+ Zusatztraktandum</button>
-        <p class="muted small mt-1">Für Geschäfte, die erst an der Sitzung dazukommen. Die Stelle im Ablauf und den Grund für die Abweichung vom Vorprotokoll legst du beim Bearbeiten fest.</p>
+      <div v-if="kurz && voll">
+        <button class="btn btn-ghost" @click="kurzHinzufuegen">+ Traktandum</button>
       </div>
 
       <p v-if="geplanteDauer" class="muted small">
@@ -142,8 +168,8 @@ export default {
         <span v-if="geplanteDauer && tatsaechlicheDauer" :class="tatsaechlicheDauer > geplanteDauer ? 'text-warn' : 'text-ok'">({{ tatsaechlicheDauer > geplanteDauer ? '+' : '' }}{{ tatsaechlicheDauer - geplanteDauer }} Min.)</span>
       </p>
 
-      <!-- Nächster Termin -->
-      <section class="card" :class="{ bearbeitbar: voll }">
+      <!-- Nächster Termin (Kurzsitzungen stehen für sich: kein nächster Termin) -->
+      <section v-if="!kurz" class="card" :class="{ bearbeitbar: voll }">
         <h2 class="card-title">Nächster Sitzungstermin</h2>
         <p v-if="naechsterTermin" class="row small">
           <strong>{{ formatDatum(naechsterTermin.datum) }}<span v-if="naechsterTermin.zeit">, {{ naechsterTermin.zeit }}</span> · {{ naechsterTermin.ort }}</strong>
@@ -191,6 +217,7 @@ export default {
       speicherTimer: null,
       linkKopiert: false,
       zusatzAktiv: null, // ID des Zusatztraktandums in Bearbeitung
+      kurzAktiv: null, // Kurzsitzung: ID des Traktandums, dessen Titel bearbeitet wird
       neuerTermin: { datum: '', zeit: '', ort: '', vorlageId: '' },
       terminModus: 'offen', // offen | bestehend | neu | abstimmung
       TERMIN_MODI: { offen: 'Offen lassen', bestehend: 'Bestehend', neu: 'Neu', abstimmung: 'Abstimmung' },
@@ -210,6 +237,9 @@ export default {
     },
     sitzung() {
       return sitzungenStore.sitzungById(this.sitzungId)
+    },
+    kurz() {
+      return !!this.sitzung.kurz
     },
     gremium() {
       return gremienStore.byId(this.sitzung.gremiumId)
@@ -257,6 +287,7 @@ export default {
       return gremienStore.personen(this.gremium.id, this.protokoll.gaeste)
     },
     abwesende() {
+      if (this.kurz) return [] // Kurzsitzung: es gibt nur Teilnehmende, niemand gilt als entschuldigt
       return gremienStore.erwarteteMitglieder(this.gremium.id).filter((m) => !this.protokoll.anwesende.includes(m.id)).map((m) => m.id)
     },
     uebertragene() {
@@ -353,7 +384,10 @@ export default {
       return new Date().toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
     },
     tastendruck(event) {
-      if (event.key === 'Escape') this.zusatzAktiv = null
+      if (event.key === 'Escape') {
+        this.zusatzAktiv = null
+        if (this.kurzAktiv) this.kurzSchliessen(this.traktanden.find((t) => t.id === this.kurzAktiv))
+      }
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault()
         this.speichern()
@@ -361,17 +395,58 @@ export default {
     },
     speichern() {
       clearTimeout(this.speicherTimer)
+      if (this.kurz) {
+        // Kurzsitzung: Teilnehmende und Gäste (mit persönlichem Link) auch im versteckten Vorprotokoll führen
+        const vp = this.vorprotokollDokument
+        vp.anwesendeMitgliederIds = [...this.protokoll.anwesende]
+        vp.gaeste = this.protokoll.gaeste.map((g) => ({ ...g }))
+        if (this.linksSichtbar) vp.gaeste.forEach((g) => (vp.personenKeys[g.id] ||= neuerKey()))
+      }
       sitzungenStore.speichereProtokoll({ ...this.protokoll, abwesende: this.abwesende })
       this.gespeichert = true
       this.gespeichertUm = this.uhrzeit()
       serverSpeichern()
     },
-    // Neues Zusatztraktandum am Ende des Ablaufs, direkt in Bearbeitung
-    zusatzHinzufuegen() {
-      const zusatz = { id: crypto.randomUUID(), titel: '', begruendung: '', nachId: this.traktanden.at(-1)?.id || null }
-      this.protokoll.zusatztraktanden.push(zusatz)
+    // Neues Zusatztraktandum direkt nach dem Traktandum nachId (vor schon vorhandenen an dieser Stelle), gleich in Bearbeitung
+    zusatzHinzufuegen(nachId) {
+      const zusatz = { id: crypto.randomUUID(), titel: '', begruendung: '', nachId }
+      const liste = this.protokoll.zusatztraktanden
+      const index = liste.findIndex((z) => z.nachId === nachId)
+      liste.splice(index < 0 ? liste.length : index, 0, zusatz)
       this.zusatzAktiv = zusatz.id
       this.$nextTick(() => document.getElementById(zusatz.id)?.querySelector('.nahtlos')?.focus())
+    },
+    // Kurzsitzung: Haupttraktanden fortlaufend während der Sitzung erfassen (ohne Begründung)
+    kurzHinzufuegen() {
+      const traktandum = neuesTraktandum({ reihenfolge: this.traktanden.length + 1 })
+      this.vorprotokollDokument.traktanden.push(traktandum)
+      this.kurzOeffnen(traktandum)
+    },
+    kurzOeffnen(t) {
+      this.kurzAktiv = t.id
+      this.$nextTick(() => document.getElementById(t.id)?.querySelector('.nahtlos')?.focus())
+    },
+    // Fertig: ein leeres Traktandum ohne Einträge verschwindet wieder
+    kurzSchliessen(t) {
+      this.kurzAktiv = null
+      if (t && !t.titel && !this.protokoll.eintraege.some((e) => e.traktandumId === t.id)) this.kurzEntfernen(t)
+    },
+    kurzLoeschen(t) {
+      const anzahl = this.protokoll.eintraege.filter((e) => e.traktandumId === t.id).length
+      if (anzahl && !confirm(`Traktandum «${t.titel || 'Ohne Titel'}» mit ${anzahl} Einträgen löschen?`)) return
+      this.kurzEntfernen(t)
+      this.kurzAktiv = null
+    },
+    kurzEntfernen(t) {
+      const liste = this.vorprotokollDokument.traktanden
+      liste.splice(liste.indexOf(t), 1)
+      liste.forEach((x, i) => (x.reihenfolge = i + 1))
+      this.protokoll.eintraege = this.protokoll.eintraege.filter((e) => e.traktandumId !== t.id)
+    },
+    kurzVerschieben(i, richtung) {
+      const liste = this.vorprotokollDokument.traktanden
+      ;[liste[i], liste[i + richtung]] = [liste[i + richtung], liste[i]]
+      liste.forEach((x, j) => (x.reihenfolge = j + 1))
     },
     // Live-Ansicht (nur lesen) für Zuschauer
     verfolgerLinkKopieren() {

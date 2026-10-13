@@ -53,7 +53,9 @@ export function benachrichtigungen() {
     const person = personId ? gremienStore.person(g.id, [], personId) : null
     const erwartet = person && gremienStore.erwarteteMitglieder(g.id).some((m) => m.id === personId)
 
-    for (const s of sitzungenStore.sitzungenVonGremium(g.id)) {
+    // Kurzsitzungen: nur wer teilnimmt oder leitet (bzw. wer verwaltet) wird benachrichtigt
+    const kurz = sitzungenStore.kurzsitzungen(g.id).filter((s) => verwaltet || (person && (istLeitung(s, personId) || sitzungenStore.teilnehmende(s).includes(personId))))
+    for (const s of [...sitzungenStore.sitzungenVonGremium(g.id), ...kurz]) {
       const leitung = person && istLeitung(s, personId)
       const tf = s.terminfindung
       const vp = sitzungenStore.vorprotokollVonSitzung(s.id)

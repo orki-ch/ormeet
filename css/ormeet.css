@@ -668,6 +668,16 @@ details > summary::-webkit-details-marker {
   .topbar .hilfe {
     display: none;
   }
+  /* Superadmin mit «Meine Übersicht»: bis zu sechs Symbole müssen nebeneinander Platz haben */
+  .topbar .topbar-inner {
+    padding: 0 0.75rem 0 1rem;
+  }
+  .topbar .topbar-nav {
+    gap: 0;
+  }
+  .topbar .icon-btn {
+    width: 2.25rem;
+  }
 }
 
 .page {
@@ -2253,9 +2263,121 @@ select.btn-pille {
   color: var(--text-muted);
 }
 
-/* Zusatztraktandum: der Kopf öffnet die Bearbeitung */
+/* Zusatztraktandum / Traktandum einer Kurzsitzung: der Kopf öffnet die Bearbeitung */
 .zusatz-kopf {
   cursor: pointer;
+}
+
+/* «+ Zusatztraktandum»: dezente Pille mittig im Zwischenraum unter einer Traktandum-Karte – der Abstand bleibt gleich */
+.mit-pille {
+  position: relative;
+}
+.zusatz-pille {
+  position: absolute;
+  left: 50%;
+  bottom: -1rem;
+  z-index: 2;
+  transform: translate(-50%, 50%);
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--linie-leise);
+  color: var(--text-leise);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0.7;
+  transition: var(--tc);
+  &:hover,
+  &:focus-visible {
+    opacity: 1;
+    outline: none;
+    background: var(--brand-hell2);
+    box-shadow: inset 0 0 0 1px var(--brand);
+    color: var(--brand-tief);
+  }
+}
+
+/* Hinweis bei Bedarf: runder (i)-Knopf oder graue Pille, Text als Tooltip beim Zeigen oder nach Klick */
+.info-knopf {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  vertical-align: middle;
+  color: var(--text-muted);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  cursor: help;
+  outline: none;
+  .info-i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    background: var(--tint-10);
+    color: var(--wald);
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 0.8rem;
+    line-height: 1;
+    transition: var(--tc);
+  }
+  &.pille {
+    padding: 0.2rem 0.7rem 0.2rem 0.25rem;
+    border-radius: 999px;
+    background: var(--tint-5);
+    transition: var(--tc);
+  }
+  .info-text {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 50;
+    width: max-content;
+    max-width: min(20rem, 80vw);
+    padding: 0.55rem 0.75rem;
+    border-radius: var(--r-klein);
+    background: color-mix(in srgb, var(--text) 88%, transparent);
+    backdrop-filter: blur(15px);
+    color: white;
+    font-size: var(--fs-label);
+    font-weight: 500;
+    font-style: normal;
+    line-height: 1.4;
+    white-space: normal;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity var(--dauer) ease, transform var(--dauer) var(--ease-out);
+  }
+  &.rechts .info-text {
+    left: auto;
+    right: 0;
+  }
+  &:hover,
+  &:focus {
+    .info-i {
+      background: var(--tint-20);
+    }
+    .info-text {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  &.pille:hover,
+  &.pille:focus {
+    background: var(--tint-10);
+  }
+  &:focus-visible {
+    box-shadow: var(--schatten-fokus);
+    border-radius: 999px;
+  }
 }
 
 .farbpunkt {

@@ -73,8 +73,10 @@ export default {
     },
     zeilen() {
       const leitung = [...this.sitzung.sitzungsleitung, ...this.sitzung.protokollfuehrung].map((p) => p.id)
-      const mitglieder = [...this.gremium.mitglieder].sort((a, b) => leitung.includes(b.id) - leitung.includes(a.id))
-      const zeilen = mitglieder.map((m) => this.zeile(m, gremienStore.rolleName(this.gremium.id, m.rolleId), m.zugangsKey ? this.basis + '#/zugang/' + m.zugangsKey : ''))
+      // Kurzsitzung eines Gremiums: nur wer teilnimmt oder leitet
+      const teilnehmende = this.sitzung.kurz && !this.gremium.kurz ? [...(this.protokoll?.anwesende || this.vorprotokoll.anwesendeMitgliederIds), ...leitung] : null
+      const mitglieder = this.gremium.mitglieder.filter((m) => !teilnehmende || teilnehmende.includes(m.id)).sort((a, b) => leitung.includes(b.id) - leitung.includes(a.id))
+      const zeilen = mitglieder.map((m) => this.zeile(m, this.gremium.kurz ? 'Eingeladen' : gremienStore.rolleName(this.gremium.id, m.rolleId), m.zugangsKey ? this.basis + '#/zugang/' + m.zugangsKey : ''))
       this.gaeste.filter((g) => g.name).forEach((g) => {
         const key = this.vorprotokoll.personenKeys?.[g.id]
         zeilen.push(this.zeile(g, g.organisation ? 'Gast · ' + g.organisation : 'Gast', key ? this.basis + '#/freigabe/' + key : ''))

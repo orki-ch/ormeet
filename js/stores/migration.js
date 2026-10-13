@@ -15,6 +15,7 @@ export function ergaenzeFelder(bundle) {
   gremium.fusstext ??= ''
   gremium.vorlagen ??= []
   gremium.eigentuemerId ??= null // Konto, das dieses Gremium selbst angelegt hat
+  gremium.kurz ??= false // versteckter Behälter einer Kurzsitzung ohne Gremium (seit 1.5.01)
 
   // Feste Rollen: Präsidium (Sitzungsleitung) und Aktuariat (Protokollführung)
   gremium.rollen.forEach((r) => {
@@ -48,6 +49,7 @@ export function ergaenzeFelder(bundle) {
     s.bemerkungen ??= ''
     s.vorlageId ??= null
     s.genehmigt ??= null
+    s.kurz ??= false // Kurzsitzung: Einmalsitzung ohne Vorprotokoll und ohne Ablauf (seit 1.5.01)
     // Freigaben pro Dokument: { [personId]: lesen | eigene | alles }; PHP liefert leere Objekte als []
     if (!s.freigaben || Array.isArray(s.freigaben)) s.freigaben = {}
     for (const dokument of ['vorprotokoll', 'protokoll']) {

@@ -1,34 +1,36 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync } from '../stores/sync.js'
-import { aktuellePerson, vollzugriff, zurueckZu } from '../utils/rechte.js'
+import { aktuellePerson, rolleIm, vollzugriff, zurueckZu } from '../utils/rechte.js'
 import { STIMME, formatDatum } from '../utils/labels.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import MiniKalender from '../components/MiniKalender.js'
+import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
 
 // Terminfindung (Nuudel-artig): Optionen, Abstimmungsmatrix mit Summenzeile, Kommentare, Termin festlegen
 export default {
   name: 'TerminfindungSeite',
-  components: { MenuDropdown, MiniKalender },
+  components: { KurzTeilnehmende, MenuDropdown, MiniKalender },
   props: {
     sitzungId: { type: String, required: true },
   },
   template: `
     <div v-if="tf" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
-        <router-link :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
+        <router-link v-if="zurueck" :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
         <div class="kopf">
           <div>
-            <p class="kicker">Terminfindung · {{ gremium.name }} <span v-if="sitzung.ort">· {{ sitzung.ort }}</span></p>
+            <p class="kicker">Terminfindung · {{ gremium.kurz ? 'Kurzsitzung' : gremium.name }} <span v-if="sitzung.ort">· {{ sitzung.ort }}</span></p>
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
             <p v-if="tf.status === 'abgeschlossen'" class="small text-ok mt-1">Termin festgelegt: <strong>{{ formatDatum(sitzung.datum) }}, {{ sitzung.zeit }}</strong></p>
             <p v-else-if="ich" class="small muted mt-1">Du stimmst ab als <strong>{{ ich.name }}</strong>.</p>
             <p v-else-if="anonym" class="small muted mt-1">Trage unten deinen Namen ein und klicke die Termine an, die dir passen.</p>
           </div>
           <div class="actions">
-            <router-link :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
+            <router-link v-if="!sitzung.kurz" :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
+            <router-link v-else-if="sitzung.datum" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll</router-link>
             <MenuDropdown v-if="voll">
               <button class="menu-item" @click="csvExport">Ergebnis als CSV exportieren</button>
               <button v-if="tf.status === 'abgeschlossen'" class="menu-item" :disabled="protokollMitEintraegen" :title="protokollMitEintraegen ? 'Das Protokoll dieser Sitzung enthält bereits Einträge – zuerst das Protokoll entfernen' : ''" @click="wiederOeffnen">Terminfindung wieder öffnen</button>
@@ -36,6 +38,12 @@ export default {
           </div>
         </div>
       </header>
+
+      <!-- Kurzsitzung: wer teilnimmt, stimmt ab (ohne Gremium hier einladen) -->
+      <section v-if="sitzung.kurz && vorprotokoll && !protokoll" class="card" :class="{ bearbeitbar: voll }">
+        <h2 class="card-title">Teilnehmende</h2>
+        <KurzTeilnehmende :gremium="gremium" :ziel="vorprotokoll" feld="anwesendeMitgliederIds" :voll="voll" :links-sichtbar="linksSichtbar" />
+      </section>
 
       <!-- Optionen & Einstellungen (Bearbeiter) -->
       <section v-if="voll && tf.status === 'offen'" class="card stack">
@@ -174,6 +182,15 @@ export default {
     voll() {
       return vollzugriff(this.sitzung, 'protokoll')
     },
+    vorprotokoll() {
+      return sitzungenStore.vorprotokollVonSitzung(this.sitzungId)
+    },
+    protokoll() {
+      return sitzungenStore.protokollVonSitzung(this.sitzungId)
+    },
+    linksSichtbar() {
+      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id))
+    },
     // Abstimmende Person (Mitglied oder Gast hinter dem Zugang)
     ich() {
       const gaeste = sitzungenStore.vorprotokollVonSitzung(this.sitzungId)?.gaeste || []
@@ -193,7 +210,9 @@ export default {
     // die eigene Person steht immer in der Liste
     zeilen() {
       const gaeste = sitzungenStore.vorprotokollVonSitzung(this.sitzungId)?.gaeste || []
-      const personen = [...this.gremium.mitglieder, ...gaeste]
+      // Kurzsitzung eines Gremiums: nur die Teilnehmenden
+      const teilnehmende = this.sitzung.kurz && !this.gremium.kurz ? sitzungenStore.teilnehmende(this.sitzung) : null
+      const personen = [...this.gremium.mitglieder.filter((m) => !teilnehmende || teilnehmende.includes(m.id)), ...gaeste]
       if (this.ich && !personen.some((p) => p.id === this.ich.id)) personen.push(this.ich)
       const stimmeVon = (personId, name) => this.tf.stimmen.find((s) => (personId ? s.personId === personId : s.name === name))
       const zeile = (personId, name) => {
@@ -217,7 +236,8 @@ export default {
       return new Set(max > 0 ? this.tf.optionen.filter((o) => this.summe(o.id).ja === max).map((o) => o.id) : [])
     },
     zurueck() {
-      return sync.zugriff?.rolle === 'freigabe' ? `/sitzung/${this.sitzungId}/vorprotokoll` : zurueckZu(this.gremium.id).pfad
+      if (sync.zugriff?.rolle === 'freigabe') return this.sitzung.kurz ? '' : `/sitzung/${this.sitzungId}/vorprotokoll`
+      return zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
       return sync.zugriff?.rolle === 'freigabe' ? 'Vorprotokoll' : zurueckZu(this.gremium.id).text

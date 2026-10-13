@@ -6,18 +6,22 @@ import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { neuerKey } from '../utils/keys.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 import GremiumSuche from '../components/GremiumSuche.js'
+import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
+import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import Modal from '../components/Modal.js'
 import PersonenInput from '../components/PersonenInput.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 
-const TABS = { ...BEREICHE, teilen: 'Teilen' }
+// Kurzsitzungen: eigener Reiter neben den Sitzungen, mit denselben Rechten wie die Sitzungen
+const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen' }
+const TAB_BEREICH = { kurzsitzungen: 'sitzungen' }
 const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearbeiten' }
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, MenuDropdown, Modal, PersonenInput, ThemenbereichLinks, TraktandenListe },
+  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, ThemenbereichLinks, TraktandenListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -66,6 +70,16 @@ export default {
         </div>
       </fieldset>
       <ThemenbereichLinks v-if="tab === 'sitzungen'" :gremium="gremium" />
+
+      <!-- Tab: Kurzsitzungen (Einmalsitzungen ohne Vorprotokoll, nicht im üblichen Ablauf) -->
+      <section v-if="tab === 'kurzsitzungen'" class="card">
+        <div class="card-head">
+          <h2 class="card-title">Kurzsitzungen</h2>
+          <button v-if="darf('sitzungen')" class="btn btn-primary" @click="kurzDialog = true">+ Kurzsitzung</button>
+        </div>
+        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="() => darf('sitzungen')" />
+      </section>
+      <KurzsitzungDialog v-if="kurzDialog" :gremium-id="gremiumId" @schliessen="kurzDialog = false" />
 
       <!-- Tab: Mitglieder & Rollen -->
       <fieldset v-if="tab === 'mitglieder'" :disabled="!darf('mitglieder')" class="grid-2-1">
@@ -295,6 +309,7 @@ export default {
       kopiert: '',
       mitglied: null, // Arbeitskopie im Dialog
       sitzungDialog: false,
+      kurzDialog: false,
       neueRolle: '',
       neuerThemenbereich: { name: '', farbe: '#b4c410' },
       neueVorlage: '',
@@ -313,6 +328,9 @@ export default {
     },
     sitzungen() {
       return sitzungenStore.sitzungenVonGremium(this.gremiumId)
+    },
+    kurzsitzungen() {
+      return sitzungenStore.kurzsitzungen(this.gremiumId)
     },
     sitzungenOhneProtokoll() {
       return sitzungenStore.sitzungenOhneProtokoll(this.gremiumId)
@@ -333,7 +351,7 @@ export default {
     sichtbareTabs() {
       const tabs = {}
       for (const [id, label] of Object.entries(TABS)) {
-        if (id === 'teilen' ? this.istAdmin : recht(id, this.gremiumId) !== 'keine') tabs[id] = label
+        if (id === 'teilen' ? this.istAdmin : recht(TAB_BEREICH[id] || id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
     },

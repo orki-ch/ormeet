@@ -25,9 +25,21 @@ export const sitzungenStore = {
     return state.sitzungen.find((s) => s.id === id)
   },
 
-  // Sitzungen ohne festen Termin (Terminfindung) zuletzt
+  // Sitzungen im üblichen Ablauf (ohne Kurzsitzungen); Sitzungen ohne festen Termin (Terminfindung) zuletzt
   sitzungenVonGremium(gremiumId) {
-    return state.sitzungen.filter((s) => s.gremiumId === gremiumId).sort((a, b) => (a.datum || '9999').localeCompare(b.datum || '9999'))
+    return state.sitzungen.filter((s) => s.gremiumId === gremiumId && !s.kurz).sort((a, b) => (a.datum || '9999').localeCompare(b.datum || '9999'))
+  },
+
+  // Kurzsitzungen: Einmalsitzungen ohne Vorprotokoll und ohne Ablauf, die neusten zuerst (ohne Termin zuoberst)
+  kurzsitzungen(gremiumId = null) {
+    return state.sitzungen
+      .filter((s) => s.kurz && (!gremiumId || s.gremiumId === gremiumId))
+      .sort((a, b) => (b.datum || '9999').localeCompare(a.datum || '9999') || (b.zeit || '').localeCompare(a.zeit || ''))
+  },
+
+  // Personen-IDs der Teilnehmenden einer Kurzsitzung (Mitglieder; vor dem Protokoll im versteckten Vorprotokoll)
+  teilnehmende(sitzung) {
+    return sitzungenStore.protokollVonSitzung(sitzung.id)?.anwesende || sitzungenStore.vorprotokollVonSitzung(sitzung.id)?.anwesendeMitgliederIds || []
   },
 
   vorprotokollById(id) {
@@ -79,7 +91,7 @@ export const sitzungenStore = {
   offenePendenzen(gremiumId, vorDatum) {
     return sitzungenStore
       .eintraegeVonGremium(gremiumId)
-      .filter(({ eintrag, sitzung }) => eintrag.typ === 'pendenz' && eintrag.pendenzStatus !== 'erfuellt' && sitzung.datum && sitzung.datum < vorDatum)
+      .filter(({ eintrag, sitzung }) => eintrag.typ === 'pendenz' && eintrag.pendenzStatus !== 'erfuellt' && !sitzung.kurz && sitzung.datum && sitzung.datum < vorDatum)
   },
 
   // Vertagte Anträge aus Sitzungen vor dem Datum, die noch an keiner späteren Sitzung neu behandelt wurden
@@ -87,7 +99,7 @@ export const sitzungenStore = {
     const behandelt = new Set(state.protokolle.flatMap((p) => p.eintraege.map((e) => e.vorherigerAntragId).filter(Boolean)))
     return sitzungenStore
       .eintraegeVonGremium(gremiumId)
-      .filter(({ eintrag, sitzung }) => eintrag.typ === 'antrag' && eintrag.antragStatus === 'vertagt' && !behandelt.has(eintrag.id) && sitzung.datum && sitzung.datum < vorDatum)
+      .filter(({ eintrag, sitzung }) => eintrag.typ === 'antrag' && eintrag.antragStatus === 'vertagt' && !behandelt.has(eintrag.id) && !sitzung.kurz && sitzung.datum && sitzung.datum < vorDatum)
   },
 
   erstelleSitzung(gremiumId, { datum, zeit, ort, vorlageId, terminfindung = false }) {
@@ -110,8 +122,19 @@ export const sitzungenStore = {
       freigaben: { vorprotokoll: {}, protokoll: {} }, // gesetzte Freigabestufen pro Person, überschreiben den Standard
       terminfindung: terminfindung ? neueTerminfindung() : null,
       status: terminfindung ? 'terminfindung' : 'geplant',
+      kurz: false, // Kurzsitzung (siehe erstelleKurzsitzung)
     }
     state.sitzungen.push(sitzung)
+    return sitzung
+  },
+
+  // Kurzsitzung: sofort oder per Terminfindung; ohne Vorlage, Leitung und Protokollführung ist die anlegende Person.
+  // Das versteckte Vorprotokoll hält Teilnehmende (Mitglieder), Gäste mit Links und die im Protokoll erfassten Traktanden.
+  erstelleKurzsitzung(gremiumId, { titel, datum, zeit, ort, terminfindung = false, teilnehmende = [], leitung = [] }) {
+    const sitzung = sitzungenStore.erstelleSitzung(gremiumId, { datum, zeit, ort, terminfindung })
+    Object.assign(sitzung, { kurz: true, titel, vorlageId: null, sitzungsleitung: leitung.map((p) => ({ ...p })), protokollfuehrung: leitung.map((p) => ({ ...p })), bemerkungen: '' })
+    const vorprotokoll = sitzungenStore.erstelleVorprotokoll(sitzung.id)
+    vorprotokoll.anwesendeMitgliederIds = [...teilnehmende]
     return sitzung
   },
 
@@ -123,13 +146,13 @@ export const sitzungenStore = {
     sitzung.zeit = option.von
     sitzung.terminfindung.status = 'abgeschlossen'
     sitzung.terminfindung.gewaehlteOptionId = optionId
-    sitzung.status = sitzungenStore.protokollVonSitzung(sitzungId) ? 'laufend' : sitzungenStore.vorprotokollVonSitzung(sitzungId) ? 'vorprotokoll' : 'geplant'
+    sitzung.status = sitzungenStore.protokollVonSitzung(sitzungId) ? 'laufend' : sitzungenStore.vorprotokollVonSitzung(sitzungId) && !sitzung.kurz ? 'vorprotokoll' : 'geplant'
   },
 
   // Die zuletzt protokollierte Sitzung vor dieser Sitzung (zum Genehmigen des letzten Protokolls)
   vorherigeSitzung(sitzungId) {
     const sitzung = sitzungenStore.sitzungById(sitzungId)
-    if (!sitzung?.datum) return null
+    if (!sitzung?.datum || sitzung.kurz) return null // Kurzsitzungen stehen für sich: keine Genehmigung
     return sitzungenStore
       .sitzungenVonGremium(sitzung.gremiumId)
       .filter((s) => s.datum && (s.datum < sitzung.datum || (s.datum === sitzung.datum && s.id < sitzungId)) && sitzungenStore.protokollVonSitzung(s.id))
@@ -153,23 +176,25 @@ export const sitzungenStore = {
   },
 
   loescheSitzungenVonGremium(gremiumId) {
-    sitzungenStore.sitzungenVonGremium(gremiumId).forEach((s) => sitzungenStore.loescheSitzung(s.id))
+    state.sitzungen.filter((s) => s.gremiumId === gremiumId).forEach((s) => sitzungenStore.loescheSitzung(s.id))
   },
 
   erstelleVorprotokoll(sitzungId) {
     const sitzung = sitzungenStore.sitzungById(sitzungId)
     const gremium = gremienStore.byId(sitzung.gremiumId)
     const vorlage = gremium.vorlagen.find((v) => v.id === sitzung.vorlageId)
+    const kurz = !!sitzung.kurz // Kurzsitzung: Teilnehmende werden gewählt, nichts wird übernommen
     const vorprotokoll = {
       id: crypto.randomUUID(),
       sitzungId,
       freigabeLinkKey: neuerKey(),
       personenKeys: {}, // persönliche Freigabe-Links für Gäste: { [gastId]: key }
       gaeste: [],
-      anwesendeMitgliederIds: gremienStore.erwarteteMitglieder(gremium.id).map((m) => m.id),
+      anwesendeMitgliederIds: kurz ? [] : gremienStore.erwarteteMitglieder(gremium.id).map((m) => m.id),
       traktanden: (vorlage?.traktanden || []).map(kopiereTraktandum),
     }
     state.vorprotokolle.push(vorprotokoll)
+    if (kurz) return vorprotokoll
     if (sitzung.status === 'geplant') sitzung.status = 'vorprotokoll'
     sitzungenStore.uebernimmPendenzen(vorprotokoll.id)
     return vorprotokoll
@@ -274,7 +299,7 @@ export const sitzungenStore = {
       datum: sitzung.datum,
       ort: sitzung.ort,
       anwesende: [...vorprotokoll.anwesendeMitgliederIds],
-      abwesende: erwarteteIds.filter((id) => !vorprotokoll.anwesendeMitgliederIds.includes(id)),
+      abwesende: sitzung.kurz ? [] : erwarteteIds.filter((id) => !vorprotokoll.anwesendeMitgliederIds.includes(id)),
       gaeste: vorprotokoll.gaeste.map((g) => ({ ...g })),
       eintraege: [],
       zusatztraktanden: [], // im Protokoll hinzugekommene Haupttraktanden: { id, titel, begruendung, nachId } (nachId: Traktandum davor, null = am Anfang)

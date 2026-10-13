@@ -58,11 +58,13 @@ export const gremienStore = {
     return gremienStore.byId(gremiumId)?.rollen.find((r) => r.id === rolleId)?.name || ''
   },
 
-  erstelle(name, beschreibung) {
+  // kurz: versteckter Behälter einer Kurzsitzung ohne Gremium (Teilnehmende sind seine Mitglieder)
+  erstelle(name, beschreibung, kurz = false) {
     const gremium = {
       id: crypto.randomUUID(),
       name,
       beschreibung,
+      kurz,
       eigentuemerId: null, // setzt der Server, wenn ein Konto das Gremium anlegt
       zugaenge: [], // Teilen-Links mit Rechten pro Bereich
       fusstext:

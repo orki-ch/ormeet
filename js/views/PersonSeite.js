@@ -2,8 +2,9 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, laden } from '../stores/sync.js'
 import { api } from '../api.js'
-import { istLeitung, personIdIm } from '../utils/rechte.js'
+import { istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
 import GremiumSuche from '../components/GremiumSuche.js'
+import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 import SsoButtons from '../components/SsoButtons.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
@@ -14,7 +15,7 @@ const AKTIV_KEY = 'ormeet-aktives-gremium'
 // Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
 export default {
   name: 'PersonSeite',
-  components: { GremiumSuche, SsoButtons, ThemenbereichLinks },
+  components: { GremiumSuche, KurzsitzungenListe, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
   },
@@ -91,6 +92,11 @@ export default {
         </div>
       </section>
 
+      <section v-if="kurzsitzungen.length" class="card">
+        <h2 class="card-title">Kurzsitzungen</h2>
+        <KurzsitzungenListe :sitzungen="kurzsitzungen" />
+      </section>
+
       <section class="card">
         <h2 class="card-title">Meine Pendenzen</h2>
         <p v-if="!pendenzen.length" class="muted small">Keine offenen Pendenzen.</p>
@@ -138,8 +144,9 @@ export default {
     }
   },
   computed: {
+    // Konto: angemeldet oder mit dem Superadmin verknüpft (dann seine persönliche Übersicht)
     konto() {
-      return sync.zugriff?.rolle === 'benutzer' ? sync.zugriff : null
+      return uebersichtsKonto()
     },
     // Konto: gewünschtes, zuletzt gewähltes oder erstes Gremium mit Mitgliedschaft
     aktivesGremiumId() {
@@ -157,7 +164,12 @@ export default {
       return gremienStore.byId(this.aktivesGremiumId)
     },
     person() {
-      return this.gremium?.mitglieder.find((m) => m.id === personIdIm(this.gremium.id))
+      const id = this.konto ? this.konto.gremien.find((g) => g.gremiumId === this.gremium?.id)?.personId : personIdIm(this.gremium?.id)
+      return this.gremium?.mitglieder.find((m) => m.id === id)
+    },
+    // Kurzsitzungen dieses Gremiums, an denen die Person teilnimmt oder die sie leitet
+    kurzsitzungen() {
+      return sitzungenStore.kurzsitzungen(this.gremium.id).filter((s) => istLeitung(s, this.person.id) || sitzungenStore.teilnehmende(s).includes(this.person.id))
     },
     rolleName() {
       return gremienStore.rolleName(this.gremium.id, this.person.rolleId)

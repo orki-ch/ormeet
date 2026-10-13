@@ -1,5 +1,5 @@
 import { api } from '../api.js'
-import { sync } from '../stores/sync.js'
+import { sync, laden } from '../stores/sync.js'
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { neuerKey } from '../utils/keys.js'
@@ -46,6 +46,8 @@ export default {
                 </MenuDropdown>
               </div>
               <label class="check small"><input type="checkbox" :checked="k.darfGremienAnlegen" @change="aendern(k, { darfGremienAnlegen: $event.target.checked })" /> Darf eigene Gremien anlegen (verwaltet diese dann vollständig)</label>
+              <label class="check small"><input type="checkbox" :checked="k.darfKurzsitzungenAnlegen" @change="aendern(k, { darfKurzsitzungenAnlegen: $event.target.checked })" /> Darf Kurzsitzungen ohne Gremium anlegen</label>
+              <label class="check small"><input type="checkbox" :checked="sync.zugriff.konto?.benutzerId === k.id" @change="superadminVerknuepfen($event.target.checked ? k.id : null)" /> Das bin ich – als Superadmin die persönliche Übersicht dieses Kontos zeigen</label>
               <div class="chips">
                 <span v-for="z in zuordnungen(k.id)" :key="z.gremium.id" class="chip">
                   {{ z.gremium.name }} <span class="leise">· {{ z.eigentuemer ? 'Eigentümer' : z.mitglied.name }}</span>
@@ -89,7 +91,7 @@ export default {
           <div>
             <span class="label">Gremium</span>
             <select v-model="zuordnen.gremiumId" class="input" required>
-              <option v-for="g in gremien" :key="g.id" :value="g.id">{{ g.name }}</option>
+              <option v-for="g in gremien.filter((g) => !g.kurz)" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </div>
           <div v-if="zuordnen.gremiumId">
@@ -137,7 +139,7 @@ export default {
         g.zugaenge.forEach((z) => liste.push({ typ: 'Gremium', klasse: 'blau', name: z.name, info: `${g.name} · ${rechte(z)}`, pfad: '/zugang/', key: z.key, setze: (k) => (z.key = k) }))
         g.mitglieder.forEach((m) => liste.push({ typ: 'Persönlich', klasse: 'brand', name: m.name, info: g.name + (m.benutzerId ? ' · mit Konto' : ''), pfad: '/zugang/', key: m.zugangsKey, setze: (k) => (m.zugangsKey = k) }))
         g.themenbereiche.forEach((tb) => liste.push({ typ: 'Übersicht', klasse: 'violett', name: tb.name, info: g.name, pfad: '/themenbereich/', key: tb.freigabeKey, setze: (k) => (tb.freigabeKey = k) }))
-        for (const s of sitzungenStore.sitzungenVonGremium(g.id)) {
+        for (const s of [...sitzungenStore.sitzungenVonGremium(g.id), ...sitzungenStore.kurzsitzungen(g.id)]) {
           const name = `${s.titel || 'Sitzung'} ${formatDatum(s.datum)}`
           const vp = sitzungenStore.vorprotokollVonSitzung(s.id)
           if (vp) {
@@ -183,6 +185,15 @@ export default {
     },
     loesen(z) {
       if (confirm(`${z.mitglied.name} bleibt Mitglied von «${z.gremium.name}», das Konto sieht das Gremium aber nicht mehr. Lösen?`)) z.mitglied.benutzerId = null
+    },
+    // Superadmin mit einem Konto verknüpfen (nur eines): danach erscheint «Meine Übersicht» in der Kopfleiste
+    async superadminVerknuepfen(benutzerId) {
+      try {
+        await api.anfrage('superadmin_konto', '', { benutzerId })
+        await laden()
+      } catch (fehler) {
+        alert(fehler.message)
+      }
     },
     async aendern(k, daten) {
       try {

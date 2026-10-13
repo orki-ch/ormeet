@@ -10,6 +10,12 @@ export function rolleIm(gremiumId) {
   return g ? (g.rolle === 'eigentuemer' ? 'admin' : 'person') : null
 }
 
+// Konto, dessen persönliche Übersicht gezeigt wird: das angemeldete Konto oder das mit dem Superadmin verknüpfte
+export function uebersichtsKonto() {
+  const zugriff = sync.zugriff
+  return zugriff?.rolle === 'benutzer' ? zugriff : zugriff?.konto || null
+}
+
 // ID der eigenen Person (Mitglied / Gast) in diesem Gremium
 export function personIdIm(gremiumId) {
   const zugriff = sync.zugriff
@@ -27,6 +33,8 @@ export function aktuellePerson(gremiumId, gaeste = []) {
 // Startseite des Zugangs für ein Gremium: persönliche Übersicht oder Gremium-Seite
 export function zurueckZu(gremiumId) {
   const rolle = rolleIm(gremiumId)
+  // Kurzsitzung ohne Gremium: zurück zur Übersicht (Eingeladene mit Link haben keine)
+  if (gremienStore.byId(gremiumId)?.kurz) return ['admin', 'benutzer'].includes(sync.zugriff?.rolle) ? { pfad: '/', text: 'Übersicht' } : { pfad: '', text: '' }
   if (rolle === 'person') return { pfad: sync.zugriff.rolle === 'benutzer' ? `/meine/${gremiumId}` : '/meine', text: 'Meine Übersicht' }
   if (rolle === 'admin' || rolle === 'gremium') return { pfad: `/gremium/${gremiumId}`, text: gremienStore.byId(gremiumId)?.name || 'Gremium' }
   return { pfad: '', text: '' }
@@ -48,6 +56,7 @@ export function standardStufe(sitzung, personId) {
 
 // Wirksame Stufe: in der Sitzung gesetzte Freigabe überschreibt den Standard
 export function freigabeStufe(sitzung, dokument, personId) {
+  if (sitzung.kurz) dokument = 'protokoll' // Kurzsitzung: nur ein Dokument, Traktanden liegen im versteckten Vorprotokoll
   const stufe = sitzung.freigaben?.[dokument]?.[personId]
   return FREIGABE_STUFEN[stufe] ? stufe : standardStufe(sitzung, personId)
 }
