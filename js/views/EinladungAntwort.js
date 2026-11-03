@@ -1,9 +1,11 @@
 import { api } from '../api.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 // Antwort auf eine Einladung per E-Mail (ohne Anmeldung, über den signierten Link): zusagen, absagen mit Grund
 // oder keine Einladungen dieses Gremiums mehr erhalten. Ändern geht, bis die Sitzung beginnt.
 export default {
   name: 'EinladungAntwort',
+  components: { InfoKnopf },
   props: {
     code: { type: String, required: true },
   },
@@ -23,8 +25,7 @@ export default {
           <p class="small">Hallo {{ info.name }} – <strong>{{ statusText }}</strong></p>
           <template v-if="info.offen">
             <form v-if="modus === 'absagen'" class="stack" @submit.prevent="antworten('abgesagt')">
-              <div><span class="label">Grund der Absage</span><textarea v-model.trim="grund" class="input" rows="3" maxlength="500" required autofocus></textarea></div>
-              <p class="hint">Den Grund sehen nur Sitzungsleitung und Protokollführung.</p>
+              <div><span class="label">Grund der Absage <InfoKnopf titel="Grund der Absage" text="Den Grund sehen nur Sitzungsleitung und Protokollführung – sonst niemand, auch nicht im PDF." /></span><textarea v-model.trim="grund" class="input" rows="3" maxlength="500" required autofocus></textarea></div>
               <div class="row">
                 <button type="button" class="btn" @click="modus = ''">Abbrechen</button>
                 <button class="btn btn-primary ml-auto" :disabled="laeuft || !grund">Absagen</button>

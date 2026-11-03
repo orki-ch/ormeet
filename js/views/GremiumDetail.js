@@ -1,4 +1,4 @@
-import { BEREICHE, ROLLEN_TYPEN, gremienStore, neuerZugang } from '../stores/gremien.js'
+import { AUFGABEN, BEREICHE, ROLLEN_STUFEN, ROLLEN_TYPEN, SITZUNGSRECHTE, gremienStore, neuerZugang } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht, gremiumLoeschen } from '../stores/sync.js'
 import { EINZELRECHTE, FREIGABE_STUFEN, rolleIm } from '../utils/rechte.js'
@@ -16,7 +16,29 @@ import PersonenInput from '../components/PersonenInput.js'
 import RechteSchalter from '../components/RechteSchalter.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
+import InfoKnopf from '../components/InfoKnopf.js'
+import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
+
+// Einzelrechte einer Rolle («Individuell»), gruppiert für das ⋯-Menü des Rechte-Schalters
+const ROLLEN_EINZELRECHTE = {
+  Vorprotokoll: Object.fromEntries(Object.entries(EINZELRECHTE.vorprotokoll).map(([k, v]) => ['vorprotokoll:' + k, v])),
+  Protokoll: Object.fromEntries(Object.entries(EINZELRECHTE.protokoll).map(([k, v]) => ['protokoll:' + k, v])),
+  Sitzung: Object.fromEntries(Object.entries(SITZUNGSRECHTE).map(([k, v]) => ['sitzung:' + k, v])),
+}
+
+const STUFEN_INFO = [
+  { titel: 'Lesen', text: 'Nur ansehen.' },
+  { titel: 'Eigene', text: 'Zugewiesene Traktanden und Einträge bearbeiten, die eigene Anwesenheit setzen.' },
+  { titel: 'Individuell', text: 'Einzelrechte über ⋯ ein- und ausschalten: Vorprotokoll, Protokoll und Sitzung (eintragen, starten und abschliessen, Anträge entscheiden, Einladungen senden, Zugriffe verwalten).' },
+  { titel: 'Alles', text: 'Wirklich alles: ganze Dokumente und alle Sitzungsrechte.' },
+  { titel: 'Gilt für', text: 'Alle Mitglieder mit dieser Rolle in allen Sitzungen des Gremiums. Wer in einer Sitzung eine Aufgabe hat, hat dort ohnehin alles.' },
+]
+
+const AUFGABEN_INFO = [
+  { titel: 'Sitzungsleitung, Protokollführung', text: 'Wer hier steht, übernimmt die Aufgabe automatisch in jeder neuen Sitzung und hat in allen Sitzungen des Gremiums sämtliche Bearbeitungsrechte: Vor- und Protokoll, Sitzung starten und abschliessen, Änderungsanträge entscheiden – bis das Protokoll genehmigt ist.' },
+  { titel: 'Vertretung', text: 'Ist niemand mit der Aufgabe anwesend, bestimmt die Person, die die Sitzung eingetragen hat, oder wer Zugriffe verwaltet, eine Vertretung in den Kopfdaten. Spätestens beim Start der Sitzung muss sie feststehen.' },
+]
 
 // Kurzsitzungen: eigener Reiter neben den Sitzungen, mit denselben Rechten wie die Sitzungen
 const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen', zugriffe: 'Zugriffe' }
@@ -25,7 +47,7 @@ const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearb
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, RechteSchalter, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
+  components: { GremiumSuche, InfoKnopf, MehrfachAuswahl, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, RechteSchalter, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -96,12 +118,25 @@ export default {
           <div class="liste">
             <div v-for="m in gremium.mitglieder" :key="m.id" class="liste-zeile small" :class="{ klick: darf('mitglieder') }" @click="darf('mitglieder') && mitgliedBearbeiten(m)">
               <span class="grow"><strong>{{ m.name }}</strong><span v-if="m.email" class="leise"> · {{ m.email }}</span></span>
-              <span class="muted">{{ rolleName(m.rolleId) }}</span>
+              <span class="muted">{{ rolleName(m.rolleId) }}<span v-if="aufgabenVon(m.id)" class="badge brand" style="margin-left: 0.4rem">{{ aufgabenVon(m.id) }}</span></span>
               <span class="small nowrap" :class="m.hatStimmrecht ? 'text-ok' : 'leise'">{{ m.hatStimmrecht ? '✓ Stimmrecht' : 'ohne Stimmrecht' }}</span>
             </div>
           </div>
         </section>
 
+        <div class="stack-lg">
+        <section class="card">
+          <div class="card-head">
+            <h2 class="card-title">Aufgaben</h2>
+            <InfoKnopf rechts titel="Aufgaben in jeder Sitzung" :punkte="AUFGABEN_INFO" />
+          </div>
+          <div class="stack-sm">
+            <div v-for="(label, aufgabe) in AUFGABEN" :key="aufgabe">
+              <span class="label">{{ label }}</span>
+              <MehrfachAuswahl :model-value="gremium.aufgaben?.[aufgabe] || []" :optionen="mitgliedOptionen" :disabled="!darf('mitglieder')" placeholder="+ Mitglied wählen …" @update:model-value="aufgabeSetzen(aufgabe, $event)" />
+            </div>
+          </div>
+        </section>
         <section class="card">
           <h2 class="card-title">Rollen</h2>
           <div class="liste">
@@ -112,30 +147,20 @@ export default {
                   <button v-if="!r.typ" class="btn btn-danger btn-icon" @click="rolleEntfernen(r)">✕</button>
                   <button class="btn" @click="aktiv = null">Fertig</button>
                 </div>
-                <p v-if="r.typ" class="leise small">Vorlage «{{ ROLLEN_TYPEN[r.typ] }}»: kann umbenannt und angepasst, aber nicht gelöscht werden.</p>
-                <label class="check small"><input v-model="r.sollAnwesend" type="checkbox" /> An Sitzungen erwartet</label>
-                <p class="leise small">Nicht erwartete Rollen sind standardmässig nicht als anwesend markiert und erscheinen nicht bei den Entschuldigten.</p>
-                <!-- Rechte der Rolle: gelten für alle Mitglieder mit dieser Rolle (Leitung einer Sitzung hat dort immer alles) -->
-                <span class="label mt-1">Rechte</span>
-                <div v-for="(label, dokument) in { vorprotokoll: 'Vorprotokoll', protokoll: 'Protokoll' }" :key="dokument" class="row small rolle-recht">
-                  <span class="grow">{{ label }}</span>
-                  <RechteSchalter :stufe="rolleStufe(r, dokument)" :stufen="FREIGABE_STUFEN" :rechte="rolleEinzelrechte(r, dokument)" :einzelrechte="EINZELRECHTE[dokument]" :gesetzt="!!r.rechte?.[dokument]"
-                    @stufe="rolleSetzen(r, dokument, $event)" @rechte="rolleSetzen(r, dokument, $event)" @zuruecksetzen="rolleSetzen(r, dokument, null)" />
+                <label class="check small"><input v-model="r.sollAnwesend" type="checkbox" /> An Sitzungen erwartet
+                  <InfoKnopf titel="An Sitzungen erwartet" text="Nicht erwartete Rollen (z. B. regelmässige Gäste) sind standardmässig nicht als anwesend markiert und erscheinen nicht bei den Entschuldigten." /></label>
+                <!-- Rechte der Rolle: ein Hauptschalter, «Individuell» über ⋯ -->
+                <div class="row small rolle-recht">
+                  <span class="grow">Rechte <InfoKnopf titel="Rechte der Rolle" :punkte="STUFEN_INFO" /></span>
+                  <RechteSchalter :stufe="gremienStore.rolleStufe(r)" :stufen="ROLLEN_STUFEN" :rechte="r.rechte?.einzel || []" :einzelrechte="ROLLEN_EINZELRECHTE" :gesetzt="!!r.rechte?.stufe"
+                    @stufe="rolleSetzen(r, { stufe: $event })" @rechte="rolleSetzen(r, { stufe: 'individuell', einzel: $event })" @zuruecksetzen="rolleSetzen(r, null)" />
                 </div>
-                <label class="row small rolle-recht"><span class="grow">Sitzung führen (wird bei neuen Sitzungen vorgeschlagen)</span>
-                  <select :value="gremienStore.rolleRechte(r).fuehrung" class="input klein" @change="rolleSetzen(r, 'fuehrung', $event.target.value)">
-                    <option value="">–</option>
-                    <option value="sitzungsleitung">wie Sitzungsleitung</option>
-                    <option value="protokollfuehrung">wie Protokollführung</option>
-                  </select>
-                </label>
-                <label class="check small"><input type="checkbox" :checked="gremienStore.rolleRechte(r).eintragen" @change="rolleSetzen(r, 'eintragen', $event.target.checked)" /> Sitzungen eintragen (und dieses Recht weiteren Mitgliedern geben)</label>
-                <label class="check small"><input type="checkbox" :checked="gremienStore.rolleRechte(r).zugriffe" @change="rolleSetzen(r, 'zugriffe', $event.target.checked)" /> Zugriffe verwalten (alle Sitzungen)</label>
-                <p class="leise small">Lesen = nur ansehen · Eigene = zugewiesene Traktanden bearbeiten · Alles = ganzes Dokument; über ⋯ einzelne Rechte (Individuell). Die Leitung und die Protokollführung einer Sitzung haben dort immer alles.</p>
+                <p v-if="r.typ" class="leise small">Vorlage «{{ ROLLEN_TYPEN[r.typ] }}» <InfoKnopf text="Kann umbenannt und angepasst, aber nicht gelöscht werden. Standard: «Alles»." /></p>
               </div>
               <div v-else class="liste-zeile small" :class="{ klick: darf('mitglieder') }" @click="darf('mitglieder') && (aktiv = r.id)">
                 <span class="grow">{{ r.name }}</span>
-                <span v-if="r.typ" class="badge brand">{{ ROLLEN_TYPEN[r.typ] }}</span>
+                <span class="leise">{{ ROLLEN_STUFEN[gremienStore.rolleStufe(r)] || 'Individuell' }}</span>
+                <span v-if="r.typ" class="badge brand">Vorlage</span>
                 <span v-if="r.sollAnwesend === false" class="leise">nicht erwartet</span>
               </div>
             </div>
@@ -145,13 +170,13 @@ export default {
             <button class="btn btn-icon">+</button>
           </form>
         </section>
+        </div>
       </fieldset>
 
       <!-- Tab: Protokoll-Einstellungen -->
       <fieldset v-if="tab === 'einstellungen'" :disabled="!darf('einstellungen')" class="stack-lg">
         <section class="card">
-          <h2 class="card-title">Themenbereiche</h2>
-          <p class="hint">Ordnen Traktanden und Einträge thematisch; pro Themenbereich gibt es eine historische Übersicht.</p>
+          <h2 class="card-title">Themenbereiche <InfoKnopf titel="Themenbereiche" text="Ordnen Traktanden und Einträge thematisch; pro Themenbereich gibt es eine historische Übersicht." /></h2>
           <div class="liste">
             <div v-for="tb in gremium.themenbereiche" :key="tb.id">
               <div v-if="aktiv === tb.id" class="row" style="margin: 0.25rem 0">
@@ -175,8 +200,7 @@ export default {
         </section>
 
         <section class="card">
-          <h2 class="card-title">Vorprotokoll-Vorlagen</h2>
-          <p class="hint">Beim Erfassen einer Sitzung wählbar. Kopfdaten und Traktanden werden ins Vorprotokoll übernommen.</p>
+          <h2 class="card-title">Vorprotokoll-Vorlagen <InfoKnopf titel="Vorprotokoll-Vorlagen" text="Beim Erfassen einer Sitzung wählbar. Kopfdaten und Traktanden werden ins Vorprotokoll übernommen." /></h2>
 
           <details v-for="v in gremium.vorlagen" :key="v.id" class="vorlage">
             <summary>{{ v.name }} <span class="sub">{{ v.traktanden.length }} Traktanden</span></summary>
@@ -184,16 +208,15 @@ export default {
               <div class="grid-2">
                 <div><span class="label">Name der Vorlage</span><input v-model.trim="v.name" class="input" /></div>
                 <div><span class="label">Titel / Sitzungsgrund</span><input v-model.trim="v.titel" class="input" /></div>
-                <div><span class="label">Sitzungsleitung</span><PersonenInput v-model="v.sitzungsleitung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Präsidium)" /></div>
-                <div><span class="label">Protokollführung</span><PersonenInput v-model="v.protokollfuehrung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Aktuariat)" /></div>
+                <div><span class="label">Sitzungsleitung</span><PersonenInput v-model="v.sitzungsleitung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Aufgabe Sitzungsleitung)" /></div>
+                <div><span class="label">Protokollführung</span><PersonenInput v-model="v.protokollfuehrung" :personen="personen" placeholder="Name eingeben oder wählen (leer = Aufgabe Protokollführung)" /></div>
                 <div class="span-alle"><span class="label">Spezielles / Bemerkungen</span><input v-model.trim="v.bemerkungen" class="input" /></div>
               </div>
               <h3>Traktanden</h3>
               <TraktandenListe :traktanden="v.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-lesen="!darf('einstellungen')" />
 
               <div v-if="darf('einstellungen') && sitzungenOhneProtokoll.length" class="block-soft stack-sm">
-                <h3 style="margin: 0">Auf bestehende Sitzungen anwenden</h3>
-                <p class="small muted">Hat sich die Vorlage geändert, kannst du sie auf Sitzungen übertragen, die noch kein Protokoll haben. Kopfdaten und Traktanden des Vorprotokolls werden dabei durch die Vorlage ersetzt; automatisch übernommene Pendenzen und vertagte Anträge bleiben.</p>
+                <h3 style="margin: 0">Auf bestehende Sitzungen anwenden <InfoKnopf titel="Auf bestehende Sitzungen anwenden" text="Hat sich die Vorlage geändert, kannst du sie auf Sitzungen übertragen, die noch kein Protokoll haben. Kopfdaten und Traktanden des Vorprotokolls werden dabei durch die Vorlage ersetzt; automatisch übernommene Pendenzen und vertagte Anträge bleiben." /></h3>
                 <div class="row" style="gap: 0.25rem 1.5rem">
                   <label v-for="s in sitzungenOhneProtokoll" :key="s.id" class="check small">
                     <input v-model="anwendenAuf[v.id]" type="checkbox" :value="s.id" /> {{ formatDatum(s.datum) }}<span class="leise">&nbsp;{{ s.titel }}{{ s.vorlageId === v.id ? ' · mit dieser Vorlage erfasst' : '' }}</span>
@@ -217,22 +240,19 @@ export default {
         </section>
 
         <section class="card">
-          <h2 class="card-title">Erinnerung</h2>
-          <p class="hint">So viele Tage vor einer Sitzung erinnert Ormeet die Beteiligten – in der Glocke und, falls eingerichtet, per E-Mail.</p>
+          <h2 class="card-title">Erinnerung <InfoKnopf titel="Erinnerung" text="So viele Tage vor einer Sitzung erinnert Ormeet die Beteiligten – in der Glocke und, falls eingerichtet, per E-Mail." /></h2>
           <label class="row small"><input v-model.number="gremium.erinnerungTage" class="input w-sm" type="number" min="0" max="60" /> Tage vorher</label>
         </section>
 
         <section class="card">
-          <h2 class="card-title">Fusstext</h2>
-          <p class="hint">Erscheint am Ende jedes Protokolls.</p>
+          <h2 class="card-title">Fusstext <InfoKnopf titel="Fusstext" text="Erscheint am Ende jedes Protokolls." /></h2>
           <textarea v-model.trim="gremium.fusstext" class="input" rows="2"></textarea>
         </section>
       </fieldset>
 
       <!-- Tab: Teilen (nur Superadmin) -->
       <section v-if="tab === 'teilen'" class="card">
-        <h2 class="card-title">Gremium teilen</h2>
-        <p class="hint">Jeder Link hat eigene Rechte pro Bereich. Wer ihn öffnet, sieht nur die freigegebenen Bereiche und kann nur dort ändern, wo «Bearbeiten» gesetzt ist.</p>
+        <h2 class="card-title">Gremium teilen <InfoKnopf titel="Gremium teilen" text="Jeder Link hat eigene Rechte pro Bereich. Wer ihn öffnet, sieht nur die freigegebenen Bereiche und kann nur dort ändern, wo «Bearbeiten» gesetzt ist." /></h2>
 
         <div v-for="z in gremium.zugaenge" :key="z.id" class="block-soft stack-sm mb-2">
           <div class="row">
@@ -263,8 +283,7 @@ export default {
 
       <!-- Tab: Zugriffe (Eigentümer, Superadmin): wer Zugriff hat und worüber -->
       <section v-if="tab === 'zugriffe'" class="card">
-        <h2 class="card-title">Wer hat Zugriff?</h2>
-        <p class="hint">Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. Über ⋯ sperrst du Zugänge, erneuerst Links oder versiehst allgemeine Links mit Passwort und Ablauf.</p>
+        <h2 class="card-title">Wer hat Zugriff? <InfoKnopf titel="Wer hat Zugriff?" text="Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. Über ⋯ sperrst du Zugänge, erneuerst Links oder versiehst allgemeine Links mit Passwort und Ablauf." /> <router-link to="/hilfe?zu=zugaenge" class="hilfe-knopf" title="Hilfe: Zugriffe mit Ablaufgrafiken" aria-label="Hilfe zu den Zugriffen">?</router-link></h2>
         <ZugriffeListe :gremium-id="gremiumId" />
       </section>
 
@@ -282,17 +301,15 @@ export default {
           <label class="check"><input v-model="mitglied.hatStimmrecht" type="checkbox" /> Stimmberechtigt</label>
           <label v-if="!gremienStore.hatFesteRolle(gremiumId, mitglied)" class="check"><input v-model="mitglied.darfSitzungenEintragen" type="checkbox" /> Darf Sitzungen eintragen (zusätzlich zur Rolle)</label>
           <div v-if="kontenVerwalten" class="block-soft stack-sm">
-            <span class="label" style="margin: 0">Konto</span>
+            <span class="label" style="margin: 0">Konto <InfoKnopf titel="Konto" text="Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link. Name und E-Mail kommen dann vom Konto. Ein verknüpfter persönlicher Link öffnet nur noch nach der Anmeldung." /></span>
             <select v-model="mitglied.benutzerId" class="input" @change="kontoGewaehlt">
               <option :value="null">Kein Konto verknüpft</option>
               <option v-for="k in kontoAuswahl" :key="k.id" :value="k.id">{{ k.name }} · {{ k.email }}</option>
             </select>
-            <p class="small muted">Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link. Name und E-Mail kommen dann vom Konto.</p>
           </div>
           <p v-else-if="mitglied.benutzerId" class="small muted">Mit einem Konto verknüpft ({{ kontoName(mitglied.benutzerId) }}).</p>
           <div v-if="mitglied.id && mitglied.zugangsKey" class="block-soft stack-sm">
-            <span class="label" style="margin: 0">Persönlicher Link</span>
-            <p class="small muted">Zeigt dieser Person ihre Sitzungen, Terminfindungen und Pendenzen; bearbeiten kann sie, was ihr zugewiesen ist – als Sitzungsleitung / Protokollführung alles.</p>
+            <span class="label" style="margin: 0">Persönlicher Link <InfoKnopf titel="Persönlicher Link" text="Zeigt dieser Person ihre Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kann sie, was ihre Rolle erlaubt – mit einer Aufgabe (Sitzungsleitung, Protokollführung) alles." /></span>
             <div class="row">
               <button type="button" class="btn" @click="mitgliedLinkKopieren">{{ kopiert === mitglied.id ? 'Kopiert ✓' : 'Link kopieren' }}</button>
               <button type="button" class="btn btn-ghost" @click="mitgliedLinkErneuern">Erneuern</button>
@@ -329,6 +346,11 @@ export default {
       anwendenAuf: {}, // pro Vorlage: gewählte Sitzungs-IDs
       angewendet: '',
       ROLLEN_TYPEN,
+      ROLLEN_STUFEN,
+      ROLLEN_EINZELRECHTE,
+      STUFEN_INFO,
+      AUFGABEN,
+      AUFGABEN_INFO,
       FREIGABE_STUFEN,
       EINZELRECHTE,
       SITZUNG_STATUS,
@@ -352,6 +374,9 @@ export default {
     },
     personen() {
       return gremienStore.personen(this.gremiumId)
+    },
+    mitgliedOptionen() {
+      return this.gremium.mitglieder.map((m) => ({ wert: m.id, label: m.name }))
     },
     bearbeiterAuswahl() {
       return gremienStore.bearbeiterAuswahl(this.gremiumId)
@@ -452,19 +477,17 @@ export default {
       this.gremium.mitglieder = this.gremium.mitglieder.filter((m) => m.id !== this.mitglied.id)
       this.mitglied = null
     },
-    rolleStufe(r, dokument) {
-      const stufe = gremienStore.rolleRechte(r)[dokument]
-      return Array.isArray(stufe) ? 'individuell' : stufe
+    // Rechte der Rolle setzen: { stufe } bzw. { stufe: 'individuell', einzel }; null = zurück auf den Standard
+    rolleSetzen(r, rechte) {
+      r.rechte = rechte || {}
     },
-    rolleEinzelrechte(r, dokument) {
-      const stufe = gremienStore.rolleRechte(r)[dokument]
-      return Array.isArray(stufe) ? stufe : []
+    // Zentral hinterlegte Aufgaben (Mitglied-IDs)
+    aufgabeSetzen(aufgabe, ids) {
+      this.gremium.aufgaben ??= { sitzungsleitung: [], protokollfuehrung: [] }
+      this.gremium.aufgaben[aufgabe] = ids
     },
-    // null = zurück auf die Vorlage (Standard)
-    rolleSetzen(r, feld, wert) {
-      r.rechte ??= {}
-      if (wert === null) delete r.rechte[feld]
-      else r.rechte[feld] = wert
+    aufgabenVon(personId) {
+      return Object.entries(AUFGABEN).filter(([a]) => this.gremium.aufgaben?.[a]?.includes(personId)).map(([, label]) => label).join(' · ')
     },
     rolleHinzufuegen() {
       this.gremium.rollen.push({ id: crypto.randomUUID(), name: this.neueRolle, typ: null, sollAnwesend: true, rechte: {} })

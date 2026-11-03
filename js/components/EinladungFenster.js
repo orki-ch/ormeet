@@ -6,6 +6,7 @@ import { formatDatum } from '../utils/labels.js'
 import { einladungVon } from '../utils/einladungen.js'
 import { hinweis } from '../utils/dialog.js'
 import Modal from './Modal.js'
+import InfoKnopf from './InfoKnopf.js'
 
 const ART_TEXT = { einladung: 'Einladung', vorprotokoll: 'Vorprotokoll' }
 
@@ -13,7 +14,7 @@ const ART_TEXT = { einladung: 'Einladung', vorprotokoll: 'Vorprotokoll' }
 // ihren persönlichen Link (die Leitung sieht ihn nicht), Zusagen / Absagen, einen Kalendereintrag und das Abbestellen.
 export default {
   name: 'EinladungFenster',
-  components: { Modal },
+  components: { InfoKnopf, Modal },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -26,7 +27,7 @@ export default {
           <label class="check small"><input v-model="art" type="radio" value="vorprotokoll" /> Vorprotokoll <span class="leise">(Termin, Traktanden und Link)</span></label>
         </div>
         <div>
-          <span class="label">Empfängerinnen und Empfänger</span>
+          <span class="label">Empfängerinnen und Empfänger <InfoKnopf titel="Antworten" :punkte="ANTWORT_INFO" /></span>
           <div class="liste">
             <label v-for="p in personen" :key="p.id" class="check small liste-zeile" :class="{ aus: p.gesperrt }">
               <input v-model="auswahl" type="checkbox" :value="p.id" :disabled="p.gesperrt" />
@@ -37,7 +38,6 @@ export default {
           <p v-if="!personen.length" class="muted small">Keine erwarteten Mitglieder und keine Gäste.</p>
         </div>
         <div><span class="label">Eigene Nachricht (optional)</span><textarea v-model.trim="nachricht" class="input" rows="3" maxlength="4000"></textarea></div>
-        <p class="hint">Ohne Antwort gilt die Einladung als angenommen. Wer absagt, gibt einen Grund an und wird aus der Anwesenheit ausgetragen. Den Grund sehen nur Sitzungsleitung und Protokollführung.</p>
       </form>
       <template #fuss>
         <div class="row">
@@ -48,7 +48,18 @@ export default {
     </Modal>
   `,
   data() {
-    return { art: 'einladung', auswahl: [], nachricht: '', laeuft: false, ART_TEXT }
+    return {
+      art: 'einladung',
+      auswahl: [],
+      nachricht: '',
+      laeuft: false,
+      ART_TEXT,
+      ANTWORT_INFO: [
+        { titel: 'Ohne Antwort', text: 'Die Einladung gilt als angenommen.' },
+        { titel: 'Absage', text: 'Nur mit Grund. Mitglieder werden aus der Anwesenheit ausgetragen, Gäste kommen nicht ins Protokoll. Den Grund sehen nur Sitzungsleitung und Protokollführung.' },
+        { titel: 'Ändern', text: 'Über den Link in der Mail, bis die Sitzung startet.' },
+      ],
+    }
   },
   computed: {
     sitzung() {

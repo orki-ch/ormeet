@@ -14,13 +14,14 @@ import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 import { bestaetigen } from '../utils/dialog.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 const AKTIV_KEY = 'ormeet-aktives-gremium'
 
 // Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
 export default {
   name: 'PersonSeite',
-  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MehrfachAuswahl, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
+  components: { InfoKnopf, GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MehrfachAuswahl, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
   },
@@ -30,7 +31,7 @@ export default {
         <div class="row between top">
           <div>
             <p class="kicker">{{ gremium.name }} · {{ rolleName }}</p>
-            <h1 class="title">Hallo {{ person.name }}</h1>
+            <h1 class="title">Hallo {{ person.name }} <InfoKnopf titel="Deine Übersicht" text="Deine Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kannst du, was deine Rolle erlaubt – mit einer Aufgabe (Sitzungsleitung, Protokollführung) das ganze Dokument." /></h1>
           </div>
           <label v-if="konto && konto.gremien.length > 1" class="wechsel">
             <span class="label">Gremium</span>
@@ -39,17 +40,14 @@ export default {
             </select>
           </label>
         </div>
-        <p class="muted small mt-1">Deine Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kannst du, was dir zugewiesen ist – als Sitzungsleitung oder Protokollführung das ganze Dokument.</p>
       </header>
 
       <section v-if="!konto" class="card konto">
-        <h2 class="card-title">Eigenes Konto</h2>
+        <h2 class="card-title">Eigenes Konto <InfoKnopf titel="Eigenes Konto" :text="sync.zugriff.benutzerId ? 'Dieser Link ist mit einem Konto verknüpft. Mit dem Konto siehst du alle deine Gremien an einem Ort.' : 'Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto kannst du dich aber mit E-Mail und Passwort anmelden und alle Gremien, in denen du mitarbeitest, an einem Ort sehen.'" /></h2>
         <template v-if="sync.zugriff.benutzerId">
-          <p class="hint">Dieser Link ist mit einem Konto verknüpft. Mit dem Konto siehst du alle deine Gremien an einem Ort.</p>
           <router-link to="/login" class="btn">Mit Konto anmelden</router-link>
         </template>
         <template v-else>
-          <p class="hint">Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto kannst du dich aber mit E-Mail und Passwort anmelden und alle Gremien, in denen du mitarbeitest, an einem Ort sehen.</p>
           <div class="row" style="gap: 0.5rem 1.5rem">
             <label class="check small"><input v-model="kontoModus" type="radio" value="neu" /> Konto erstellen</label>
             <label class="check small"><input v-model="kontoModus" type="radio" value="bestehend" /> Ich habe schon ein Konto</label>
@@ -113,8 +111,7 @@ export default {
 
       <!-- Rolle mit Recht «Sitzungen eintragen»: das Recht an weitere Mitglieder vergeben -->
       <section v-if="darfVergeben" class="card">
-        <h2 class="card-title">Sitzungen eintragen dürfen</h2>
-        <p class="hint">Mitglieder, deren Rolle es erlaubt, dürfen immer. Weitere Mitglieder kannst du hier berechtigen.</p>
+        <h2 class="card-title">Sitzungen eintragen dürfen <InfoKnopf titel="Sitzungen eintragen" text="Mitglieder, deren Rolle es erlaubt, dürfen immer. Weitere Mitglieder kannst du hier berechtigen." /></h2>
         <MehrfachAuswahl :model-value="eintragende" :optionen="eintragendeOptionen" placeholder="+ Person berechtigen …" @update:model-value="eintragendeSetzen" />
       </section>
 
@@ -138,8 +135,7 @@ export default {
       </section>
 
       <section class="card">
-        <h2 class="card-title">Kalender-Abo</h2>
-        <p class="hint">Abonniere diesen Link in deinem Kalender (Apple, Google, Outlook …): Sitzungstermine, deine Pendenzen mit Frist und provisorische Termine aus Abstimmungen, bei denen du «Ja» oder «Vielleicht» gewählt hast. Jeder Termin enthält den Link zum Vorprotokoll.</p>
+        <h2 class="card-title">Kalender-Abo <InfoKnopf titel="Kalender-Abo" text="Abonniere diesen Link in deinem Kalender (Apple, Google, Outlook …): Sitzungstermine, deine Pendenzen mit Frist und provisorische Termine aus Abstimmungen, bei denen du «Ja» oder «Vielleicht» gewählt hast. Jeder Termin enthält den Link zum Vorprotokoll." /></h2>
         <div class="row">
           <code class="input grow truncate" style="line-height: 1.5">{{ kalenderLink }}</code>
           <button class="btn" @click="kalenderKopieren">{{ kalenderKopiert ? 'Kopiert ✓' : 'Link kopieren' }}</button>

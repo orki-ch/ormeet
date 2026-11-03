@@ -2,6 +2,7 @@ import { api } from '../api.js'
 import { sync, laden } from '../stores/sync.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import SsoButtons from './SsoButtons.js'
+import InfoKnopf from './InfoKnopf.js'
 
 const NAMEN_KEY = 'ormeet-namen'
 
@@ -30,11 +31,10 @@ export function namenVergessen() {
 // weitere Person zu dieser Sitzung; Stimmen und Kommentare unter einem gemerkten Namen gehen auf das Konto über.
 export default {
   name: 'KontoKarte',
-  components: { SsoButtons },
+  components: { InfoKnopf, SsoButtons },
   template: `
     <section class="card konto mb-2">
-      <h2 class="card-title">Eigenes Konto</h2>
-      <p class="hint">Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto meldest du dich überall gleich an und siehst diese Sitzung jederzeit wieder.<template v-if="gast"> Dein Name und deine E-Mail sind schon eingetragen, es fehlt nur ein Passwort.</template></p>
+      <h2 class="card-title">Eigenes Konto <InfoKnopf titel="Eigenes Konto" :text="'Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto meldest du dich überall gleich an und siehst diese Sitzung jederzeit wieder.' + (gast ? ' Dein Name und deine E-Mail sind schon eingetragen, es fehlt nur ein Passwort.' : '')" /></h2>
       <button v-if="!offen" class="btn btn-primary" @click="oeffnen">Konto erstellen oder anmelden</button>
       <template v-if="offen">
         <div class="row" style="gap: 0.5rem 1.5rem">

@@ -1,6 +1,9 @@
-// Dokumentation / Hilfe in einfacher Sprache
+import ProzessKarte from '../components/ProzessKarte.js'
+
+// Dokumentation / Hilfe in einfacher Sprache; ?zu=<kapitel> springt direkt zum Kapitel (z. B. vom (?)-Knopf der Zugriffe)
 export default {
   name: 'Hilfe',
+  components: { ProzessKarte },
   template: `
     <div class="doc stack-lg">
       <header class="page-header" style="margin-bottom: 0">
@@ -33,9 +36,9 @@ export default {
         <p class="muted">Ormeet funktioniert mit Passwort und Links – ein Konto braucht niemand. Wer einen Link hat, hat den dazugehörigen Zugriff – gib Links deshalb nur an die richtigen Personen weiter. Wer mag, legt sich über seinen persönlichen Link zusätzlich ein Konto an (Kapitel 3).</p>
         <div class="zeilen" style="--spalten: 10rem 1fr">
           <div class="zeile oben"><strong>Superadmin</strong><span>Meldet sich mit dem Passwort an. Sieht alle Gremien, kann sie anlegen, löschen und teilen und verwaltet unter <em>Benutzer & Links</em> alle Konten und Links. Verknüpft er dort mit <em>Das bin ich</em> sein eigenes Konto, erscheint oben das Symbol <em>Meine Übersicht</em>: Es zeigt genau, woran dieses Konto beteiligt ist – unabhängig vom Superadmin-Zugriff. Unter <em>Einstellungen</em> richtet er den E-Mail-Versand und den Cronjob für die täglichen Sammelmails ein.</span></div>
-          <div class="zeile oben"><strong>Konto</strong><span>Anmeldung mit E-Mail und Passwort oder über einen Anbieter (Sublevia, Orki). Ein Konto bündelt alle persönlichen Links einer Person: In der Übersicht wechselt sie zwischen ihren Gremien, jedes mit eigenem Kalender-Abo. Erlaubt es der Superadmin, kann sie eigene Gremien bzw. Kurzsitzungen ohne Gremium anlegen und verwaltet diese vollständig – andere Gremien sieht sie weiterhin nur, wo sie als Mitglied hinterlegt ist. Sitzungen und Kurzsitzungen eintragen darf, wessen Rolle es erlaubt (Vorlage: Präsidium und Aktuariat) – über den persönlichen Link wie mit Konto; weiteren Mitgliedern geben dieses Recht der Superadmin (unter <em>Benutzer & Links</em>), der Eigentümer des Gremiums (im Mitglieder-Dialog) oder wer es über die Rolle hat (in der Übersicht). Eigene Sitzungen ohne Protokoll lassen sich wieder löschen.</span></div>
+          <div class="zeile oben"><strong>Konto</strong><span>Anmeldung mit E-Mail und Passwort oder über einen Anbieter (Sublevia, Orki). Ein Konto bündelt alle persönlichen Links einer Person: In der Übersicht wechselt sie zwischen ihren Gremien, jedes mit eigenem Kalender-Abo. Erlaubt es der Superadmin, kann sie eigene Gremien bzw. Kurzsitzungen ohne Gremium anlegen und verwaltet diese vollständig – andere Gremien sieht sie weiterhin nur, wo sie als Mitglied hinterlegt ist. Sitzungen und Kurzsitzungen eintragen darf, wessen Rolle das Recht «Sitzungen eintragen» hat (die Vorlagen Sitzungsleitung und Aktuariat haben «Alles») – über den persönlichen Link wie mit Konto; weiteren Mitgliedern geben dieses Recht der Superadmin (unter <em>Benutzer & Links</em>), der Eigentümer des Gremiums (im Mitglieder-Dialog) oder wer es über die Rolle hat (in der Übersicht). Eigene Sitzungen ohne Protokoll lassen sich wieder löschen.</span></div>
           <div class="zeile oben"><strong>Gremium-Link</strong><span>Wird im Gremium unter <em>Teilen</em> erstellt. Pro Link legst du fest, welche Bereiche sichtbar sind und ob sie bearbeitet werden dürfen – z. B. «Aktuariat» mit vollem Zugriff auf Sitzungen.</span></div>
-          <div class="zeile oben"><strong>Persönlicher Link</strong><span>Jedes Mitglied hat einen zentralen Link (im Mitglieder-Dialog). Er zeigt eine eigene Übersicht mit Sitzungen, Terminfindungen und Pendenzen sowie einen <em>Kalender-Abo-Link</em> (Sitzungen, eigene Pendenzen, provisorische Termine mit Ja/Vielleicht – jeweils mit Link zum Vorprotokoll). Bearbeiten kann die Person, was ihr bei Traktanden zugewiesen ist – im Vorprotokoll und im Protokoll. Ist sie bei einer Sitzung als Sitzungsleitung oder Protokollführung eingetragen, hat sie dort vollen Zugriff. Ist der Link mit einem Konto verknüpft, öffnet er nur noch nach der Anmeldung mit diesem Konto (das gilt auch für Links von Gästen); das Kalender-Abo funktioniert weiter.</span></div>
+          <div class="zeile oben"><strong>Persönlicher Link</strong><span>Jedes Mitglied hat einen zentralen Link (im Mitglieder-Dialog). Er zeigt eine eigene Übersicht mit Sitzungen, Terminfindungen und Pendenzen sowie einen <em>Kalender-Abo-Link</em> (Sitzungen, eigene Pendenzen, provisorische Termine mit Ja/Vielleicht – jeweils mit Link zum Vorprotokoll). Bearbeiten kann die Person, was ihr bei Traktanden zugewiesen ist – im Vorprotokoll und im Protokoll. Hat sie eine Aufgabe – Sitzungsleitung oder Protokollführung, zentral hinterlegt oder in einer Sitzung als Vertretung –, hat sie dort vollen Zugriff bis zur Genehmigung. Ist der Link mit einem Konto verknüpft, öffnet er nur noch nach der Anmeldung mit diesem Konto (das gilt auch für Links von Gästen); das Kalender-Abo funktioniert weiter.</span></div>
           <div class="zeile oben"><strong>Freigabe-Link</strong><span>Gehört zu einem Vorprotokoll. Der <em>allgemeine</em> Link erlaubt standardmässig, alle Traktanden zu ändern und zu verschieben und Unterpunkte hinzuzufügen und zu löschen; die Leitung stellt seine Rechte in der Zugriffsübersicht ein wie bei anderen Links. Gäste erhalten einen eigenen Link mit denselben Regeln wie beim persönlichen Link, beschränkt auf dieses Vorprotokoll.</span></div>
           <div class="zeile oben"><strong>Weitere allgemeine Links</strong><span>Pro Dokument (Terminfindung, Vorprotokoll, Protokoll) beliebig viele, mit eigenem Namen und Rechten: nur lesen, alles bearbeiten oder einzelne Rechte. Zu finden in der Zugriffsübersicht der Sitzung. Wer einen allgemeinen Link öffnet, gibt zuerst Vor- und Nachnamen und E-Mail an und erhält damit einen eigenen Link (die Adresse wechselt sofort; sie öffnet die Sitzung auch auf einem anderen Gerät). Diese <em>weitere Person</em> hat die Rechte des allgemeinen Links und kann sich danach mit einem Klick ein Konto anlegen. Ist die E-Mail schon erfasst, entsteht keine neue Person: Ormeet bietet an, den bestehenden Link an diese Adresse zu senden (höchstens einmal pro Viertelstunde, ohne zu verraten, ob es die Adresse gibt). Gibt es jemanden mit gleichem Namen, erhalten die Verwaltenden einen Vorschlag zum Zusammenführen. Allgemeine Links lassen sich mit einem Passwort schützen und ablaufen lassen (an einem Datum oder wenn das Protokoll genehmigt ist); eigene Links, die darüber entstanden sind, laufen mit ab.</span></div>
           <div class="zeile oben"><strong>Übersichts-Link</strong><span>Teilt die historische Übersicht eines Themenbereichs (nur lesen). Zu finden im ⋯-Menü der Übersicht.</span></div>
@@ -43,6 +46,13 @@ export default {
         </div>
         <p class="muted">Das Menü oben rechts (drei Striche) zeigt, wie du angemeldet bist und ob alles gespeichert ist; dort findest du je nach Zugang <em>Mein Konto</em>, <em>Benutzer & Links</em>, <em>Einstellungen</em> und <em>Abmelden</em>, womit du den aktuellen Zugang verlässt. Ein Link kann jederzeit erneuert werden; der alte wird damit ungültig.</p>
         <p class="muted"><strong>Zugriffe verwalten:</strong> Wer hat Zugriff, und worüber? Die Zugriffsübersicht zeigt alle Personen mit ihrem Weg (persönlicher Link, Konto, eigener Link über einen allgemeinen Link) und wann sie zuletzt da waren, dazu alle Links. Für eine Sitzung öffnen Sitzungsleitung und Protokollführung sie im ⋯-Menü von Terminfindung, Vorprotokoll oder Protokoll (<em>Zugriffe verwalten</em>); Eigentümer und Superadmin finden sie fürs ganze Gremium im Reiter <em>Zugriffe</em> bzw. unter <em>Benutzer & Links</em>. Sitzungsleitung und Protokollführung sperren Personen für ihre Sitzung in zwei Stufen – <em>nur lesen</em> (sieht alles, ändert nichts) oder <em>ganz sperren</em> (sieht die Sitzung nicht) – oder entfernen sie daraus, erneuern Links und versehen sie mit Passwort und Ablauf; Eigentümer und Superadmin sperren Zugänge zudem fürs ganze Gremium oder entfernen Mitglieder. Eine weitere Person nehmen Superadmin, Eigentümer und Gremium-Links mit «Mitglieder bearbeiten» über ⋯ › <em>Als Mitglied aufnehmen …</em> mit einer Rolle ins Gremium auf; Konto, Stimmen und Link gehen mit. E-Mail-Adressen von Gästen und weiteren Personen sehen nur, wer die Sitzung verwaltet – jede Person ihre eigene.</p>
+        <h3 class="mt-2">Ablauf: Rechte in einer Sitzung</h3>
+        <ProzessKarte karte="rechte" />
+        <h3 class="mt-2">Ablauf: Persönlichen Link öffnen</h3>
+        <ProzessKarte karte="link" />
+        <h3 class="mt-2">Ablauf: Allgemeiner Link</h3>
+        <ProzessKarte karte="allg" />
+      
       </section>
 
       <section id="konto" class="card stack-sm">
@@ -65,7 +75,8 @@ export default {
         <ol>
           <li>Auf der Startseite Name und Beschreibung eingeben, <em>Gremium anlegen</em> klicken.</li>
           <li>Tab <strong>Mitglieder & Rollen</strong>: Mit <em>+ Mitglied</em> Personen erfassen (Name, E-Mail, Rolle, Stimmrecht). Ein Klick auf eine Person öffnet sie zum Bearbeiten.</li>
-          <li>Rollen frei benennen. Bei jeder Rolle legst du fest, ob sie <em>an Sitzungen erwartet</em> wird und was sie darf: die Standardstufe für Vorprotokoll und Protokoll (Lesen, Eigene, Alles oder einzelne Rechte), ob sie die Sitzung führt (wird bei neuen Sitzungen als Sitzungsleitung bzw. Protokollführung vorgeschlagen), ob sie Sitzungen eintragen und ob sie die Zugriffe aller Sitzungen verwalten darf. Das gilt über den persönlichen Link wie mit Konto. <em>Präsidium</em> und <em>Aktuariat</em> sind die Vorlagen (führen und tragen ein) und können nicht gelöscht werden; mehrere Rollen dürfen eine Sitzung führen.</li>
+          <li><strong>Rollen</strong> frei benennen. Bei jeder Rolle legst du fest, ob sie <em>an Sitzungen erwartet</em> wird und was sie darf – mit einem Hauptschalter: <em>Lesen</em> (nur ansehen), <em>Eigene</em> (zugewiesene Traktanden und Einträge), <em>Individuell</em> (Einzelrechte über ⋯: Vorprotokoll, Protokoll und Sitzung – Sitzungen eintragen, Sitzung starten und abschliessen, Änderungsanträge entscheiden, Einladungen senden, Zugriffe verwalten) oder <em>Alles</em> (wirklich alles). Die Rechte gelten in allen Sitzungen des Gremiums, über den persönlichen Link wie mit Konto. Neue Gremien haben die Rollen <em>Sitzungsleitung</em> und <em>Aktuariat</em> (Standard «Alles», nicht löschbar) und <em>Mitglied</em> (Standard «Eigene»).</li>
+          <li><strong>Aufgaben</strong> (über den Rollen): Sitzungsleitung und Protokollführung sind keine Rollen, sondern Aufgaben. Wer hier steht, übernimmt die Aufgabe automatisch in jeder neuen Sitzung und hat in allen Sitzungen des Gremiums sämtliche Bearbeitungsrechte – Vor- und Protokoll, Start und Abschluss, Entscheide zu Änderungsanträgen – bis das Protokoll genehmigt ist. In der Mitgliederliste steht die Aufgabe neben der Rolle.</li>
           <li>Tab <strong>Protokoll-Einstellungen</strong>: <em>Themenbereiche</em> (mit Farbe) ordnen Traktanden und Einträge thematisch. <em>Vorlagen</em> enthalten Kopfdaten und eine fertige Traktandenliste für wiederkehrende Sitzungen. Ändert sich eine Vorlage später, wählst du in der Vorlage unter <em>Auf bestehende Sitzungen anwenden</em> die Sitzungen ohne Protokoll aus und überträgst sie mit einem Klick – bestehende Traktanden dieser Vorprotokolle werden ersetzt, übernommene Pendenzen und vertagte Anträge bleiben. Der <em>Fusstext</em> steht am Ende jedes Protokoll-PDFs.</li>
           <li>Tab <strong>Teilen</strong> (Superadmin und Eigentümer): Links mit Rechten für andere Personen erstellen. Superadmin und Eigentümer können im Mitglieder-Dialog zudem ein Konto mit dem Mitglied verknüpfen oder es wieder lösen (Eigentümer aus den Konten ihrer Gremien); Name und E-Mail kommen dann vom Konto.</li>
         </ol>
@@ -75,7 +86,7 @@ export default {
         <h2 class="card-title">5. Sitzung erfassen und Vorprotokoll vorbereiten</h2>
         <ol>
           <li>Tab <strong>Sitzungen</strong> → <em>+ Sitzung</em>: Datum, Zeit, Ort und Vorlage wählen – oder <em>Termin per Abstimmung finden</em> (siehe Kapitel 7).</li>
-          <li><em>Vorprotokoll</em> öffnen. Kopfdaten (Titel, Leitung, Protokollführung, Bemerkungen) per Klick bearbeiten.</li>
+          <li><em>Vorprotokoll</em> öffnen. Kopfdaten (Titel, Leitung, Protokollführung, Bemerkungen) per Klick bearbeiten. Ist für eine Aufgabe niemand anwesend, erscheint ein Hinweis: Wer die Sitzung eingetragen hat oder Zugriffe verwaltet, trägt eine <em>Vertretung</em> ein – spätestens im Fenster <em>Sitzung starten</em>, wo sie aus den Anwesenden gewählt wird. Die Vertretung hat in dieser Sitzung alle Rechte einer Aufgabe.</li>
           <li>Anwesenheit anhaken, Gäste hinzufügen.</li>
           <li><strong>Einladung senden</strong> (oben im Vorprotokoll): Wähle <em>Einladung</em> (Termin und Link) oder <em>Vorprotokoll</em> (Termin, Traktanden und Link), hake die Empfänger an (erwartete Mitglieder und Gäste mit E-Mail) und schreib bei Bedarf eine eigene Nachricht. Jede Person erhält ihren persönlichen Link, einen Kalendereintrag, <em>Zusagen</em> / <em>Absagen</em> und einen Link zum Abbestellen. Ohne Antwort gilt die Einladung als angenommen. Wer absagt, gibt einen Grund an und wird aus der Anwesenheit ausgetragen; den Grund sehen nur Sitzungsleitung und Protokollführung (Symbol neben dem Namen). Die Antwort lässt sich bis zum Sitzungsstart ändern. Nach <em>Termin festlegen</em> in der Terminfindung fragt Ormeet, ob die Einladung gleich verschickt werden soll.</li>
           <li>Traktanden: Klick auf ein Traktandum öffnet die Bearbeitung direkt im Element – Titel und Notiz tippst du an Ort und Stelle. Darunter drei Pillen: <em>Themenbereich</em>, <em>Personen</em> (verantwortlich, wer zusätzlich bearbeiten darf) und <em>Einstellungen</em> (Typ der Einträge, geplante Dauer). Verschieben und Löschen findest du im ⋮-Menü, <em>Fertig</em> oder Escape schliesst.</li>
@@ -89,6 +100,9 @@ export default {
           <li><strong>Allgemeine Links</strong> legst du ebenfalls in der Zugriffsübersicht an – beliebig viele pro Dokument, je mit Name und Stufe <em>Lesen</em>, <em>Eigene</em> (nur Vorprotokoll), <em>Alles</em> oder <em>Individuell</em>. Der allgemeine Freigabe-Link des Vorprotokolls steht standardmässig auf <em>Eigene</em>: alle Traktanden ändern und verschieben, Unterpunkte hinzufügen und löschen.</li>
           <li><strong>Ansehen als …</strong> (⋯ bei einer Person) öffnet in einem neuen Tab die App so, wie die Person sie sieht – nur lesen, während zwei Stunden. Wer nur eine Sitzung verwaltet, sieht dort nur diese Sitzung.</li>
         </ol>
+        <h3 class="mt-2">Ablauf: Einladung</h3>
+        <ProzessKarte karte="einladung" />
+      
       </section>
 
       <section id="protokoll" class="card stack-sm">
@@ -105,11 +119,16 @@ export default {
           <li>Gespeichert wird automatisch (Anzeige oben rechts). <kbd>Ctrl+S</kbd> speichert sofort.</li>
           <li>Über ⋯ den <em>Verfolger-Link</em> kopieren, wenn Personen live mitlesen sollen.</li>
           <li><strong>Nächster Sitzungstermin:</strong> Mit dem Schalter wählst du <em>Offen lassen</em>, <em>Bestehend</em> (eine schon erfasste Sitzung), <em>Neu</em> (Datum, Zeit, Ort, Vorlage) oder <em>Abstimmung</em> (Termin per Terminfindung suchen). Darunter erscheint nur, was dafür nötig ist; der Termin erscheint im Protokoll und hat schon sein eigenes Vorprotokoll.</li>
-          <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden. Starten, abschliessen, wieder öffnen und das Protokoll entfernen kann, wer das Protokoll ganz bearbeiten darf – also auch die Protokollführung, nicht nur die Sitzungsleitung.</li>
+          <li><em>Sitzung abschliessen</em>. Bei Bedarf kann sie über ⋯ wieder geöffnet werden. Starten, abschliessen und wieder öffnen darf, wer eine Aufgabe in der Sitzung hat, das Recht «Sitzung starten und abschliessen» oder das Protokoll ganz bearbeiten darf.</li>
           <li><strong>Änderungsanträge:</strong> Ist eine Sitzung abgeschlossen, können alle Mitglieder mit Konto, die an der Sitzung erwartet waren oder dabei waren, sowie anwesende Gäste und weitere Personen (über ihren Link, im Vorprotokoll <em>Zum Protokoll →</em>) zu jedem Punkt eine Änderung beantragen: Traktandum, Unterpunkt oder Eintrag anklicken, im kleinen Fenster beschreiben, was geändert werden soll, und absenden. Solange der Antrag offen ist, lässt er sich noch anpassen oder zurückziehen.</li>
-          <li>Die Sitzungsleitung und die Protokollführung erhalten eine Benachrichtigung; ein Klick führt direkt an die betroffene Stelle. Oben im Protokoll stehen alle Änderungsanträge, offene sind rot markiert – auch an der Stelle selbst. Die Protokollführung passt das Protokoll direkt an und entscheidet mit <em>Übernommen</em> oder <em>Abgelehnt</em>, auf Wunsch mit einer kurzen Antwort; die antragstellende Person erfährt den Entscheid.</li>
+          <li>Die Sitzungsleitung und die Protokollführung erhalten eine Benachrichtigung; ein Klick führt direkt an die betroffene Stelle. Oben im Protokoll stehen alle Änderungsanträge, offene sind rot markiert – auch an der Stelle selbst. Die Protokollführung passt das Protokoll direkt an und entscheidet mit <em>Übernommen</em> oder <em>Abgelehnt</em> (entscheiden dürfen alle mit einer Aufgabe, dem Recht «Änderungsanträge entscheiden» oder wer die Sitzungen verwaltet), auf Wunsch mit einer kurzen Antwort; die antragstellende Person erfährt den Entscheid.</li>
           <li>Sobald das Protokoll genehmigt ist, sind keine Änderungsanträge und keine Änderungen mehr möglich – auch nicht für die Protokollführung. Kurzsitzungen haben keine Änderungsanträge.</li>
         </ol>
+        <h3 class="mt-2">Ablauf: Sitzungsverlauf</h3>
+        <ProzessKarte karte="verlauf" />
+        <h3 class="mt-2">Ablauf: Gleichzeitig speichern</h3>
+        <ProzessKarte karte="gleich" />
+      
       </section>
 
       <section id="kurzsitzungen" class="card stack-sm">
@@ -132,7 +151,7 @@ export default {
           <li>Bearbeiten darf die Terminfindung, wer die Sitzung eingetragen hat (bei älteren Sitzungen die Sitzungsleitung), sowie Superadmin und Eigentümer. Unter <em>Bearbeitung freigeben an</em> gibt die eintragende Person die Bearbeitung an Rollen oder Personen weiter.</li>
           <li>Bearbeitende können Stimmen für weitere Personen eintragen und das Ergebnis als CSV exportieren.</li>
           <li><strong>Personen entfernen:</strong> Mit ✕ in der Zeile entfernen Bearbeitende eine Person aus der Terminfindung – oder die Person sich selbst. Sie ist damit für diese Sitzung entschuldigt und steht unter <em>Entschuldigt</em>; ↺ nimmt sie wieder auf.</li>
-          <li><strong>Weitere Personen verknüpfen:</strong> Wer über einen allgemeinen Link ein Konto angelegt hat, erscheint unter <em>Weitere Personen mit Konto</em>. Sitzungsleitung, Aktuariat und Superadmin verknüpfen sie dort mit einem Mitglied (auch einem entfernten): Stimmen und Kommentare gehen auf das Mitglied über, und es ist wieder dabei.</li>
+          <li><strong>Weitere Personen verknüpfen:</strong> Wer über einen allgemeinen Link ein Konto angelegt hat, erscheint unter <em>Weitere Personen mit Konto</em>. Sitzungsleitung, Protokollführung, wer Sitzungen eintragen oder Zugriffe verwalten darf, und der Superadmin verknüpfen sie dort mit einem Mitglied (auch einem entfernten): Stimmen und Kommentare gehen auf das Mitglied über, und es ist wieder dabei.</li>
           <li><em>Wählen</em> unter einer Spalte legt den Termin fest – Datum und Zeit werden in die Sitzung übernommen. Das Vorprotokoll kann schon vorher vorbereitet werden; ein Protokoll gibt es erst, wenn der Termin feststeht.</li>
         </ol>
       </section>
@@ -167,7 +186,7 @@ export default {
         <h2 class="card-title">12. Häufige Fragen</h2>
         <dl>
           <div><dt>Ich habe einen Link weitergegeben, der nicht mehr gültig sein soll.</dt><dd>Gremium-Links im Gremium unter <em>Teilen</em>, alle anderen in der Zugriffsübersicht der Sitzung erneuern – der alte funktioniert dann nicht mehr.</dd></div>
-          <div><dt>Warum sehe ich ein Traktandum nur grau?</dt><dd>Über deinen Link darfst du es nicht bearbeiten. Die verantwortliche Person oder das Aktuariat kann dich unter «Dürfen zusätzlich bearbeiten» eintragen – einzeln, per Rolle oder Gruppe.</dd></div>
+          <div><dt>Warum sehe ich ein Traktandum nur grau?</dt><dd>Über deinen Link darfst du es nicht bearbeiten. Die verantwortliche Person oder die Protokollführung kann dich unter «Dürfen zusätzlich bearbeiten» eintragen – einzeln, per Rolle oder Gruppe.</dd></div>
           <div><dt>Wo liegen die Daten?</dt><dd>Auf dem Server, auf dem Ormeet installiert ist. Details stehen auf der Datenschutzseite im Fussbereich.</dd></div>
           <div><dt>Kann ich ein Protokoll nachträglich ändern?</dt><dd>Ja – über ⋯ <em>Sitzung wieder öffnen</em>.</dd></div>
           <div><dt>Wie richte ich die Anmeldung über Sublevia oder Orki ein?</dt><dd>Als Superadmin unter <em>Einstellungen</em> → <em>Anmeldung über Anbieter</em>: Beim Anbieter eine Anwendung mit der angezeigten Rückruf-Adresse anlegen, Server-URL, Client-ID und Client-Secret eintragen. Danach erscheinen die Schaltflächen auf der Anmeldeseite und in der Konto-Karte.</dd></div>
@@ -192,6 +211,14 @@ export default {
         { id: 'fragen', titel: 'Häufige Fragen' },
       ],
     }
+  },
+  mounted() {
+    if (this.$route.query.zu) setTimeout(() => this.springe(this.$route.query.zu), 150)
+  },
+  watch: {
+    '$route.query.zu'(zu) {
+      if (zu) this.springe(zu)
+    },
   },
   methods: {
     springe(id) {

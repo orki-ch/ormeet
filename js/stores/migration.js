@@ -19,7 +19,7 @@ export function ergaenzeFelder(bundle) {
   gremium.eigentuemerId ??= null // Konto, das dieses Gremium selbst angelegt hat
   gremium.kurz ??= false // versteckter Behälter einer Kurzsitzung ohne Gremium (seit 1.5.01)
 
-  // Feste Rollen: Präsidium (Sitzungsleitung) und Aktuariat (Protokollführung)
+  // Vorlage-Rollen: Sitzungsleitung (früher «Präsidium», typ praesidium) und Aktuariat – bestehende Namen bleiben
   gremium.rollen.forEach((r) => {
     r.sollAnwesend ??= true
     if (!r.rechte || Array.isArray(r.rechte)) r.rechte = {} // Rechte der Rolle (leer: Vorlage, siehe gremienStore.rolleRechte)
@@ -32,10 +32,17 @@ export function ergaenzeFelder(bundle) {
   gremium.mitglieder.forEach((m) => {
     m.zugangsKey ??= neuerKey() // zentraler persönlicher Link
     m.benutzerId ??= null // verknüpftes Konto
-    m.darfSitzungenEintragen ??= false // Konto darf in diesem Gremium Sitzungen eintragen (Präsidium / Aktuariat immer)
+    m.darfSitzungenEintragen ??= false // darf in diesem Gremium Sitzungen eintragen (zusätzlich zum Recht der Rolle)
     m.gesperrt ??= false // Zugang gesperrt: weder persönlicher Link noch Konto (seit 1.5.03)
   })
   gremium.themenbereiche.forEach((tb) => (tb.freigabeKey ??= neuerKey())) // Übersicht teilen
+  // Aufgaben Sitzungsleitung / Protokollführung zentral bei Mitgliedern (seit 1.5.04; vorher über die Rollen Präsidium / Aktuariat)
+  if (!gremium.aufgaben) {
+    const mitTyp = (typ) => gremium.mitglieder.filter((m) => gremium.rollen.find((r) => r.id === m.rolleId)?.typ === typ).map((m) => m.id)
+    gremium.aufgaben = gremium.kurz ? { sitzungsleitung: [], protokollfuehrung: [] } : { sitzungsleitung: mitTyp('praesidium'), protokollfuehrung: mitTyp('aktuariat') }
+  }
+  gremium.aufgaben.sitzungsleitung ??= []
+  gremium.aufgaben.protokollfuehrung ??= []
 
   const personen = gremium.mitglieder
   gremium.vorlagen.forEach((v) => {

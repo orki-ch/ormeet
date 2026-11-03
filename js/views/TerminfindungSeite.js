@@ -11,13 +11,14 @@ import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
 import EinladungFenster from '../components/EinladungFenster.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
 
 // Terminfindung (Nuudel-artig): Optionen, Abstimmungsmatrix mit Summenzeile, Kommentare, Termin festlegen
 export default {
   name: 'TerminfindungSeite',
-  components: { EinladungFenster, KurzTeilnehmende, MehrfachAuswahl, MenuDropdown, MiniKalender },
+  components: { InfoKnopf, EinladungFenster, KurzTeilnehmende, MehrfachAuswahl, MenuDropdown, MiniKalender },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -55,8 +56,7 @@ export default {
       <!-- Optionen & Einstellungen (Bearbeiter) -->
       <section v-if="voll && tf.status === 'offen'" class="card stack">
         <div>
-          <h2 class="card-title">Terminvorschläge</h2>
-          <p class="hint">Tage im Kalender anklicken (nochmals klicken entfernt sie). Jeder Vorschlag lässt sich in der Liste einzeln anpassen; die Zeit rechts gilt für neue Vorschläge und lässt sich auf die angekreuzten übertragen.</p>
+          <h2 class="card-title">Terminvorschläge <InfoKnopf titel="Terminvorschläge" text="Tage im Kalender anklicken (nochmals klicken entfernt sie). Jeder Vorschlag lässt sich in der Liste einzeln anpassen; die Zeit rechts gilt für neue Vorschläge und lässt sich auf die angekreuzten übertragen." /></h2>
           <div class="grid-3 termin-erfassung">
             <!-- Links: Kalender und manuelles Datum -->
             <div class="stack-sm">

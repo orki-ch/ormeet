@@ -8,12 +8,13 @@ import Modal from '../components/Modal.js'
 import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
 import ZugriffeListe from '../components/ZugriffeListe.js'
 import { bestaetigen, eingabe, hinweis } from '../utils/dialog.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 
 // Superadmin: Konten (mit Gremien-Zuordnung) und alle Zugriffe der Installation
 export default {
   name: 'Benutzer',
-  components: { MehrfachAuswahl, MenuDropdown, Modal, ZugriffeListe },
+  components: { InfoKnopf, MehrfachAuswahl, MenuDropdown, Modal, ZugriffeListe },
   template: `
     <div class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
@@ -29,10 +30,9 @@ export default {
       <template v-if="tab === 'konten'">
         <section class="card">
           <div class="card-head">
-            <h2 class="card-title">Konten</h2>
+            <h2 class="card-title">Konten <InfoKnopf titel="Konten" text="Konten entstehen meist selbst: Wer einen persönlichen Link hat, kann sich darin ein Konto anlegen (E-Mail/Passwort oder Anbieter). Hier ordnest du Konten weiteren Gremien zu und vergibst Rechte." /></h2>
             <button class="btn" @click="neuesKonto = { name: '', email: '', passwort: '' }">+ Konto</button>
           </div>
-          <p class="hint">Konten entstehen meist selbst: Wer einen persönlichen Link hat, kann sich darin ein Konto anlegen (E-Mail/Passwort oder Anbieter). Hier ordnest du Konten weiteren Gremien zu und vergibst Rechte.</p>
           <p v-if="!sync.konten.length" class="muted small">Noch keine Konten.</p>
           <div v-else class="liste">
             <div v-for="k in sync.konten" :key="k.id" class="block-soft stack-sm">
@@ -63,13 +63,12 @@ export default {
       <template v-else>
         <section class="card">
           <div class="card-head">
-            <h2 class="card-title">Zugriffe</h2>
+            <h2 class="card-title">Zugriffe <InfoKnopf titel="Zugriffe" text="Pro Gremium die Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. «Erneuern» macht den bisherigen Link sofort ungültig." /> <router-link to="/hilfe?zu=zugaenge" class="hilfe-knopf" title="Hilfe: Zugriffe mit Ablaufgrafiken" aria-label="Hilfe zu den Zugriffen">?</router-link></h2>
             <select v-model="gremiumFilter" class="input w-md">
               <option value="">Alle Gremien</option>
               <option v-for="g in gremien" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
           </div>
-          <p class="hint">Pro Gremium die Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. «Erneuern» macht den bisherigen Link sofort ungültig.</p>
           <details v-for="g in gefilterteGremien" :key="g.id" class="vorlage" :open="!!gremiumFilter">
             <summary>{{ g.kurz ? 'Kurzsitzung' : g.name }} <span class="sub">{{ g.mitglieder.length }} {{ g.mitglieder.length === 1 ? 'Person' : 'Personen' }}</span></summary>
             <div class="inhalt"><ZugriffeListe :gremium-id="g.id" /></div>

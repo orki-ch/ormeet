@@ -5,8 +5,21 @@ const state = Vue.reactive({ gremien: [] })
 
 export const BEREICHE = { sitzungen: 'Sitzungen', mitglieder: 'Mitglieder & Rollen', einstellungen: 'Protokoll-Einstellungen' }
 
-// Feste Rollen: Sitzungsleitung (Präsidium) und Protokollführung (Aktuariat) – nicht löschbar
-export const ROLLEN_TYPEN = { praesidium: 'Sitzungsleitung', aktuariat: 'Protokollführung' }
+// Vorlage-Rollen (nicht löschbar, Standard «Alles»): Sitzungsleitung (früher Präsidium) und Aktuariat
+export const ROLLEN_TYPEN = { praesidium: 'Sitzungsleitung', aktuariat: 'Aktuariat' }
+
+// Aufgaben pro Sitzung: zentral bei Mitgliedern hinterlegt (gremium.aufgaben), pro Sitzung auch als Vertretung
+export const AUFGABEN = { sitzungsleitung: 'Sitzungsleitung', protokollfuehrung: 'Protokollführung' }
+
+// Rollenrechte: ein Hauptschalter; «Individuell» schaltet Einzelrechte frei (bereich:recht)
+export const ROLLEN_STUFEN = { lesen: 'Lesen', eigene: 'Eigene', alles: 'Alles' }
+export const SITZUNGSRECHTE = {
+  eintragen: 'Sitzungen eintragen',
+  starten: 'Sitzung starten und abschliessen',
+  antraege: 'Änderungsanträge entscheiden',
+  einladungen: 'Einladungen senden',
+  zugriffe: 'Zugriffe verwalten',
+}
 
 export function neuerZugang(name) {
   return { id: crypto.randomUUID(), key: neuerKey(), name, rechte: { sitzungen: 'bearbeiten', mitglieder: 'lesen', einstellungen: 'lesen' }, ablauf: '' }
@@ -41,13 +54,28 @@ export const gremienStore = {
     return gremium?.mitglieder.find((m) => m.id === personId) || gaeste.find((g) => g.id === personId) || null
   },
 
-  // Rechte einer Rolle (rolle.rechte, siehe api.php rolleRechte): Standardstufe pro Dokument, Sitzungsführung (Vorschlag
-  // als Sitzungsleitung / Protokollführung), Sitzungen eintragen, Zugriffe verwalten. Vorlage: Präsidium / Aktuariat
+  // Hauptschalter einer Rolle (rolle.rechte = { stufe, einzel }): lesen | eigene | individuell | alles
+  // Ohne Angabe: Vorlagen «Alles», sonst «Eigene» (wie api.php rechteAusRolle)
+  rolleStufe(rolle) {
+    return rolle?.rechte?.stufe || (['praesidium', 'aktuariat'].includes(rolle?.typ) ? 'alles' : 'eigene')
+  },
+
+  // Rechte einer Rolle (siehe api.php rechteAusRolle): Stufe bzw. Einzelrechte pro Dokument und die Sitzungsrechte
   rolleRechte(rolle) {
-    const standard = { vorprotokoll: 'eigene', protokoll: 'eigene', fuehrung: '', eintragen: false, zugriffe: false }
-    const vorlage = rolle?.typ === 'praesidium' ? { fuehrung: 'sitzungsleitung', eintragen: true } : rolle?.typ === 'aktuariat' ? { fuehrung: 'protokollfuehrung', eintragen: true } : {}
-    const gesetzt = Object.fromEntries(Object.entries(rolle?.rechte || {}).filter(([, wert]) => wert !== null && wert !== undefined))
-    return { ...standard, ...vorlage, ...gesetzt }
+    const keine = Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, false]))
+    const stufe = gremienStore.rolleStufe(rolle)
+    if (stufe === 'alles') return { vorprotokoll: 'alles', protokoll: 'alles', ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, true])) }
+    if (stufe !== 'individuell') return { vorprotokoll: stufe, protokoll: stufe, ...keine }
+    const einzel = rolle.rechte.einzel || []
+    const teil = (bereich) => einzel.filter((e) => e.startsWith(bereich + ':')).map((e) => e.slice(bereich.length + 1))
+    return { vorprotokoll: teil('vorprotokoll'), protokoll: teil('protokoll'), ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, teil('sitzung').includes(k)])) }
+  },
+
+  // Mitglieder mit einer zentral hinterlegten Aufgabe (sitzungsleitung / protokollfuehrung) als Personenliste
+  aufgabenPersonen(gremiumId, aufgabe) {
+    const gremium = gremienStore.byId(gremiumId)
+    const ids = gremium?.aufgaben?.[aufgabe] || []
+    return gremium ? gremium.mitglieder.filter((m) => ids.includes(m.id)).map(({ id, name }) => ({ id, name })) : []
   },
 
   // Rechte der Rolle eines Mitglieds (Gäste: Standard)
@@ -55,15 +83,6 @@ export const gremienStore = {
     const gremium = gremienStore.byId(gremiumId)
     const mitglied = gremium?.mitglieder.find((m) => m.id === personId)
     return gremienStore.rolleRechte(mitglied && gremium.rollen.find((r) => r.id === mitglied.rolleId))
-  },
-
-  // Mitglieder, deren Rolle die Sitzung führt (sitzungsleitung / protokollfuehrung; frühere Namen praesidium / aktuariat),
-  // als Personenliste – Vorschlag für neue Sitzungen
-  mitgliederMitRollentyp(gremiumId, typ) {
-    const fuehrung = { praesidium: 'sitzungsleitung', aktuariat: 'protokollfuehrung' }[typ] || typ
-    const gremium = gremienStore.byId(gremiumId)
-    const rolleIds = gremium.rollen.filter((r) => gremienStore.rolleRechte(r).fuehrung === fuehrung).map((r) => r.id)
-    return gremium.mitglieder.filter((m) => rolleIds.includes(m.rolleId)).map(({ id, name }) => ({ id, name }))
   },
 
   // Darf die Rolle des Mitglieds Sitzungen eintragen (und das Recht anderen geben)?
@@ -95,11 +114,12 @@ export const gremienStore = {
       themenbereiche: [],
       erinnerungTage: 3, // Erinnerung «Sitzung steht bevor» (Glocke, E-Mail)
       rollen: [
-        { id: crypto.randomUUID(), name: 'Präsidium', typ: 'praesidium', sollAnwesend: true, rechte: {} },
+        { id: crypto.randomUUID(), name: 'Sitzungsleitung', typ: 'praesidium', sollAnwesend: true, rechte: {} },
         { id: crypto.randomUUID(), name: 'Aktuariat', typ: 'aktuariat', sollAnwesend: true, rechte: {} },
         { id: crypto.randomUUID(), name: 'Mitglied', typ: null, sollAnwesend: true, rechte: {} },
       ],
       mitglieder: [],
+      aufgaben: { sitzungsleitung: [], protokollfuehrung: [] }, // zentral hinterlegte Aufgaben (Mitglied-IDs)
       vorlagen: [],
     }
     state.gremien.push(gremium)

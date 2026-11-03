@@ -1,11 +1,12 @@
 import { api } from '../api.js'
 import { sync, laden } from '../stores/sync.js'
 import SsoButtons from '../components/SsoButtons.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 // Eigenes Konto: Name, Passwort, SSO-Verknüpfungen, Geräte
 export default {
   name: 'Konto',
-  components: { SsoButtons },
+  components: { InfoKnopf, SsoButtons },
   template: `
     <div class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
@@ -21,8 +22,7 @@ export default {
         </form>
 
         <form class="card stack" @submit.prevent="passwortAendern">
-          <h2 class="card-title">{{ konto.hatPasswort ? 'Passwort ändern' : 'Passwort festlegen' }}</h2>
-          <p v-if="!konto.hatPasswort" class="hint">Du meldest dich bisher nur über einen Anbieter an. Mit einem Passwort geht es auch direkt mit deiner E-Mail.</p>
+          <h2 class="card-title">{{ konto.hatPasswort ? 'Passwort ändern' : 'Passwort festlegen' }} <InfoKnopf v-if="!konto.hatPasswort" titel="Passwort festlegen" text="Du meldest dich bisher nur über einen Anbieter an. Mit einem Passwort geht es auch direkt mit deiner E-Mail." /></h2>
           <input v-if="konto.hatPasswort" v-model="passwortAlt" class="input" type="password" placeholder="Bisheriges Passwort" required autocomplete="current-password" />
           <input v-model="passwortNeu" class="input" type="password" placeholder="Neues Passwort (mindestens 8 Zeichen)" required autocomplete="new-password" />
           <div><button class="btn btn-primary" :disabled="laeuft">Passwort speichern</button></div>
@@ -30,16 +30,14 @@ export default {
       </div>
 
       <section class="card stack">
-        <h2 class="card-title">Anmeldung über Anbieter</h2>
+        <h2 class="card-title">Anmeldung über Anbieter <InfoKnopf titel="Anbieter" text="Die E-Mail beim Anbieter muss mit der E-Mail deines Kontos übereinstimmen, sonst entsteht ein zweites Konto." /></h2>
         <p v-if="konto.sso.length" class="small">Verknüpft: <span v-for="a in konto.sso" :key="a" class="badge brand" style="margin-right: 0.4rem">{{ a }} <a href="#" class="leise" @click.prevent="speichern({ ssoLoesen: a })">✕</a></span></p>
         <p v-else class="muted small">Noch kein Anbieter verknüpft.</p>
-        <p class="hint">Die E-Mail beim Anbieter muss mit der E-Mail deines Kontos übereinstimmen, sonst entsteht ein zweites Konto.</p>
         <SsoButtons text="verknüpfen" />
       </section>
 
       <section class="card stack">
-        <h2 class="card-title">E-Mails</h2>
-        <p class="hint">Gibt es Neues – eine Sitzung steht bevor, deine Stimme fehlt, eine Pendenz ist fällig –, erhältst du höchstens eine Sammelmail pro Tag an {{ konto.email }}.</p>
+        <h2 class="card-title">E-Mails <InfoKnopf titel="Sammelmail" :text="'Gibt es Neues – eine Sitzung steht bevor, deine Stimme fehlt, eine Pendenz ist fällig –, erhältst du höchstens eine Sammelmail pro Tag an ' + konto.email + '.'" /></h2>
         <label class="check small"><input type="checkbox" :checked="!konto.mailsAus" :disabled="laeuft" @change="speichern({ mailsAus: !$event.target.checked })" /> Mitteilungen per E-Mail erhalten</label>
       </section>
 

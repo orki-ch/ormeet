@@ -140,9 +140,9 @@ export const sitzungenStore = {
       ort,
       vorlageId: vorlage?.id || null,
       titel: vorlage?.titel || '',
-      // Vorgabe: Mitglieder mit fester Rolle (Präsidium / Aktuariat), sofern die Vorlage nichts vorgibt
-      sitzungsleitung: vorlage?.sitzungsleitung?.length ? kopie(vorlage.sitzungsleitung) : gremienStore.mitgliederMitRollentyp(gremiumId, 'praesidium'),
-      protokollfuehrung: vorlage?.protokollfuehrung?.length ? kopie(vorlage.protokollfuehrung) : gremienStore.mitgliederMitRollentyp(gremiumId, 'aktuariat'),
+      // Vorgabe: Mitglieder mit der zentral hinterlegten Aufgabe, sofern die Vorlage nichts vorgibt
+      sitzungsleitung: vorlage?.sitzungsleitung?.length ? kopie(vorlage.sitzungsleitung) : gremienStore.aufgabenPersonen(gremiumId, 'sitzungsleitung'),
+      protokollfuehrung: vorlage?.protokollfuehrung?.length ? kopie(vorlage.protokollfuehrung) : gremienStore.aufgabenPersonen(gremiumId, 'protokollfuehrung'),
       bemerkungen: vorlage?.bemerkungen || '',
       naechsterTerminId: null,
       genehmigt: null, // { sitzungId, datum }: an dieser späteren Sitzung genehmigt -> Vorprotokoll und Protokoll eingefroren

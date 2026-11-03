@@ -1,5 +1,13 @@
 # Änderungsverlauf
 
+## 1.5.05
+- Sitzungsleitung und Protokollführung sind neu Aufgaben statt Rollen. Du hinterlegst sie zentral unter «Mitglieder & Rollen › Aufgaben». Wer eine Aufgabe hat, übernimmt sie in jeder neuen Sitzung und darf dort alles bis zur Genehmigung.
+- Fehlt an einer Sitzung jemand mit einer Aufgabe, zeigt das Vorprotokoll einen Hinweis. Beim Start der Sitzung wählst du eine Vertretung aus den Anwesenden.
+- Die Rechte einer Rolle stellst du mit einem Hauptschalter ein: Lesen, Eigene, Individuell oder Alles. Bei «Individuell» gibt es neue Einzelrechte: Sitzung starten und abschliessen, Änderungsanträge entscheiden, Einladungen senden.
+- Neue Gremien haben die Rollen Sitzungsleitung, Aktuariat und Mitglied. Bestehende Gremien behalten ihre Rollen; die Aufgaben werden aus Präsidium und Aktuariat übernommen.
+- Erklärungen stehen jetzt in (i)-Knöpfen neben der Überschrift oder dem Feld.
+- Die Hilfe zeigt die wichtigsten Abläufe als Grafiken. Der (?)-Knopf in der Zugriffsübersicht führt direkt dorthin.
+
 ## 1.5.04
 - Neu: «Einladung senden» im Vorprotokoll. Jede Person erhält per E-Mail ihren Link, einen Kalendereintrag und kann zu- oder absagen. Wer absagt, gibt einen Grund an und wird aus der Anwesenheit ausgetragen; den Grund sehen nur Sitzungsleitung und Protokollführung.
 - Das Protokoll entsteht erst mit «Sitzung starten», nicht mehr schon beim Öffnen. Bis dahin zeigt die Seite eine Vorschau.

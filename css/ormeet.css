@@ -2624,6 +2624,22 @@ select.btn-pille {
     transform: translateY(-4px);
     transition: opacity var(--dauer) ease, transform var(--dauer) var(--ease-out);
   }
+  .info-titel {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-weight: 700;
+  }
+  .info-absatz {
+    display: block;
+  }
+  .info-punkt {
+    display: block;
+    margin-top: 0.35rem;
+    font-weight: 400;
+    strong {
+      font-weight: 700;
+    }
+  }
   &.rechts .info-text {
     left: auto;
     right: 0;
@@ -2992,4 +3008,155 @@ select.btn-pille {
       content: "✕";
     }
   }
+}
+
+/* (?)-Knopf: führt direkt zum passenden Kapitel der Hilfe */
+.hilfe-knopf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: var(--tint-10);
+  color: var(--wald);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  vertical-align: middle;
+  transition: var(--tc);
+  &:hover,
+  &:focus-visible {
+    background: var(--tint-20);
+  }
+}
+
+/* Prozesskarte (Hilfe): Schwimmbahnen, Knoten anklickbar, Details darunter */
+.prozess-karte {
+  margin: 0.5rem 0 0;
+  .prozess-flaeche {
+    overflow-x: auto;
+  }
+  svg {
+    display: block;
+    width: 100%;
+    min-width: 34rem;
+    height: auto;
+  }
+  .bahn-kopf {
+    fill: var(--flaeche-soft);
+  }
+  .bahn-text {
+    fill: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+  .bahn-linie {
+    stroke: var(--linie);
+    stroke-width: 0.5;
+    stroke-dasharray: 4 4;
+  }
+  .kante {
+    fill: none;
+    stroke: var(--text-leise);
+    stroke-width: 1.2;
+  }
+  .kante-text {
+    fill: var(--text-muted);
+    font-size: 12px;
+  }
+  .knoten {
+    cursor: pointer;
+    outline: none;
+    rect,
+    polygon {
+      stroke-width: 0.8;
+      transition: var(--tc);
+    }
+    &.person rect,
+    &.person polygon {
+      fill: var(--brand-hell2);
+      stroke: var(--brand-dunkel);
+    }
+    &.system rect,
+    &.system polygon {
+      fill: var(--minze);
+      stroke: var(--wald-2);
+    }
+    &.stopp rect {
+      fill: color-mix(in srgb, var(--err) 12%, var(--flaeche));
+      stroke: var(--err);
+    }
+    &.ende rect {
+      fill: var(--bg);
+      stroke: var(--salbei);
+    }
+    &:hover rect,
+    &:hover polygon,
+    &:focus-visible rect,
+    &:focus-visible polygon,
+    &.gewaehlt rect,
+    &.gewaehlt polygon {
+      stroke-width: 2;
+    }
+  }
+  .knoten-titel {
+    fill: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    text-anchor: middle;
+    dominant-baseline: central;
+    &.klein {
+      font-size: 12px;
+    }
+  }
+  .knoten-unter {
+    fill: var(--text-muted);
+    font-size: 12px;
+    text-anchor: middle;
+    dominant-baseline: central;
+  }
+}
+.prozess-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.5rem;
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  i {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 3px;
+    border: 1px solid var(--salbei);
+  }
+  .person {
+    background: var(--brand-hell2);
+    border-color: var(--brand-dunkel);
+  }
+  .system {
+    background: var(--minze);
+    border-color: var(--wald-2);
+  }
+  .stopp {
+    background: color-mix(in srgb, var(--err) 12%, var(--flaeche));
+    border-color: var(--err);
+  }
+  .ende {
+    background: var(--bg);
+  }
+}
+.prozess-detail {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--r);
+  background: var(--flaeche-soft);
+  line-height: 1.5;
 }

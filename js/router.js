@@ -2,7 +2,7 @@ import { api } from './api.js'
 import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
 import { gremienStore } from './stores/gremien.js'
-import { darfAenderungStellen, rolleIm, vollzugriff } from './utils/rechte.js'
+import { darfAenderungStellen, darfStarten, rolleIm, vollzugriff } from './utils/rechte.js'
 import { bestaetigen } from './utils/dialog.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
@@ -189,7 +189,7 @@ router.beforeEach(async (to) => {
     if (to.path.includes('/themenbereich/')) return true
     if (!sitzungsPfad) return startPfad()
     // Ein Protokoll eröffnen (Sitzung starten) darf nur, wer es ganz bearbeiten darf: Sitzungsleitung, Protokollführung, Freigabe «Alles»
-    if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId) && !(sitzung && vollzugriff(sitzung, 'protokoll'))) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
+    if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId) && !(sitzung && (vollzugriff(sitzung, 'protokoll') || darfStarten(sitzung)))) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
     return true
   }
   if (!rolle) return startPfad()

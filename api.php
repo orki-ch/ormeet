@@ -126,6 +126,7 @@ schluessel();
 
 // Leere personenKeys als Objekt ({}) statt Array ([]) ausgeben
 function normalisiere(array $bundle) {
+  aufgabenMerken($bundle);
   foreach ($bundle['gremium']['rollen'] ?? [] as &$r) {
     if (array_key_exists('rechte', $r) && empty($r['rechte'])) $r['rechte'] = new stdClass();
   }
@@ -647,12 +648,22 @@ function istBerechtigt(array $eintrag, array $person) {
   return false;
 }
 
-// Sitzungsleitung / Protokollführung einer Sitzung: voller Zugriff auf deren Dokumente
+// Aufgaben Sitzungsleitung / Protokollführung: in der Sitzung eingetragen (auch als Vertretung) oder im Gremium zentral
+// hinterlegt (gremium.aufgaben, gilt für alle Sitzungen des Gremiums) – voller Zugriff auf Vorprotokoll und Protokoll,
+// Start, Abschluss und Entscheide bis zur Genehmigung
 function istLeitung(array $sitzung, $personId) {
+  if (!$personId) return false;
   foreach (array_merge($sitzung['sitzungsleitung'] ?? [], $sitzung['protokollfuehrung'] ?? []) as $p) {
     if (($p['id'] ?? null) === $personId) return true;
   }
-  return false;
+  return in_array($personId, $GLOBALS['ormeetAufgaben'][$sitzung['gremiumId'] ?? ''] ?? [], true);
+}
+
+// Zentral hinterlegte Aufgaben eines Gremiums merken (für istLeitung)
+function aufgabenMerken(array $bundle) {
+  if (empty($bundle['gremium']['id'])) return;
+  $a = $bundle['gremium']['aufgaben'] ?? [];
+  $GLOBALS['ormeetAufgaben'][$bundle['gremium']['id']] = array_values(array_merge($a['sitzungsleitung'] ?? [], $a['protokollfuehrung'] ?? []));
 }
 
 // Freigabestufe einer Person für ein Dokument (vorprotokoll / protokoll): in der Sitzung gesetzte Freigabe,
@@ -930,21 +941,44 @@ function zuschnittAnwenden(array $bundle, array $zugriff) {
   return $bundle;
 }
 
-// Rechte einer Rolle (rolle.rechte): Standardstufe pro Dokument (lesen / eigene / alles oder Liste von Einzelrechten),
-// Sitzungsführung (wird bei neuen Sitzungen als Sitzungsleitung bzw. Protokollführung vorgeschlagen), Sitzungen eintragen,
-// Zugriffe verwalten (alle Sitzungen). Ohne Angabe gelten die Vorlagen: Präsidium / Aktuariat führen und tragen ein.
+// Rechte einer Rolle (rolle.rechte = { stufe, einzel }): ein Hauptschalter Lesen / Eigene / Individuell / Alles.
+// «Alles» heisst alles; «Individuell» schaltet Einzelrechte frei: vorprotokoll:… und protokoll:… (wie EINZELRECHTE) sowie
+// sitzung:eintragen | starten | antraege | einladungen | zugriffe. Ohne Angabe: Vorlagen Sitzungsleitung / Aktuariat «Alles»,
+// sonst «Eigene». Ältere Form (vorprotokoll / protokoll / eintragen / zugriffe einzeln) wird weiter gelesen.
+const SITZUNGSRECHTE = ['eintragen', 'starten', 'antraege', 'einladungen', 'zugriffe'];
+
+function rechteAusRolle($rolle) {
+  $rechte = (array) ($rolle['rechte'] ?? []);
+  $ergebnis = ['vorprotokoll' => 'eigene', 'protokoll' => 'eigene'] + array_fill_keys(SITZUNGSRECHTE, false);
+  $alles = ['vorprotokoll' => 'alles', 'protokoll' => 'alles'] + array_fill_keys(SITZUNGSRECHTE, true);
+  $vorlage = in_array($rolle['typ'] ?? null, ['praesidium', 'aktuariat'], true);
+  if (!isset($rechte['stufe']) && array_intersect(['vorprotokoll', 'protokoll', 'eintragen', 'zugriffe'], array_keys(array_filter($rechte, fn($w) => $w !== null)))) {
+    $ergebnis = $vorlage ? $alles : $ergebnis; // ältere Form: einzeln gesetzte Felder über dem Standard der Vorlage
+    foreach (['vorprotokoll', 'protokoll', 'eintragen', 'zugriffe'] as $feld) if (isset($rechte[$feld])) $ergebnis[$feld] = $rechte[$feld];
+    return $ergebnis;
+  }
+  $stufe = $rechte['stufe'] ?? ($vorlage ? 'alles' : 'eigene');
+  if ($stufe === 'alles') return $alles;
+  if ($stufe !== 'individuell') return array_merge($ergebnis, ['vorprotokoll' => $stufe, 'protokoll' => $stufe]);
+  $einzel = (array) ($rechte['einzel'] ?? []);
+  $teil = fn($bereich) => array_values(array_map(fn($e) => substr($e, strlen($bereich) + 1), array_filter($einzel, fn($e) => strpos($e, $bereich . ':') === 0)));
+  $ergebnis['vorprotokoll'] = $teil('vorprotokoll');
+  $ergebnis['protokoll'] = $teil('protokoll');
+  foreach (SITZUNGSRECHTE as $recht) $ergebnis[$recht] = in_array($recht, $teil('sitzung'), true);
+  return $ergebnis;
+}
+
 function rolleRechte(array $gremium, $personId) {
-  $standard = ['vorprotokoll' => 'eigene', 'protokoll' => 'eigene', 'fuehrung' => '', 'eintragen' => false, 'zugriffe' => false];
   foreach ($gremium['mitglieder'] as $m) {
     if ($m['id'] !== $personId) continue;
-    foreach ($gremium['rollen'] as $r) {
-      if ($r['id'] !== ($m['rolleId'] ?? null)) continue;
-      $typ = $r['typ'] ?? null;
-      $vorlage = $typ === 'praesidium' ? ['fuehrung' => 'sitzungsleitung', 'eintragen' => true] : ($typ === 'aktuariat' ? ['fuehrung' => 'protokollfuehrung', 'eintragen' => true] : []);
-      return array_filter((array) ($r['rechte'] ?? []), fn($w) => $w !== null) + $vorlage + $standard;
-    }
+    foreach ($gremium['rollen'] as $r) if ($r['id'] === ($m['rolleId'] ?? null)) return rechteAusRolle($r);
   }
-  return $standard;
+  return ['vorprotokoll' => 'eigene', 'protokoll' => 'eigene'] + array_fill_keys(SITZUNGSRECHTE, false);
+}
+
+// Sitzungsrecht einer Person (eintragen / starten / antraege / einladungen / zugriffe) über ihre Rolle
+function sitzungsrecht(array $gremium, $personId, $recht) {
+  return !empty(rolleRechte($gremium, $personId)[$recht]);
 }
 
 // Darf Sitzungen eintragen bzw. das Recht vergeben (Rolle) – über persönlichen Link wie über Konto
@@ -1233,7 +1267,7 @@ function gremiumRechteAnwenden(array $bundle, array $aenderungen, array $rechte)
     $gremium = $bundle['gremium'];
     $neu = $aenderungen['gremium'];
     if (($rechte['mitglieder'] ?? '') === 'bearbeiten') {
-      foreach (['mitglieder', 'rollen'] as $feld) $gremium[$feld] = $neu[$feld] ?? $gremium[$feld];
+      foreach (['mitglieder', 'rollen', 'aufgaben'] as $feld) $gremium[$feld] = $neu[$feld] ?? $gremium[$feld] ?? null;
     }
     if (($rechte['einstellungen'] ?? '') === 'bearbeiten') {
       foreach (['name', 'beschreibung', 'fusstext', 'themenbereiche', 'vorlagen', 'erinnerungTage'] as $feld) $gremium[$feld] = $neu[$feld] ?? $gremium[$feld] ?? null;
@@ -1360,6 +1394,13 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
       $sitzung['gesperrt'] = array_values(array_diff($sitzung['gesperrt'] ?? [], $fuehrung));
     }
     $sitzung['erstelltVon'] = $alt['erstelltVon'] ?? null;
+    // Starten / abschliessen (Status): Aufgabe in der Sitzung, Recht «Starten und abschliessen» oder Protokoll «Alles»
+    $darfStarten = $leitung || sitzungsrecht($bundle['gremium'], $person['id'], 'starten') || freigabeStufe($alt, 'protokoll', $person['id']) === 'alles';
+    $sitzung['status'] = $darfStarten ? ($neu['status'] ?? $sitzung['status']) : ($alt['status'] ?? $sitzung['status']);
+    // Wer die Aufgaben übernimmt (auch als Vertretung): wer die Sitzung eingetragen hat oder Zugriffe verwaltet
+    $ersteller = !empty($alt['erstelltVon']) ? $alt['erstelltVon'] === $person['id'] : in_array($person['id'], array_column($alt['sitzungsleitung'] ?? [], 'id'), true); // ältere Sitzungen: die Leitung
+    $darfAufgaben = $ersteller || sitzungsrecht($bundle['gremium'], $person['id'], 'zugriffe');
+    if (!$darfAufgaben) foreach (['sitzungsleitung', 'protokollfuehrung'] as $feld) $sitzung[$feld] = $alt[$feld] ?? [];
     // Letztes Protokoll genehmigen: wer das Protokoll der genehmigenden Sitzung ganz bearbeiten darf
     $in = $neu['genehmigt']['sitzungId'] ?? null;
     if (!$voll && $in && empty($alt['genehmigt']) && isset($sitzungen[$in]) && freigabeStufe($sitzungen[$in], 'protokoll', $person['id']) === 'alles') {
@@ -1373,8 +1414,12 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   // darf es auch neu anlegen (Sitzung starten) und das Protokoll wieder entfernen – sofern es noch keines gibt
   $darfAlles = fn($sitzungId, $dokument) => isset($sitzungen[$sitzungId]) && (!$gastSitzungId || $sitzungId === $gastSitzungId)
     && freigabeStufe($sitzungen[$sitzungId], $dokument, $person['id']) === 'alles';
-  $neuAnlegen = function ($typ, $neu) use ($bundle, $darfAlles) {
+  $neuAnlegen = function ($typ, $neu) use ($bundle, $darfAlles, $sitzungen, $person, $gastSitzungId) {
     foreach ($bundle[$typ] as $vorhanden) if ($vorhanden['sitzungId'] === ($neu['sitzungId'] ?? null)) return false;
+    $sitzung = $sitzungen[$neu['sitzungId'] ?? ''] ?? null;
+    // Protokoll anlegen = Sitzung starten: auch mit dem Recht «Starten und abschliessen» bzw. als Aufgabe
+    if ($typ === 'protokolle' && $sitzung && (!$gastSitzungId || $sitzung['id'] === $gastSitzungId)
+      && (istLeitung($sitzung, $person['id']) || sitzungsrecht($bundle['gremium'], $person['id'], 'starten'))) return true;
     return $darfAlles($neu['sitzungId'] ?? '', $typ === 'protokolle' ? 'protokoll' : 'vorprotokoll');
   };
 
@@ -1496,7 +1541,8 @@ function aenderungsantraegeBerechnen(array $bundle, array $aenderungen, array $z
     $sitzung = $sitzungen[($alt ?? $neu)['sitzungId']] ?? null;
     if (!$sitzung) continue;
     $protokollfuehrung = array_column($sitzung['protokollfuehrung'] ?? [], 'id');
-    $entscheiden = in_array($zugriff['rolle'], ['admin', 'gremium'], true) || ($personId && in_array($personId, $protokollfuehrung, true));
+    $entscheiden = in_array($zugriff['rolle'], ['admin', 'gremium'], true) || ($personId && in_array($personId, $protokollfuehrung, true))
+      || istLeitung($sitzung, $personId) || ($personId && sitzungsrecht($bundle['gremium'], $personId, 'antraege'));
     $stellen = darfAenderungStellen($bundle, $sitzung, $alt ?? $neu, $personId);
     $ergebnis[$neu['id']] = aenderungsantraegeMerge($alt['aenderungsantraege'] ?? [], $neu['aenderungsantraege'] ?? [], $personId, $entscheiden, $stellen);
   }
@@ -1676,6 +1722,7 @@ function linkGastFreigabe(array $info, $dokument) {
 // Alle über Links eingetragenen Personen eines Gremiums: { gastId: herkunftsLink } (für freigabeStufe)
 function linkGaesteMerken(array $bundle) {
   $GLOBALS['ormeetGremium'] = $bundle['gremium']; // für die Standardrechte der Rollen (freigabeRoh)
+  aufgabenMerken($bundle);
   $GLOBALS['linkGaeste'] = [];
   foreach ($bundle['vorprotokolle'] as $vp) {
     foreach ($vp['gaeste'] as $g) if (!empty($g['ueberLink'])) $GLOBALS['linkGaeste'][$g['id']] = herkunftsLink($bundle, $vp, $g);
@@ -1873,6 +1920,7 @@ function bundleAendern($gremiumId, callable $aendern) {
   $handle = fopen(dateiVon($gremiumId), 'c+');
   flock($handle, LOCK_EX);
   $bundle = json_decode(entschluesseln(stream_get_contents($handle)), true);
+  if ($bundle) aufgabenMerken($bundle);
   $ergebnis = $bundle ? $aendern($bundle) : null;
   if ($bundle) {
     ftruncate($handle, 0);
@@ -2912,7 +2960,9 @@ if ($aktion === 'einladung_senden') {
   $s = $bundle ? sitzungVon($bundle, $sitzungId) : null;
   $vp = $bundle ? vorprotokollVon($bundle, $sitzungId) : null;
   if (!$s || !$vp) antwort(['fehler' => 'Sitzung nicht gefunden'], 404);
-  if (!verwaltetSitzung($zugriff, $s, $bundle['gremium'])) antwort(['fehler' => 'Einladungen senden nur, wer die Sitzung verwaltet'], 403);
+  $darfEinladen = in_array($rolle, ['admin'], true) || ($rolle === 'gremium' && ($zugriff['rechte']['sitzungen'] ?? '') === 'bearbeiten')
+    || ($rolle === 'person' && (istLeitung($s, $zugriff['personId']) || sitzungsrecht($bundle['gremium'], $zugriff['personId'], 'einladungen')));
+  if (!$darfEinladen) antwort(['fehler' => 'Einladungen senden darf, wer die Sitzung leitet oder protokolliert oder das Recht «Einladungen senden» hat'], 403);
   if (empty($s['datum'])) antwort(['fehler' => 'Die Sitzung hat noch keinen Termin.'], 400);
   if (protokollVon($bundle, $sitzungId)) antwort(['fehler' => 'Die Sitzung hat schon begonnen.'], 409);
 
@@ -3017,7 +3067,7 @@ if ($aktion === 'weitere_person_verknuepfen' || $aktion === 'vorschlag_ablehnen'
                                             'zugangsKey' => bin2hex(random_bytes(8)), 'benutzerId' => null];
       $darf = true;
     }
-    if (!$darf) return 'Zusammenführen dürfen nur Sitzungsleitung, Aktuariat, Eigentümer und Superadmin';
+    if (!$darf) return 'Zusammenführen dürfen nur Sitzungsleitung, Protokollführung, wer Sitzungen eintragen oder Zugriffe verwalten darf, Eigentümer und Superadmin';
 
     if ($aktion === 'vorschlag_ablehnen') {
       foreach ($bundle['vorprotokolle'][$vpIndex]['gaeste'] as &$g) if ($g['id'] === $gastId && isset($g['vorschlag'])) $g['vorschlag']['status'] = 'abgelehnt';

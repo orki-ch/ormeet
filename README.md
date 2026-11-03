@@ -81,12 +81,23 @@ Einstellungen; Rückruf-Adresse `api.php?aktion=sso_callback`. Der `state` ist H
 
 ### Rechte der Rollen
 
-`rolle.rechte` (leer = Vorlage, `rolleRechte` in `api.php` bzw. `gremienStore.rolleRechte`): `vorprotokoll` / `protokoll` =
-Standardstufe (`lesen` / `eigene` / `alles` oder Liste von Einzelrechten), `fuehrung` = `sitzungsleitung` / `protokollfuehrung`
-(Vorschlag bei neuen Sitzungen; die Rechte gelten, wo jemand eingetragen ist), `eintragen` (Sitzungen eintragen, das Recht
-weitergeben), `zugriffe` (Zugriffsübersicht aller Sitzungen, sieht deren Links). Vorlagen: Präsidium und Aktuariat führen und
-tragen ein. Gilt über den persönlichen Link wie mit Konto. Ohne gesetzte Freigabe gilt für eine Person die Standardstufe ihrer
-Rolle (`freigabeRoh`), für die Leitung der Sitzung «alles».
+`rolle.rechte = { stufe, einzel }` (leer = Vorlage; `rechteAusRolle` / `rolleRechte` in `api.php` bzw.
+`gremienStore.rolleRechte`): ein Hauptschalter `lesen` / `eigene` / `individuell` / `alles`. `alles` heisst alles;
+`individuell` schaltet Einzelrechte frei: `vorprotokoll:…`, `protokoll:…` (wie `EINZELRECHTE`) und `sitzung:eintragen` |
+`starten` | `antraege` | `einladungen` | `zugriffe` (`SITZUNGSRECHTE`, `sitzungsrecht()`). Vorlagen (`typ` `praesidium` /
+`aktuariat`, neu «Sitzungsleitung» / «Aktuariat»): «Alles»; sonst «Eigene». Die ältere Form (`vorprotokoll` / `protokoll` /
+`eintragen` / `zugriffe` einzeln) wird weiter gelesen. Gilt über den persönlichen Link wie mit Konto. Ohne gesetzte Freigabe gilt
+für eine Person die Stufe ihrer Rolle (`freigabeRoh`), mit einer Aufgabe «alles».
+
+### Aufgaben Sitzungsleitung / Protokollführung
+
+`gremium.aufgaben = { sitzungsleitung: [mitgliedId], protokollfuehrung: [mitgliedId] }` (zentral, unter Mitglieder & Rollen ›
+Aufgaben); neue Sitzungen übernehmen sie in `sitzung.sitzungsleitung` / `protokollfuehrung`. `istLeitung()` gilt für Personen
+in diesen Listen der Sitzung (auch Vertretung) und für zentral Hinterlegte (`aufgabenMerken`, alle Sitzungen des Gremiums):
+voller Zugriff auf Vor- und Protokoll, Start, Abschluss und Antragsentscheide bis zur Genehmigung. Die Listen einer Sitzung
+(Vertretung) ändern nur `erstelltVon` (ältere Sitzungen: die Leitung) und Rollen mit `zugriffe`. Ist für eine Aufgabe niemand
+anwesend, verlangt «Sitzung starten» eine Vertretung aus den Anwesenden. Status ändern (starten / abschliessen) darf, wer eine
+Aufgabe, `sitzung:starten` oder Protokoll «alles» hat; `einladung_senden` verlangt eine Aufgabe oder `sitzung:einladungen`.
 
 **Allgemeiner Freigabe-Link:** `vorprotokoll.freigabeLinkStufe` / `freigabeLinkRechte` / `freigabeLinkZuschnitt` wie bei weiteren
 Links (`freigabeLinkObjekt`), Standard `eigene` = Einzelrecht `traktandenAendern` (alle Traktanden ändern und verschieben,
@@ -98,7 +109,7 @@ diese Sitzung (`nurSitzung`).
 
 ### Sitzungen eintragen
 
-Mitglieder, deren Rolle `eintragen` hat (Vorlage: Präsidium und Aktuariat), dürfen in ihrem Gremium Sitzungen und
+Mitglieder, deren Rolle `sitzung:eintragen` hat (oder «Alles», z. B. die Vorlagen), dürfen in ihrem Gremium Sitzungen und
 Kurzsitzungen eintragen – über den persönlichen Link wie mit Konto –, weitere mit `mitglied.darfSitzungenEintragen` (vergeben
 durch Superadmin unter Benutzer & Links, Eigentümer im Mitglieder-Dialog oder wer es über die Rolle hat, in der Übersicht). Neue Sitzungen
 tragen `erstelltVon`; ihre Ersteller dürfen sie ohne Protokoll wieder löschen (`personRechteAnwenden`).
@@ -115,8 +126,8 @@ Konto über einen allgemeinen Link (Freigabe-Link ohne Person oder zusätzlicher
 legen die Person als Gast der Sitzung an (`weiterePerson: true`, `benutzerId`; fehlt das Vorprotokoll, entsteht ein leeres).
 Namentliche Stimmen und Kommentare aus diesem Browser (`localStorage` `ormeet-namen`) gehen auf sie über. Das Konto erhält
 über `benutzerGremien` die Rolle `gast` (wirksam wie ein Gast-Link). `weitere_person_verknuepfen` führt sie mit einem
-Mitglied zusammen (Superadmin / Eigentümer, Gremium-Zugang mit Bearbeitungsrecht, Leitung / Protokollführung, Präsidium /
-Aktuariat).
+Mitglied zusammen (Superadmin / Eigentümer, Gremium-Zugang mit Bearbeitungsrecht, Sitzungsleitung / Protokollführung, Rollen
+mit `eintragen` oder `zugriffe`).
 
 Pendenzen: `faelligBis` ist ein Datum oder `naechste` (bis zur nächsten Sitzung = `naechsterTerminId`, sonst die nächste
 Sitzung mit späterem Datum; `fristDatum` / `fristText` in `js/stores/sitzungen.js`, `fristDatum` in `api.php`).
@@ -258,7 +269,8 @@ js/
     KurzsitzungDialog.js      Neue Kurzsitzung (mit/ohne Gremium), Termin standardmässig heute zur nächsten Viertelstunde
     KurzsitzungenListe.js     Zeilen einer Kurzsitzungs-Liste (Übersicht, Gremium-Reiter, persönliche Übersicht)
     KurzTeilnehmende.js       Teilnehmende einer Kurzsitzung wählen bzw. einladen (Behälter: Name, E-Mail, Link)
-    InfoKnopf.js              Hinweis als (i)-Knopf oder graue Pille, Text als Tooltip
+    InfoKnopf.js              Hinweis als (i)-Knopf oder graue Pille, Tooltip mit Titel und Punkten
+    ProzessKarte.js           Ablaufgrafik mit Schwimmbahnen in der Hilfe (Daten in js/utils/prozesse.js), Knoten anklickbar
     MehrfachAuswahl.js        Mehrfachauswahl als Pillen mit ✕ (Rückfrage), z. B. Konto-Rechte, Freigabe der Terminfindung
     RechteSchalter.js         Stufen-Schalter mit Einzelrechten im ⋯-Menü (Pille «Individuell»)
     RechteFenster.js          Rechte einer Person oder eines Links: Lesen / Eigene / Individuell (Regeln, Einzelrechte) / Alles

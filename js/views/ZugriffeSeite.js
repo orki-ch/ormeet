@@ -3,11 +3,12 @@ import { sitzungenStore } from '../stores/sitzungen.js'
 import { verwaltetSitzung } from '../utils/rechte.js'
 import { formatDatum } from '../utils/labels.js'
 import ZugriffeListe from '../components/ZugriffeListe.js'
+import InfoKnopf from '../components/InfoKnopf.js'
 
 // Zugriffsübersicht einer Sitzung: wer Zugriff hat und worüber, Links verwalten
 export default {
   name: 'ZugriffeSeite',
-  components: { ZugriffeListe },
+  components: { InfoKnopf, ZugriffeListe },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -16,10 +17,9 @@ export default {
       <header class="page-header" style="margin-bottom: 0">
         <router-link :to="zurueck" class="rueck">← {{ sitzung.titel || 'Sitzung' }}</router-link>
         <p class="kicker">Zugriffe · {{ gremium.kurz ? 'Kurzsitzung' : gremium.name }}{{ sitzung.datum ? ' · ' + formatDatum(sitzung.datum) : '' }}</p>
-        <h1 class="title">Wer hat Zugriff?</h1>
+        <h1 class="title">Wer hat Zugriff? <InfoKnopf titel="Wer hat Zugriff?" text="Alle Personen und Links dieser Sitzung, mit dem Weg, über den sie hineinkommen, und wann sie zuletzt da waren. Über ⋯ sperrst du Personen für diese Sitzung (nur lesen oder ganz), erneuerst Links oder versiehst sie mit Passwort und Ablauf." /> <router-link to="/hilfe?zu=zugaenge" class="hilfe-knopf" title="Hilfe: Zugriffe mit Ablaufgrafiken" aria-label="Hilfe zu den Zugriffen">?</router-link></h1>
       </header>
       <section class="card">
-        <p class="hint">Alle Personen und Links dieser Sitzung, mit dem Weg, über den sie hineinkommen, und wann sie zuletzt da waren. Über ⋯ sperrst du Personen für diese Sitzung, erneuerst Links oder versiehst sie mit Passwort und Ablauf.</p>
         <ZugriffeListe :gremium-id="gremium.id" :sitzung-id="sitzung.id" />
       </section>
     </div>

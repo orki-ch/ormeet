@@ -4,6 +4,7 @@ import { bestaetigen } from '../utils/dialog.js'
 // Stufen-Schalter (z. B. Lesen / Eigene / Alles) mit Einzelrechten im ⋯-Menü. Sind Einzelrechte gesetzt, steht statt des
 // Schalters die gleich aussehende Pille «Individuell»; ein Klick darauf setzt nach Rückfrage auf den Standard zurück.
 // Weitere Menüpunkte (z. B. Link kopieren) kommen über den Slot ins ⋯-Menü.
+// einzelrechte: { recht: label } oder gruppiert { Gruppe: { recht: label } } (Zwischentitel im Menü)
 export default {
   name: 'RechteSchalter',
   components: { MenuDropdown },
@@ -27,17 +28,27 @@ export default {
       <MenuDropdown v-if="!disabled || $slots.default" panel>
         <template v-if="!disabled">
           <span class="label">Einzelrechte</span>
-          <label v-for="(label, recht) in einzelrechte" :key="recht" class="check small">
-            <input type="checkbox" :checked="stufe === 'individuell' && rechte.includes(recht)" @change="umschalten(recht, $event.target.checked)" /> {{ label }}
-          </label>
+          <template v-for="(eintraege, gruppe) in gruppen" :key="gruppe">
+            <span v-if="gruppe" class="leise small">{{ gruppe }}</span>
+            <label v-for="(label, recht) in eintraege" :key="recht" class="check small">
+              <input type="checkbox" :checked="stufe === 'individuell' && rechte.includes(recht)" @change="umschalten(recht, $event.target.checked)" /> {{ label }}
+            </label>
+          </template>
         </template>
         <slot />
       </MenuDropdown>
     </span>
   `,
   computed: {
+    gruppiert() {
+      return Object.values(this.einzelrechte).some((wert) => typeof wert === 'object')
+    },
+    gruppen() {
+      return this.gruppiert ? this.einzelrechte : { '': this.einzelrechte }
+    },
     rechteText() {
-      return this.rechte.map((r) => this.einzelrechte[r]).filter(Boolean).join(', ')
+      const alle = Object.assign({}, ...Object.values(this.gruppen))
+      return this.rechte.map((r) => alle[r]).filter(Boolean).join(', ')
     },
   },
   methods: {

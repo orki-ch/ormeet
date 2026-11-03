@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
-import { EINZELRECHTE, aktuellePerson, darfAenderungStellen, darfEigene, eigeneKennung, einzelrecht, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfAenderungStellen, darfAufgabenBestimmen, darfEinladen, darfStarten, darfEigene, eigeneKennung, einzelrecht, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -40,7 +40,7 @@ export default {
           </div>
           <div class="actions">
             <button v-if="einladenMoeglich" type="button" class="btn" @click="einladungOffen = true">Einladung senden</button>
-            <router-link v-if="darfProtokoll && sitzung.datum" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">
+            <router-link v-if="(darfProtokoll || darfStarten(sitzung)) && sitzung.datum" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">
               {{ sitzung.status === 'vorprotokoll' ? 'Sitzung starten →' : 'Zum Protokoll →' }}
             </router-link>
             <router-link v-else-if="aenderungMoeglich" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll →</router-link>
@@ -61,7 +61,7 @@ export default {
         <router-link :to="'/sitzung/' + sitzung.id + '/terminfindung'" class="btn btn-primary">Zur Terminfindung</router-link>
       </div>
 
-      <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" />
+      <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" :aufgaben-bestimmen="!gesperrt && darfAufgabenBestimmen(sitzung)" :anwesend="voll || darfAufgabenBestimmen(sitzung) ? anwesendeIds : null" />
 
       <div class="grid-2" style="gap: 2rem">
         <section class="card">
@@ -148,6 +148,10 @@ export default {
     darfProtokoll() {
       return vollzugriff(this.sitzung, 'protokoll')
     },
+    // Anwesende (Mitglieder und Gäste, ohne Absagen) für den Hinweis zu fehlenden Aufgaben
+    anwesendeIds() {
+      return [...this.vorprotokoll.anwesendeMitgliederIds, ...this.vorprotokoll.gaeste.filter((g) => !hatAbgesagt(this.gremium.id, this.sitzung.id, g.id)).map((g) => g.id)]
+    },
     // Abgeschlossenes Protokoll, zu dem die Person Änderungen beantragen darf (z. B. anwesender Gast)
     aenderungMoeglich() {
       const protokoll = sitzungenStore.protokollVonSitzung(this.sitzung.id)
@@ -163,7 +167,7 @@ export default {
     },
     // Einladung per E-Mail: wer die Sitzung verwaltet, sobald der Termin feststeht und bis die Sitzung beginnt
     einladenMoeglich() {
-      return this.zugriffeVerwalten && !!this.sitzung.datum && !this.gesperrt && !this.sitzung.kurz && !sync.zugriff?.ansicht
+      return darfEinladen(this.sitzung) && !!this.sitzung.datum && !this.gesperrt && !this.sitzung.kurz
     },
     zugriffeVerwalten() {
       return verwaltetSitzung(this.sitzung)
@@ -215,6 +219,8 @@ export default {
     formatDatum,
     einladungSymbol,
     hatAbgesagt,
+    darfAufgabenBestimmen,
+    darfStarten,
     sitzungenStoreDarfAnlegen() {
       return vollzugriff(sitzungenStore.sitzungById(this.sitzungId), 'vorprotokoll')
     },

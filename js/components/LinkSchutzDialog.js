@@ -3,6 +3,7 @@ import { zugriffsDaten } from '../stores/sync.js'
 import { formatDatum } from '../utils/labels.js'
 import Modal from './Modal.js'
 import { bestaetigen } from '../utils/dialog.js'
+import InfoKnopf from './InfoKnopf.js'
 
 // Datum in Tagen ab heute (Ortszeit) als JJJJ-MM-TT
 function inTagen(tage) {
@@ -25,7 +26,7 @@ export function ablaufText(ablauf, sitzung = null) {
 // der Ablauf steht beim Link selbst (ziel[feld]).
 export default {
   name: 'LinkSchutzDialog',
-  components: { Modal },
+  components: { InfoKnopf, Modal },
   props: {
     titel: { type: String, required: true },
     gremiumId: { type: String, required: true },
@@ -54,8 +55,7 @@ export default {
           </div>
         </div>
         <form class="stack-sm" @submit.prevent="passwortSetzen(passwort)">
-          <span class="label">Passwort</span>
-          <p class="hint">{{ geschuetzt ? 'Der Link ist mit einem Passwort geschützt. Wer ihn öffnet, gibt es einmal pro Gerät ein.' : 'Ohne Passwort öffnet jede Person mit dem Link die Sitzung.' }}</p>
+          <span class="label">Passwort <InfoKnopf titel="Passwort" :text="geschuetzt ? 'Der Link ist mit einem Passwort geschützt. Wer ihn öffnet, gibt es einmal pro Gerät ein.' : 'Ohne Passwort öffnet jede Person mit dem Link die Sitzung.'" /></span>
           <div class="row">
             <input v-model="passwort" type="password" class="input grow" :placeholder="geschuetzt ? 'Neues Passwort …' : 'Passwort (mindestens 4 Zeichen) …'" minlength="4" required autocomplete="new-password" />
             <button class="btn" :disabled="laeuft">{{ geschuetzt ? 'Ändern' : 'Setzen' }}</button>

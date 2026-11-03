@@ -44,9 +44,43 @@ export function zurueckZu(gremiumId) {
   return { pfad: '', text: '' }
 }
 
-// Sitzungsleitung oder Protokollführung dieser Sitzung -> voller Zugriff auf Vor- und Protokoll
+// Aufgabe Sitzungsleitung oder Protokollführung: in der Sitzung eingetragen (auch als Vertretung) oder im Gremium zentral
+// hinterlegt -> voller Zugriff auf Vor- und Protokoll, Start, Abschluss und Entscheide bis zur Genehmigung
 export function istLeitung(sitzung, personId) {
-  return [...sitzung.sitzungsleitung, ...sitzung.protokollfuehrung].some((p) => p.id === personId)
+  if (!personId) return false
+  if ([...sitzung.sitzungsleitung, ...sitzung.protokollfuehrung].some((p) => p.id === personId)) return true
+  const aufgaben = gremienStore.byId(sitzung.gremiumId)?.aufgaben
+  return !!aufgaben && [...(aufgaben.sitzungsleitung || []), ...(aufgaben.protokollfuehrung || [])].includes(personId)
+}
+
+// Sitzungsrecht der eigenen Rolle (eintragen / starten / antraege / einladungen / zugriffe)
+function eigenesSitzungsrecht(gremiumId, recht) {
+  const personId = personIdIm(gremiumId)
+  return !!personId && !!gremienStore.rechteVon(gremiumId, personId)[recht]
+}
+
+// Verwaltende (Superadmin / Eigentümer, Gremium-Zugang mit Bearbeitungsrecht auf Sitzungen)
+function verwaltend(gremiumId) {
+  const rolle = rolleIm(gremiumId)
+  return rolle === 'admin' || (rolle === 'gremium' && recht('sitzungen', gremiumId) === 'bearbeiten')
+}
+
+// Sitzung starten und abschliessen: Aufgabe in der Sitzung, Recht «Starten und abschliessen» oder Protokoll «Alles»
+export function darfStarten(sitzung) {
+  if (istGenehmigt(sitzung)) return false
+  return verwaltend(sitzung.gremiumId) || istLeitung(sitzung, personIdIm(sitzung.gremiumId)) || eigenesSitzungsrecht(sitzung.gremiumId, 'starten') || vollzugriff(sitzung, 'protokoll')
+}
+
+// Einladungen per E-Mail senden
+export function darfEinladen(sitzung) {
+  if (sync.zugriff?.ansicht) return false
+  return verwaltend(sitzung.gremiumId) || istLeitung(sitzung, personIdIm(sitzung.gremiumId)) || eigenesSitzungsrecht(sitzung.gremiumId, 'einladungen')
+}
+
+// Aufgaben einer Sitzung bestimmen (auch Vertretung): wer die Sitzung eingetragen hat und wer Zugriffe verwaltet
+export function darfAufgabenBestimmen(sitzung) {
+  if (istGenehmigt(sitzung)) return false
+  return verwaltend(sitzung.gremiumId) || istErsteller(sitzung, personIdIm(sitzung.gremiumId)) || eigenesSitzungsrecht(sitzung.gremiumId, 'zugriffe')
 }
 
 // Freigabestufen pro Person und Dokument (Vorprotokoll / Protokoll):
@@ -183,13 +217,10 @@ export function darfAenderungStellen(sitzung, protokoll) {
   return gremienStore.erwarteteMitglieder(sitzung.gremiumId).some((m) => m.id === person.id) || protokoll.anwesende.includes(person.id)
 }
 
-// Entscheiden (übernommen / abgelehnt) darf die Protokollführung bzw. wer das Gremium verwaltet
+// Entscheiden (übernommen / abgelehnt): Aufgaben der Sitzung, Recht «Änderungsanträge entscheiden» und Verwaltende
 export function darfAenderungEntscheiden(sitzung) {
   if (!aenderungenOffen(sitzung)) return false
-  const rolle = rolleIm(sitzung.gremiumId)
-  if (rolle === 'admin') return true
-  if (rolle === 'gremium') return recht('sitzungen', sitzung.gremiumId) === 'bearbeiten'
-  return sitzung.protokollfuehrung.some((p) => p.id === personIdIm(sitzung.gremiumId))
+  return verwaltend(sitzung.gremiumId) || istLeitung(sitzung, personIdIm(sitzung.gremiumId)) || eigenesSitzungsrecht(sitzung.gremiumId, 'antraege')
 }
 
 // Darf das ganze Dokument (Vorprotokoll / Protokoll / Terminfindung) einer Sitzung bearbeitet werden?

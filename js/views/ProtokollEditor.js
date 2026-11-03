@@ -1,7 +1,7 @@
-import { gremienStore } from '../stores/gremien.js'
+import { AUFGABEN, gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { EINZELRECHTE, aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, einzelrecht, istGenehmigt, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfAufgabenBestimmen, darfEigene, darfStarten, einzelrecht, istGenehmigt, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
 import { allePunkte, dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -16,6 +16,7 @@ import Unterpunkte from '../components/Unterpunkte.js'
 import Zusatztraktanden from '../components/Zusatztraktanden.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 import Aenderungsantraege from '../components/Aenderungsantraege.js'
+import Modal from '../components/Modal.js'
 import { neuerKey } from '../utils/keys.js'
 import { neuesTraktandum } from '../utils/traktanden.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
@@ -24,7 +25,7 @@ import { gleich, zusammenfuehren } from '../utils/zusammenfuehren.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, RechteFenster, SitzungKopfdaten, Unterpunkte, Zusatztraktanden, KurzTeilnehmende, Aenderungsantraege },
+  components: { EintragListe, GaesteListe, MenuDropdown, Modal, PdfExportButton, PendenzUebertragen, RechteFenster, SitzungKopfdaten, Unterpunkte, Zusatztraktanden, KurzTeilnehmende, Aenderungsantraege },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -47,14 +48,14 @@ export default {
           </div>
           <div class="actions">
             <span class="small" :class="speicherKlasse" title="Ctrl+S speichert sofort">● {{ speicherText }}</span>
-            <button v-if="voll && sitzung.status !== 'abgeschlossen'" class="btn btn-primary" @click="abschliessen">{{ kurz ? 'Kurzsitzung abschliessen' : 'Sitzung abschliessen' }}</button>
+            <button v-if="darfStarten(sitzung) && sitzung.status !== 'abgeschlossen'" class="btn btn-primary" @click="abschliessen">{{ kurz ? 'Kurzsitzung abschliessen' : 'Sitzung abschliessen' }}</button>
             <MenuDropdown>
               <button class="menu-item" @click="speichern">Jetzt speichern <span class="leise">Ctrl+S</span></button>
               <PdfExportButton typ="protokoll" :sitzung-id="sitzungId" class="menu-item" @click.capture="speichern" />
               <button v-if="linksSichtbar" class="menu-item" @click="verfolgerLinkKopieren">Verfolger-Link kopieren</button>
               <router-link v-if="zugriffeVerwalten" :to="'/sitzung/' + sitzungId + '/zugriffe'" class="menu-item">Zugriffe verwalten</router-link>
               <button v-if="!kurz" class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
-              <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">{{ kurz ? 'Kurzsitzung' : 'Sitzung' }} wieder öffnen</button>
+              <button v-if="darfStarten(sitzung) && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">{{ kurz ? 'Kurzsitzung' : 'Sitzung' }} wieder öffnen</button>
               <button v-if="darfEntfernen && !kurz" class="menu-item menu-item-danger" @click="entfernen">Protokoll entfernen</button>
               <span v-if="genehmigt" class="menu-item leise">Genehmigt – nur lesbar</span>
             </MenuDropdown>
@@ -65,7 +66,7 @@ export default {
       <!-- Änderungsanträge nach Abschluss: Leitung sieht alle, wer beantragt hat, die eigenen -->
       <Aenderungsantraege v-if="darfStellen || antraegeSichtbar.length" :liste="antraegeSichtbar" :alle="gespeichertesProtokoll.aenderungsantraege" :sicht-alle="siehtAlleAntraege" :darf-entscheiden="darfEntscheiden" :darf-stellen="darfStellen" :person-id="person?.id || null" :entscheider-name="person?.name || 'Verwaltung'" />
 
-      <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" />
+      <SitzungKopfdaten :sitzung="sitzung" :personen="personen" :nur-lesen="!voll" :aufgaben-bestimmen="!genehmigt && darfAufgabenBestimmen(sitzung)" />
 
       <section v-if="kurz" class="card" :class="{ bearbeitbar: voll || person }">
         <h2 class="card-title">Teilnehmende</h2>
@@ -256,6 +257,26 @@ export default {
         </div>
         <p v-else class="muted small">Das Vorprotokoll hat noch keine Traktanden.</p>
       </section>
+
+      <!-- Start ohne anwesende Person mit Aufgabe: Vertretung aus den Anwesenden bestimmen -->
+      <Modal v-if="startFenster" titel="Sitzung starten" @schliessen="startFenster = null">
+        <form id="formular-start" class="stack" @submit.prevent="startMitVertretung">
+          <p class="hint">Für {{ Object.keys(startFenster).map((a) => AUFGABEN[a]).join(' und ') }} ist niemand anwesend. Bitte aus den Anwesenden eine Vertretung bestimmen. Sie hat in dieser Sitzung sämtliche Bearbeitungsrechte bis zur Genehmigung.</p>
+          <div v-for="(wert, aufgabe) in startFenster" :key="aufgabe">
+            <span class="label">{{ AUFGABEN[aufgabe] }}</span>
+            <select v-model="startFenster[aufgabe]" class="input" required>
+              <option value="" disabled>Person wählen …</option>
+              <option v-for="p in anwesendePersonen" :key="p.id" :value="p.id">{{ p.name }}</option>
+            </select>
+          </div>
+        </form>
+        <template #fuss>
+          <div class="row">
+            <button type="button" class="btn" @click="startFenster = null">Abbrechen</button>
+            <button form="formular-start" class="btn btn-primary ml-auto">Sitzung starten</button>
+          </div>
+        </template>
+      </Modal>
     </div>
     <p v-else class="muted">Zu dieser Sitzung gibt es noch kein Protokoll.</p>
   `,
@@ -272,6 +293,8 @@ export default {
   data() {
     return {
       protokoll: null, // lokale Arbeitskopie, wird per Auto-Save in den Store geschrieben
+      startFenster: null, // Vertretung beim Start: { aufgabe: personId }
+      AUFGABEN,
       basis: null, // Stand im Store, auf dem die Arbeitskopie beruht (für das Zusammenführen mit Änderungen anderer)
       uebernimmt: false, // Arbeitskopie wird gerade aus dem Store übernommen (kein Auto-Save)
       rechteFuer: '', // Fenster «Individuelle Rechte» für diese Person
@@ -340,7 +363,15 @@ export default {
     },
     // Vollzugriff, aber noch kein Protokoll: Vorschau mit «Sitzung starten»
     startbereit() {
-      return this.voll && !!this.sitzung.datum && !this.kurz && !this.protokoll
+      return (this.voll || darfStarten(this.sitzung)) && !!this.sitzung.datum && !this.kurz && !this.protokoll
+    },
+    // Anwesende laut Vorprotokoll (Mitglieder und Gäste ohne Absage) – für die Vertretung beim Start
+    anwesendePersonen() {
+      const vp = this.vorprotokollDokument
+      if (!vp) return []
+      const mitglieder = this.gremium.mitglieder.filter((m) => vp.anwesendeMitgliederIds.includes(m.id))
+      const gaeste = vp.gaeste.filter((g) => g.name && !hatAbgesagt(this.sitzung.gremiumId, this.sitzungId, g.id))
+      return [...mitglieder, ...gaeste].map(({ id, name }) => ({ id, name }))
     },
     genehmigt() {
       return istGenehmigt(this.sitzung)
@@ -478,6 +509,8 @@ export default {
   },
   methods: {
     formatDatum,
+    darfStarten,
+    darfAufgabenBestimmen,
     formatDauer,
     personenText,
     sitzungStatus,
@@ -658,7 +691,29 @@ export default {
     },
     // Bewusster Start: legt das Protokoll an und schliesst damit das Vorprotokoll ab
     async sitzungStarten() {
+      const ids = this.anwesendePersonen.map((p) => p.id)
+      const fehlt = Object.keys(AUFGABEN).filter((a) => !this.sitzung[a].some((p) => ids.includes(p.id)))
+      if (fehlt.length) {
+        if (!darfAufgabenBestimmen(this.sitzung)) {
+          hinweis(`Für ${fehlt.map((a) => AUFGABEN[a]).join(' und ')} ist niemand anwesend. Die Vertretung bestimmt, wer die Sitzung eingetragen hat oder Zugriffe verwaltet.`, 'Vertretung fehlt')
+          return
+        }
+        this.startFenster = Object.fromEntries(fehlt.map((a) => [a, '']))
+        return
+      }
       if (!(await bestaetigen('Sitzung jetzt starten? Das Protokoll wird angelegt – das Vorprotokoll kann danach nicht mehr bearbeitet werden.', { titel: 'Sitzung starten', ja: 'Starten' }))) return
+      this.protokollAnlegen()
+    },
+    // Vertretung eintragen und starten (das Fenster ersetzt die Rückfrage)
+    startMitVertretung() {
+      for (const [aufgabe, id] of Object.entries(this.startFenster)) {
+        const person = this.anwesendePersonen.find((p) => p.id === id)
+        if (person && !this.sitzung[aufgabe].some((p) => p.id === id)) this.sitzung[aufgabe].push({ ...person })
+      }
+      this.startFenster = null
+      this.protokollAnlegen()
+    },
+    protokollAnlegen() {
       const vorhanden = sitzungenStore.protokollVonSitzung(this.sitzungId)
       const protokoll = vorhanden || sitzungenStore.starteProtokoll(this.sitzungId)
       // Gäste, die auf die Einladung abgesagt haben, kommen nicht ins Protokoll

@@ -3,6 +3,7 @@ import { sitzungenStore } from '../stores/sitzungen.js'
 import { EINZELRECHTE, freigabeRoh, freigabeStufe, standardStufe } from '../utils/rechte.js'
 import { bestaetigen } from '../utils/dialog.js'
 import Modal from './Modal.js'
+import InfoKnopf from './InfoKnopf.js'
 
 const MODI = { lesen: 'Lesen', bearbeiten: 'Bearbeiten' }
 const ARTEN = { themenbereich: 'Themenbereich', person: 'Person', traktandum: 'Traktandum' }
@@ -15,7 +16,7 @@ const DOKUMENT = { terminfindung: 'Terminfindung', vorprotokoll: 'Vorprotokoll',
 // bzw. link.stufe / link.rechte / link.zuschnitt. «Auf Rollenstandard zurücksetzen» entfernt alles Gesetzte.
 export default {
   name: 'RechteFenster',
-  components: { Modal },
+  components: { InfoKnopf, Modal },
   props: {
     sitzung: { type: Object, required: true },
     personId: { type: String, default: '' },
@@ -27,18 +28,16 @@ export default {
       <div class="stack rechte-fenster">
         <div class="stack-sm">
           <div v-for="dokument in dokumente" :key="dokument" class="row rolle-recht">
-            <span class="grow">{{ sitzung.kurz && !link ? 'Protokoll' : DOKUMENT[dokument] }}</span>
+            <span class="grow">{{ sitzung.kurz && !link ? 'Protokoll' : DOKUMENT[dokument] }} <InfoKnopf v-if="dokument === dokumente[0]" titel="Stufen" :punkte="stufenInfo" /></span>
             <span class="schalter" :class="{ gesetzt: gesetzt(dokument) }">
               <button v-for="(label, s) in stufenFuer(dokument)" :key="s" type="button" :class="{ aktiv: stufe[dokument] === s }" @click="stufe[dokument] = s">{{ label }}</button>
             </span>
           </div>
-          <p class="leise small">Lesen = nur ansehen · {{ link ? 'Eigene = alle Traktanden ändern und verschieben, Unterpunkte hinzufügen und löschen' : 'Eigene = zugewiesene Traktanden bearbeiten' }} · Individuell = Regeln und einzelne Rechte · Alles = ganzes Dokument.</p>
         </div>
 
         <template v-if="individuell">
           <div v-if="regelnMoeglich" class="stack-sm">
-            <span class="label">Regeln</span>
-            <p class="hint">Gilt für {{ link ? DOKUMENT[link.dokument] : sitzung.kurz ? 'das Protokoll' : 'Vorprotokoll und Protokoll' }} dieser Sitzung. Mit Regeln {{ link ? 'sieht, wer den Link öffnet,' : 'sieht die Person' }} nur, was sie abdecken; Kopfdaten, Anwesenheit und Gäste bleiben sichtbar. Unterpunkte gehören zu ihrem Traktandum.</p>
+            <span class="label">Regeln <InfoKnopf titel="Regeln" :punkte="regelnInfo" /></span>
             <div v-for="(r, i) in regeln" :key="i" class="regel">
               <select v-model="r.modus" class="input klein" aria-label="Recht">
                 <option v-for="(label, wert) in MODI" :key="wert" :value="wert">{{ label }}</option>
@@ -54,7 +53,6 @@ export default {
             </div>
             <p v-if="!regeln.length" class="muted small">Keine Regeln: {{ link ? 'Der Link sieht' : 'Die Person sieht' }} das ganze Dokument.</p>
             <div><button type="button" class="btn btn-ghost" @click="regeln.push({ modus: 'bearbeiten', art: 'themenbereich', id: '' })">+ Regel</button></div>
-            <p class="leise small">Person: wo sie verantwortlich oder zum Bearbeiten eingetragen ist, im Protokoll auch ihre Pendenzen.</p>
             <label v-if="!link" class="check small"><input v-model="eigene" type="checkbox" /> Eigenes bearbeiten: Traktanden, wo {{ name }} verantwortlich oder eingetragen ist, und eigene Pendenzen</label>
           </div>
 
@@ -102,6 +100,23 @@ export default {
     }
   },
   computed: {
+    // (i) zu den Stufen und zu den Regeln
+    stufenInfo() {
+      return [
+        { titel: 'Lesen', text: 'Nur ansehen.' },
+        { titel: 'Eigene', text: this.link ? 'Alle Traktanden ändern und verschieben, Unterpunkte hinzufügen und löschen.' : 'Zugewiesene Traktanden und Einträge bearbeiten.' },
+        { titel: 'Individuell', text: 'Regeln und einzelne Rechte.' },
+        { titel: 'Alles', text: 'Das ganze Dokument.' },
+      ]
+    },
+    regelnInfo() {
+      const wer = this.link ? 'sieht, wer den Link öffnet,' : 'sieht die Person'
+      const gilt = this.link ? DOKUMENT[this.link.dokument] : this.sitzung.kurz ? 'das Protokoll' : 'Vorprotokoll und Protokoll'
+      return [
+        { titel: 'Geltung', text: `Gilt für ${gilt} dieser Sitzung. Mit Regeln ${wer} nur, was sie abdecken; Kopfdaten, Anwesenheit und Gäste bleiben sichtbar. Unterpunkte gehören zu ihrem Traktandum.` },
+        { titel: 'Person', text: 'Wo sie verantwortlich oder zum Bearbeiten eingetragen ist, im Protokoll auch ihre Pendenzen.' },
+      ]
+    },
     gremium() {
       return gremienStore.byId(this.sitzung.gremiumId)
     },

@@ -67,10 +67,9 @@ export default {
 
       <form v-if="sso" class="card stack" @submit.prevent="ssoSpeichern">
         <div class="card-head">
-          <h2 class="card-title">Anmeldung über Anbieter (SSO)</h2>
+          <h2 class="card-title">Anmeldung über Anbieter (SSO) <InfoKnopf titel="Anmeldung über Anbieter" text="Personen mit Konto können sich über Sublevia oder Orki anmelden und registrieren. Dazu beim Anbieter eine Anwendung mit dieser Rückruf-Adresse anlegen und Client-ID und Client-Secret hier eintragen. Leer lassen, wenn nicht gewünscht." /></h2>
           <button class="btn btn-primary" :disabled="laeuft">Speichern</button>
         </div>
-        <p class="hint">Personen mit Konto können sich über Sublevia oder Orki anmelden und registrieren. Dazu beim Anbieter eine Anwendung mit dieser Rückruf-Adresse anlegen und Client-ID und Client-Secret hier eintragen. Leer lassen, wenn nicht gewünscht.</p>
         <div class="row"><span class="label" style="margin: 0">Rückruf-Adresse (Redirect URI)</span><code class="input grow truncate" style="line-height: 1.5">{{ sso.callback }}</code></div>
         <div v-for="(name, id) in sso.anbieter" :key="id" class="block-soft stack-sm">
           <strong>{{ name }}</strong>
@@ -85,10 +84,9 @@ export default {
 
       <form v-if="sso" class="card stack" @submit.prevent="mailSpeichern">
         <div class="card-head">
-          <h2 class="card-title">E-Mail-Versand</h2>
+          <h2 class="card-title">E-Mail-Versand <InfoKnopf titel="E-Mail-Versand" text="Ormeet verschickt E-Mails für «Passwort vergessen», Einladungen und Sammelmails. Mit einem SMTP-Server kommen sie zuverlässiger an; ohne SMTP-Server versendet Ormeet über die Mailfunktion des Hostings." /></h2>
           <button class="btn btn-primary" :disabled="laeuft">Speichern</button>
         </div>
-        <p class="hint">Ormeet verschickt E-Mails für «Passwort vergessen». Mit einem SMTP-Server kommen sie zuverlässiger an; ohne SMTP-Server versendet Ormeet über die Mailfunktion des Hostings.</p>
         <div class="grid-2">
           <div><span class="label">Absender-Adresse</span><input v-model.trim="sso.mail.absender" class="input" type="email" placeholder="z. B. ormeet@meine-organisation.ch" /></div>
           <div><span class="label">Absender-Name</span><input v-model.trim="sso.mail.absenderName" class="input" placeholder="Ormeet" /></div>
@@ -119,10 +117,9 @@ export default {
 
       <section v-if="sso" class="card stack">
         <div class="card-head">
-          <h2 class="card-title">Automatische E-Mails (Cronjob)</h2>
+          <h2 class="card-title">Automatische E-Mails (Cronjob) <InfoKnopf titel="Automatische E-Mails" text="Konten erhalten höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet – nur wenn es Neues gibt: eine Sitzung steht bevor, die eigene Stimme fehlt, Pendenzen und alles Weitere aus der Glocke. Die erste Mail an ein Konto enthält nur Wichtiges: bevorstehende Sitzungen, fehlende Stimmen, Pendenzen und zugewiesene Traktanden. Dafür braucht es einen Cronjob beim Hoster, der Ormeet stündlich aufruft." /></h2>
           <span class="badge" :class="ZUSTAND[cron.zustand].klasse">{{ ZUSTAND[cron.zustand].text }}</span>
         </div>
-        <p class="hint">Konten erhalten höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet – nur wenn es Neues gibt: eine Sitzung steht bevor, die eigene Stimme fehlt, Pendenzen und alles Weitere aus der Glocke. Die erste Mail an ein Konto enthält nur Wichtiges: bevorstehende Sitzungen, fehlende Stimmen, Pendenzen und zugewiesene Traktanden. Dafür braucht es einen Cronjob beim Hoster, der Ormeet stündlich aufruft.</p>
         <div class="grid-3 small">
           <div><span class="label">Letzter Lauf</span>{{ cron.lauf?.letzterLauf ? new Date(cron.lauf.letzterLauf).toLocaleString('de-CH') : 'noch nie' }}</div>
           <div><span class="label">Verschickt</span>{{ cron.lauf ? cron.lauf.mails + ' Mails' : '–' }}<span v-if="cron.lauf?.hinweis" class="leise"> · {{ cron.lauf.hinweis }}</span></div>
