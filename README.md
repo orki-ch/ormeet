@@ -78,6 +78,14 @@ Superadmin); Registrierung von der Login-Seite gibt es nur per SSO.
 SSO ist ein generischer OpenID-Connect-Client (Authorization Code). Anbieter: Sublevia (Authentik-Pfade) und
 Orki (`/_/call/oidc/...`, siehe orki-Repo). Konfiguration in `data/einstellungen.json`, gepflegt unter
 Einstellungen; Rückruf-Adresse `api.php?aktion=sso_callback`. Der `state` ist HMAC-signiert (kein Sitzungsspeicher).
+Die Anmeldung läuft in einem Popup (`SsoButtons`, `sso_start` mit `popup=1`): Der Rückruf liefert dann eine kleine Seite
+(`ssoZiel`, `js/sso-zurueck.js`), die dem öffnenden Fenster die Zieladresse schickt (`postMessage`, nur gleiche Herkunft) und
+sich schliesst; ohne Popup oder öffnendes Fenster geht es wie bisher im selben Fenster weiter.
+Orki (`nurVerknuepft`) liefert meist keine E-Mail und übernimmt nur die Anmeldung: angemeldet werden Konten mit dieser
+Orki-Kennung (`sso.orki`). Neu entsteht ein Konto nur beim Registrieren über einen persönlichen Link (Name und E-Mail von
+dieser Person, kein Passwort); keine Übernahme per E-Mail. *Mein Konto* verknüpft über einen signierten, zehn Minuten
+gültigen Code (`sso_verknuepfen_code`, `state.konto`) genau das angemeldete Konto. `mitgliedVerknuepfen` verschiebt nie:
+Gehört das Konto im Gremium schon zu einem anderen Mitglied (oder das Mitglied zu einem anderen Konto), bleibt alles.
 
 ### Rechte der Rollen
 

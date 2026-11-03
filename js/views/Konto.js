@@ -30,10 +30,10 @@ export default {
       </div>
 
       <section class="card stack">
-        <h2 class="card-title">Anmeldung über Anbieter <InfoKnopf titel="Anbieter" text="Die E-Mail beim Anbieter muss mit der E-Mail deines Kontos übereinstimmen, sonst entsteht ein zweites Konto." /></h2>
+        <h2 class="card-title">Anmeldung über Anbieter <InfoKnopf titel="Anbieter" text="Zum Verknüpfen meldest du dich einmal beim Anbieter an; danach kannst du dich auch damit bei diesem Konto anmelden. Ormeet übernimmt vom Anbieter keine Daten – Name und E-Mail bleiben die deines Kontos." /></h2>
         <p v-if="konto.sso.length" class="small">Verknüpft: <span v-for="a in konto.sso" :key="a" class="badge brand" style="margin-right: 0.4rem">{{ a }} <a href="#" class="leise" @click.prevent="speichern({ ssoLoesen: a })">✕</a></span></p>
         <p v-else class="muted small">Noch kein Anbieter verknüpft.</p>
-        <SsoButtons text="verknüpfen" />
+        <SsoButtons text="verknüpfen" konto />
       </section>
 
       <section class="card stack">

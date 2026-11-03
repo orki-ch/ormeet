@@ -1,5 +1,10 @@
 # Änderungsverlauf
 
+## 1.5.07
+- Die Anmeldung über Orki oder Sublevia läuft in einem eigenen Fenster. Danach schliesst es sich, und Ormeet öffnet die Seite, die du aufrufen wolltest.
+- Orki übernimmt nur noch die Anmeldung, ohne Daten von Orki. Unter «Mein Konto» verknüpfst du Orki mit deinem Konto. Oder du registrierst dich über deinen persönlichen Link mit Orki – dann gibt es kein eigenes Passwort, und Name und E-Mail kommen aus Ormeet.
+- Beim Verknüpfen eines Kontos mit einem persönlichen Link wird keine bestehende Mitgliedschaft mehr verschoben.
+
 ## 1.5.06
 - Ist ein Mitglied oder ein Gast mit einem Konto verknüpft, kommen Name und E-Mail immer vom Konto. Solche Personen erhalten damit auch Einladungen, und im Mitglieder-Dialog lassen sich Name und E-Mail nicht mehr separat ändern.
 

@@ -26,7 +26,9 @@ const EINSTELLUNGEN_DATEI = DATEN_ORDNER . '/einstellungen.json';
 // SSO-Anbieter (OpenID Connect): Server-URL, Client-ID und Client-Secret werden in den Einstellungen gepflegt (data/einstellungen.json)
 const SSO_ANBIETER = [
   'sublevia' => ['name' => 'Sublevia', 'authorize' => '/application/o/authorize/', 'token' => '/application/o/token/', 'userinfo' => '/application/o/userinfo/'],
-  'orki' => ['name' => 'Orki', 'authorize' => '/_/call/oidc/authorize', 'token' => '/_/call/oidc/token', 'userinfo' => '/_/call/oidc/userinfo'],
+  // Orki liefert meist keine E-Mail: Orki übernimmt nur die Anmeldung (Konto unter «Mein Konto» verknüpft oder über den
+  // persönlichen Link registriert), Name und E-Mail kommen immer aus Ormeet
+  'orki' => ['name' => 'Orki', 'authorize' => '/_/call/oidc/authorize', 'token' => '/_/call/oidc/token', 'userinfo' => '/_/call/oidc/userinfo', 'nurVerknuepft' => true],
 ];
 const GITHUB_REPO = 'orki-ch/ormeet'; // Herkunft für automatische Updates (GitHub-Releases)
 const VOLLE_RECHTE = ['sitzungen' => 'bearbeiten', 'mitglieder' => 'bearbeiten', 'einstellungen' => 'bearbeiten'];
@@ -440,22 +442,33 @@ function eigentuemerKonten($konto) {
 }
 
 // Mitglied eines Gremiums mit einem Konto verknüpfen (Datei mit Sperre bearbeiten)
+// Mitglied mit einem Konto verknüpfen ($benutzerId null: lösen). Ein Konto gehört pro Gremium zu einem Mitglied, ein Mitglied
+// zu einem Konto: Ist eines davon schon anders vergeben, bleibt alles, wie es ist (false) – nichts wird stillschweigend
+// verschoben, sonst übernähme das Konto Name und E-Mail eines fremden Eintrags.
 function mitgliedVerknuepfen($gremiumId, $personId, $benutzerId) {
+  $ok = true;
   $datei = dateiVon($gremiumId);
   $handle = fopen($datei, 'c+');
   flock($handle, LOCK_EX);
   $bundle = json_decode(entschluesseln(stream_get_contents($handle)), true);
   if ($bundle) {
-    foreach ($bundle['gremium']['mitglieder'] as &$m) {
-      if ($m['id'] === $personId) $m['benutzerId'] = $benutzerId;
-      elseif (($m['benutzerId'] ?? null) === $benutzerId) $m['benutzerId'] = null; // ein Konto pro Gremium nur einmal
+    foreach ($bundle['gremium']['mitglieder'] as $m) {
+      if ($benutzerId === null) continue;
+      $eigenes = $m['id'] === $personId;
+      if (!$eigenes && ($m['benutzerId'] ?? null) === $benutzerId) $ok = false; // Konto gehört schon zu einem anderen Mitglied
+      if ($eigenes && !empty($m['benutzerId']) && $m['benutzerId'] !== $benutzerId) $ok = false; // Mitglied hat schon ein anderes Konto
     }
-    ftruncate($handle, 0);
-    rewind($handle);
-    fwrite($handle, verschluesseln(json_encode($bundle, JSON_UNESCAPED_UNICODE)));
+    if ($ok) {
+      foreach ($bundle['gremium']['mitglieder'] as &$m) if ($m['id'] === $personId) $m['benutzerId'] = $benutzerId;
+      unset($m);
+      ftruncate($handle, 0);
+      rewind($handle);
+      fwrite($handle, verschluesseln(json_encode($bundle, JSON_UNESCAPED_UNICODE)));
+    }
   }
   flock($handle, LOCK_UN);
   fclose($handle);
+  return $ok;
 }
 
 function istHttps() {
@@ -2414,6 +2427,19 @@ function ssoSignatur($daten) {
   return hash_hmac('sha256', $daten, hash('sha256', ADMIN_PASSWORT . '|sso'));
 }
 
+// Kurzlebiger Code, mit dem «Mein Konto» einen Anbieter mit genau diesem Konto verknüpft (sso_verknuepfen_code)
+function ssoKontoCode($benutzerId) {
+  $daten = base64_encode(json_encode(['b' => $benutzerId, 'z' => time()]));
+  return $daten . '.' . ssoSignatur('konto|' . $daten);
+}
+
+function ssoKontoAusCode($code) {
+  [$daten, $signatur] = array_pad(explode('.', (string) $code, 2), 2, '');
+  if ($daten === '' || !hash_equals(ssoSignatur('konto|' . $daten), $signatur)) return null;
+  $d = json_decode(base64_decode($daten), true);
+  return is_array($d) && time() - ($d['z'] ?? 0) <= 600 ? ($d['b'] ?? null) : null;
+}
+
 function ssoCookie($wert) {
   setcookie('ormeet_sso', $wert, ['expires' => $wert === '' ? 1 : time() + 600, 'path' => rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/', 'secure' => istHttps(), 'httponly' => true, 'samesite' => 'Lax']);
 }
@@ -2424,7 +2450,8 @@ if ($aktion === 'sso_start') {
   if (!$anbieter) antwort(['fehler' => 'Dieser Anbieter ist nicht eingerichtet'], 400);
   $nonce = bin2hex(random_bytes(16));
   ssoCookie($nonce); // bindet den Rücksprung an diesen Browser (kein Unterschieben fremder Anmeldungen)
-  $daten = base64_encode(json_encode(['anbieter' => $id, 'verknuepfen' => $_GET['verknuepfen'] ?? '', 'weiter' => $_GET['weiter'] ?? '', 'zeit' => time(), 'nonce' => $nonce]));
+  $daten = base64_encode(json_encode(['anbieter' => $id, 'verknuepfen' => $_GET['verknuepfen'] ?? '', 'weiter' => $_GET['weiter'] ?? '',
+                                      'konto' => $_GET['konto'] ?? '', 'popup' => !empty($_GET['popup']), 'zeit' => time(), 'nonce' => $nonce]));
   $state = $daten . '.' . ssoSignatur($daten);
   $url = rtrim($anbieter['url'], '/') . $anbieter['authorize'] . '?' . http_build_query([
     'response_type' => 'code', 'client_id' => $anbieter['clientId'], 'redirect_uri' => basisUrl() . 'api.php?aktion=sso_callback',
@@ -2434,10 +2461,25 @@ if ($aktion === 'sso_start') {
   exit;
 }
 
+// Ende der Anmeldung beim Anbieter: im Popup (sso_start mit popup=1) übernimmt das Fenster, das es geöffnet hat, die
+// Adresse und das Popup schliesst sich (js/sso-zurueck.js); sonst wie bisher per Weiterleitung
+function ssoZiel($ziel, $popup) {
+  if (!$popup) {
+    header('Location: ' . $ziel, true, 302);
+    return;
+  }
+  header('Content-Type: text/html; charset=utf-8');
+  $ziel = htmlspecialchars($ziel, ENT_QUOTES);
+  $skript = htmlspecialchars(basisUrl() . 'js/sso-zurueck.js?v=' . rawurlencode(lokaleVersion()), ENT_QUOTES);
+  echo "<!doctype html><html lang=\"de\"><head><meta charset=\"utf-8\"><title>Ormeet</title></head><body data-ziel=\"$ziel\">"
+    . "<p style=\"font-family: sans-serif\">Anmeldung abgeschlossen. <a href=\"$ziel\">Weiter zu Ormeet</a></p><script src=\"$skript\"></script></body></html>";
+}
+
 if ($aktion === 'sso_callback') {
-  $fehlerSeite = fn($text) => header('Location: ' . basisUrl() . '#/login?fehler=' . rawurlencode($text), true, 302);
   [$daten, $signatur] = array_pad(explode('.', $_GET['state'] ?? '', 2), 2, '');
   $state = json_decode(base64_decode($daten), true);
+  $popup = is_array($state) && !empty($state['popup']);
+  $fehlerSeite = fn($text) => ssoZiel(basisUrl() . '#/login?fehler=' . rawurlencode($text), $popup);
   if (!$state || !hash_equals(ssoSignatur($daten), $signatur) || time() - $state['zeit'] > 600) { $fehlerSeite('Die Anmeldung ist abgelaufen – bitte erneut versuchen'); exit; }
   if (!hash_equals($state['nonce'], $_COOKIE['ormeet_sso'] ?? '')) { $fehlerSeite('Die Anmeldung wurde in einem anderen Browser begonnen – bitte erneut versuchen'); exit; }
   ssoCookie('');
@@ -2449,11 +2491,47 @@ if ($aktion === 'sso_callback') {
     'client_id' => $anbieter['clientId'], 'client_secret' => $anbieter['clientSecret'] ?? '',
   ]) ?? '', true);
   $info = empty($tokenDaten['access_token']) ? null : json_decode(holen($basis . $anbieter['userinfo'], null, ['Authorization: Bearer ' . $tokenDaten['access_token']]) ?? '', true);
-  if (empty($info['sub']) || empty($info['email'])) { $fehlerSeite('Der Anbieter hat keine Benutzerdaten geliefert'); exit; }
+  $nurVerknuepft = !empty($anbieter['nurVerknuepft']);
+  if (empty($info['sub']) || (!$nurVerknuepft && empty($info['email']))) { $fehlerSeite('Der Anbieter hat keine Benutzerdaten geliefert'); exit; }
 
   $benutzer = benutzerLesen();
   $i = null;
   foreach ($benutzer as $k => $b) if (($b['sso'][$state['anbieter']] ?? null) === $info['sub']) $i = $k;
+  // Verknüpfen aus «Mein Konto»: die Anmeldung beim Anbieter gehört ab jetzt zu genau diesem Konto
+  if (($state['konto'] ?? '') !== '') {
+    $kontoId = ssoKontoAusCode($state['konto']);
+    $ziel = $kontoId ? benutzerById($benutzer, $kontoId) : null;
+    if ($ziel === null) { $fehlerSeite('Das Verknüpfen ist abgelaufen – bitte unter «Mein Konto» erneut versuchen'); exit; }
+    if ($i !== null && $i !== $ziel) { $fehlerSeite("Diese Anmeldung bei {$anbieter['name']} ist schon mit einem anderen Ormeet-Konto verknüpft"); exit; }
+    $i = $ziel;
+    $benutzer[$i]['sso'][$state['anbieter']] = $info['sub'];
+    $neuerToken = anmeldungAnlegen($benutzer[$i]);
+    benutzerSchreiben($benutzer);
+    ssoZiel(basisUrl() . '#/zugang/' . $neuerToken . '?weiter=' . rawurlencode('/konto'), $popup);
+    exit;
+  }
+  // Anbieter ohne eigene Daten (Orki): Ein noch nicht verknüpftes Konto entsteht nur beim Registrieren über einen
+  // persönlichen Link – Name und E-Mail kommen dann von dieser Person in Ormeet, ein Passwort gibt es nicht (Anmeldung
+  // nur über den Anbieter). Ohne Link oder wenn die E-Mail schon zu einem Konto gehört: keine Übernahme, sondern Hinweis.
+  if ($i === null && $nurVerknuepft) {
+    $person = null;
+    $z = $state['verknuepfen'] !== '' ? linkZugriff($state['verknuepfen']) : null;
+    if ($z && isset($z['personId'], $z['gremiumId']) && in_array($z['rolle'], ['person', 'freigabe'], true)) {
+      $bundle = lesen(dateiVon($z['gremiumId']));
+      $person = $bundle ? personDaten($bundle, $z['personId']) : null;
+    }
+    if (!$person || trim($person['name'] ?? '') === '') {
+      $fehlerSeite("Mit dieser Anmeldung bei {$anbieter['name']} ist kein Ormeet-Konto verknüpft. Melde dich mit E-Mail und Passwort an und verknüpfe {$anbieter['name']} unter «Mein Konto» – oder registriere dich über deinen persönlichen Link.");
+      exit;
+    }
+    $email = trim($person['email'] ?? '');
+    if ($email !== '' && benutzerByEmail($benutzer, $email) !== null) {
+      $fehlerSeite("Zu {$email} gibt es schon ein Ormeet-Konto. Melde dich damit an und verknüpfe {$anbieter['name']} unter «Mein Konto».");
+      exit;
+    }
+    $benutzer[] = neuerBenutzer(trim($person['name']), $email);
+    $i = count($benutzer) - 1;
+  }
   if ($i === null) $i = benutzerByEmail($benutzer, $info['email']); // gleiche E-Mail: bestehendes Konto verknüpfen
   if ($i === null) {
     $name = trim($info['name'] ?? trim(($info['given_name'] ?? '') . ' ' . ($info['family_name'] ?? ''))) ?: ($info['preferred_username'] ?? $info['email']);
@@ -2465,11 +2543,18 @@ if ($aktion === 'sso_callback') {
   $neuerToken = anmeldungAnlegen($benutzer[$i]);
   benutzerSchreiben($benutzer);
   $weiter = $state['weiter'] !== '' && $state['weiter'][0] === '/' ? '?weiter=' . rawurlencode($state['weiter']) : '';
-  header('Location: ' . basisUrl() . '#/zugang/' . $neuerToken . $weiter, true, 302);
+  ssoZiel(basisUrl() . '#/zugang/' . $neuerToken . $weiter, $popup);
   exit;
 }
 
 if (!$zugriff) antwort(['fehler' => 'Passwort oder Link ungültig'], 401);
+
+// Code fürs Verknüpfen eines Anbieters mit dem angemeldeten Konto («Mein Konto»)
+if ($aktion === 'sso_verknuepfen_code') {
+  $benutzerId = $zugriff['rolle'] === 'benutzer' ? $zugriff['benutzerId'] : ($zugriff['konto']['benutzerId'] ?? null);
+  if (!$benutzerId) antwort(['fehler' => 'Verknüpfen geht nur, wenn du mit deinem Konto angemeldet bist'], 403);
+  antwort(['code' => ssoKontoCode($benutzerId)]);
+}
 
 $gremiumId = $_GET['gremium'] ?? '';
 $konto = $zugriff['rolle'] === 'benutzer' ? $zugriff : null; // Konto: für das angefragte Gremium gilt die dortige Rolle
@@ -3168,7 +3253,9 @@ if ($aktion === 'verknuepfen') {
   if (!$konto) antwort(['fehler' => 'Kein Konto angemeldet'], 403);
   $link = linkZugriff($eingabe['key'] ?? '');
   if (!$link || $link['rolle'] !== 'person') antwort(['fehler' => 'Das ist kein persönlicher Link'], 400);
-  mitgliedVerknuepfen($link['gremiumId'], $link['personId'], $konto['benutzerId']);
+  if (!mitgliedVerknuepfen($link['gremiumId'], $link['personId'], $konto['benutzerId'])) {
+    antwort(['fehler' => 'Dein Konto ist in diesem Gremium schon mit einem anderen Mitglied verknüpft, oder dieses Mitglied hat schon ein anderes Konto.'], 409);
+  }
   antwort(['ok' => true, 'gremiumId' => $link['gremiumId']]);
 }
 
