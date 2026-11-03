@@ -7,12 +7,14 @@ export function ergaenzeFelder(bundle) {
   const gremium = bundle.gremium
 
   gremium.zugaenge ??= []
+  gremium.zugaenge.forEach((z) => (z.ablauf ??= '')) // '' | JJJJ-MM-TT (gilt bis Ende dieses Tages)
   if (gremium.zugangsKey) {
     // Früherer Einzel-Zugangslink -> Teilen-Link mit Vollzugriff
     gremium.zugaenge.push({ ...neuerZugang('Vollzugriff'), key: gremium.zugangsKey, rechte: { sitzungen: 'bearbeiten', mitglieder: 'bearbeiten', einstellungen: 'bearbeiten' } })
     delete gremium.zugangsKey
   }
   gremium.fusstext ??= ''
+  gremium.erinnerungTage ??= 3 // Erinnerung «Sitzung steht bevor» so viele Tage vorher (Glocke und E-Mail, seit 1.5.03)
   gremium.vorlagen ??= []
   gremium.eigentuemerId ??= null // Konto, das dieses Gremium selbst angelegt hat
   gremium.kurz ??= false // versteckter Behälter einer Kurzsitzung ohne Gremium (seit 1.5.01)
@@ -29,6 +31,8 @@ export function ergaenzeFelder(bundle) {
   gremium.mitglieder.forEach((m) => {
     m.zugangsKey ??= neuerKey() // zentraler persönlicher Link
     m.benutzerId ??= null // verknüpftes Konto
+    m.darfSitzungenEintragen ??= false // Konto darf in diesem Gremium Sitzungen eintragen (Präsidium / Aktuariat immer)
+    m.gesperrt ??= false // Zugang gesperrt: weder persönlicher Link noch Konto (seit 1.5.03)
   })
   gremium.themenbereiche.forEach((tb) => (tb.freigabeKey ??= neuerKey())) // Übersicht teilen
 
@@ -55,16 +59,24 @@ export function ergaenzeFelder(bundle) {
     for (const dokument of ['vorprotokoll', 'protokoll']) {
       if (!s.freigaben[dokument] || Array.isArray(s.freigaben[dokument])) s.freigaben[dokument] = {}
     }
+    s.erstelltVon ??= null // Person, die die Sitzung eingetragen hat (leer: gilt als von der Sitzungsleitung)
+    s.links ??= [] // zusätzliche allgemeine Links pro Dokument mit eigenen Rechten
+    s.links.forEach((l) => (l.ablauf ??= '')) // '' | JJJJ-MM-TT | genehmigt (bis das Protokoll genehmigt ist)
+    s.gesperrt ??= [] // für diese Sitzung gesperrte Personen: sehen die Sitzung nicht mehr
     s.terminfindung ??= null
     if (s.terminfindung) {
       s.terminfindung.optionen ??= []
       s.terminfindung.stimmen ??= []
       s.terminfindung.kommentare ??= []
+      s.terminfindung.freigabe ??= [] // Rollen (rolle:<id>) und Personen, die die Terminfindung zusätzlich bearbeiten
+      s.terminfindung.entfernt ??= [] // aus der Terminfindung entfernte Personen: für diese Sitzung entschuldigt
     }
   })
 
   bundle.vorprotokolle.forEach((v) => {
     if (!v.personenKeys || Array.isArray(v.personenKeys)) v.personenKeys = {} // PHP liefert ein leeres Objekt als []
+    if (!v.aliasKeys || Array.isArray(v.aliasKeys)) v.aliasKeys = {} // frühere Links zusammengeführter Personen: { [key]: personId }
+    v.freigabeLinkAblauf ??= '' // Ablauf des allgemeinen Freigabe-Links (wie bei den zusätzlichen Links)
     v.gaeste.forEach(gast)
     v.traktanden.forEach((t) => traktandum(t, [...gremium.mitglieder, ...v.gaeste]))
   })

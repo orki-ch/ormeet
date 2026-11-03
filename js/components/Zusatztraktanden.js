@@ -1,5 +1,6 @@
 import EintragListe from './EintragListe.js'
 import MenuDropdown from './MenuDropdown.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 // Zusatztraktanden: Haupttraktanden, die erst an der Sitzung dazukamen (bewusste Abweichung vom Vorprotokoll).
 // Sie tragen keine Nummer, sondern die Bezeichnung «Zusatztraktandum», und stehen nach dem Traktandum `nachId`
@@ -62,9 +63,9 @@ export default {
     },
   },
   methods: {
-    loeschen(z) {
+    async loeschen(z) {
       const eintraege = this.protokoll.eintraege.filter((e) => e.traktandumId === z.id)
-      if (eintraege.length && !confirm(`Zusatztraktandum «${z.titel || 'Ohne Titel'}» mit ${eintraege.length} Einträgen löschen?`)) return
+      if (eintraege.length && !(await bestaetigen(`Zusatztraktandum «${z.titel || 'Ohne Titel'}» mit ${eintraege.length} Einträgen löschen?`, { gefahr: true }))) return
       this.protokoll.eintraege = this.protokoll.eintraege.filter((e) => e.traktandumId !== z.id)
       this.protokoll.zusatztraktanden.splice(this.protokoll.zusatztraktanden.indexOf(z), 1)
       this.$emit('aktiv', null)

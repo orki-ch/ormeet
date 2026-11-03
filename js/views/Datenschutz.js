@@ -22,10 +22,11 @@ export default {
         <p>Ormeet ist ein Werkzeug zur Führung von Sitzungsprotokollen. Dabei werden folgende Personendaten erfasst und gespeichert:</p>
         <ul>
           <li><strong>Mitglieder eines Gremiums:</strong> Name, E-Mail-Adresse (optional), Rolle, Stimmrecht.</li>
-          <li><strong>Gäste einer Sitzung:</strong> Name und Organisation.</li>
+          <li><strong>Gäste einer Sitzung:</strong> Name und Organisation; wer sich über einen allgemeinen Link einträgt, zusätzlich Vor- und Nachname und E-Mail-Adresse.</li>
           <li><strong>Sitzungsinhalte:</strong> Anwesenheit, Traktanden, Informationen, Anträge und Beschlüsse, Pendenzen mit zugewiesener Person und Frist, freie Notizen.</li>
-          <li><strong>Zugangsdaten:</strong> zufällig erzeugte Link-Schlüssel für Gremien, Vorprotokolle und Protokolle.</li>
-          <li><strong>Freiwillige Konten:</strong> Name, E-Mail-Adresse, Passwort (nur als Hash gespeichert), Zeitpunkt der Erstellung und letzten Anmeldung sowie – bei Anmeldung über einen Anbieter (Sublevia, Orki) – die von diesem gelieferte Benutzerkennung.</li>
+          <li><strong>Zugangsdaten:</strong> zufällig erzeugte Link-Schlüssel für Gremien, Vorprotokolle und Protokolle; bei geschützten Links ein Passwort (nur als Hash gespeichert) und ein Ablaufdatum.</li>
+          <li><strong>Zuletzt genutzt:</strong> pro Zugang (Link oder Konto) das Datum der letzten Nutzung – ohne Uhrzeit, IP-Adresse oder Gerät. Es dient der Zugriffsübersicht, damit die Verwaltenden nicht mehr gebrauchte Zugänge erkennen und entziehen können.</li>
+          <li><strong>Freiwillige Konten:</strong> Name, E-Mail-Adresse, Passwort (nur als Hash gespeichert), Zeitpunkt der Erstellung und letzten Anmeldung sowie – bei Anmeldung über einen Anbieter (Sublevia, Orki) – die von diesem gelieferte Benutzerkennung. Für die täglichen Sammelmails wird vermerkt, welche Mitteilungen bereits verschickt wurden.</li>
         </ul>
         <p>Die Anwendung selbst setzt keine Cookies und verwendet keine Analyse- oder Tracking-Dienste. Alle Programmbibliotheken werden von {{ domain }} geladen; es werden keine Inhalte von Drittanbietern eingebunden.</p>
         <p>Der Webserver von {{ domain }} kann aus technischen Gründen Zugriffsprotokolle (z. B. IP-Adresse, Zeitpunkt, aufgerufene Adresse) führen. Dafür gelten die Bestimmungen des jeweiligen Hosting-Anbieters.</p>
@@ -39,6 +40,7 @@ export default {
       <section class="card">
         <h2 class="card-title">4. Speicherort und Sicherheit</h2>
         <p>Alle Daten werden auf dem Server gespeichert, auf dem diese Installation läuft: <code>{{ speicherort }}</code>. Es findet keine Übermittlung an andere Server oder ins Ausland durch die Anwendung statt. Einzige Ausnahme ist die freiwillige Anmeldung über einen Anbieter (Sublevia, Orki): Dabei bestätigt der Anbieter Ihre Identität und übermittelt Name und E-Mail-Adresse an diese Installation; es gilt zusätzlich die Datenschutzerklärung des Anbieters.</p>
+        <p>Inhaberinnen und Inhaber eines Kontos erhalten E-Mails, wenn sie ein neues Passwort anfordern, und – sofern eingerichtet – höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet. Die Mails gehen über den Mailserver dieser Installation bzw. den von der Betreiberin eingerichteten Versanddienst. Jede Sammelmail enthält einen Link zum Abbestellen; unter «Mein Konto» lassen sie sich ebenfalls ein- und ausschalten.</p>
         <p v-if="verschluesselt">Die Verbindung zwischen Ihrem Browser und {{ domain }} ist verschlüsselt (HTTPS).</p>
         <p v-else class="text-err">Hinweis: Diese Installation wird derzeit ohne HTTPS aufgerufen. Daten werden unverschlüsselt übertragen. Die Betreiberin sollte eine verschlüsselte Verbindung einrichten.</p>
         <p>Die Daten werden auf dem Server verschlüsselt abgelegt (AES-256); der Schlüssel liegt getrennt von den Daten. Der Zugriff ist durch ein Passwort (Superadmin) sowie durch geheime, zufällig erzeugte Links geschützt. Wer einen Link kennt, erhält den dazugehörigen Zugriff. Die Betreiberin trifft angemessene technische und organisatorische Massnahmen zur Datensicherheit (Art. 8 DSG); Links sollten nur an berechtigte Personen weitergegeben und bei Bedarf erneuert werden.</p>
@@ -46,7 +48,7 @@ export default {
 
       <section class="card">
         <h2 class="card-title">5. Speicherung in Ihrem Browser</h2>
-        <p>Ihr Browser speichert lokal (localStorage) den Zugangsschlüssel, mit dem Sie angemeldet sind, damit Sie beim nächsten Aufruf nicht erneut anmelden müssen, sowie das zuletzt gewählte Gremium und welche Benachrichtigungen Sie bereits gelesen haben. Mit <em>Abmelden</em> wird der Zugangsschlüssel gelöscht. Es werden keine weiteren Daten lokal abgelegt.</p>
+        <p>Ihr Browser speichert lokal (localStorage) den Zugangsschlüssel, mit dem Sie angemeldet sind, damit Sie beim nächsten Aufruf nicht erneut anmelden müssen, sowie das zuletzt gewählte Gremium, welche Benachrichtigungen Sie bereits gelesen haben, unter welchem eigenen Link Sie sich über einen allgemeinen Link eingetragen haben und ob Sie einen passwortgeschützten Link schon freigeschaltet haben. Mit <em>Abmelden</em> wird der Zugangsschlüssel gelöscht. Es werden keine weiteren Daten lokal abgelegt.</p>
       </section>
 
       <section class="card">

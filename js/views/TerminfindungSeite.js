@@ -1,18 +1,23 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
-import { sync } from '../stores/sync.js'
-import { aktuellePerson, rolleIm, vollzugriff, zurueckZu } from '../utils/rechte.js'
+import { sync, laden, recht } from '../stores/sync.js'
+import { api } from '../api.js'
+import { nameMerken } from '../components/KontoKarte.js'
+import { aktuellePerson, darfTerminfindung, darfTerminfindungFreigeben, einzelrecht, istLeitung, linksSichtbar, personIdIm, rolleIm, tfRecht, verwaltetSitzung, zurueckZu } from '../utils/rechte.js'
 import { STIMME, formatDatum } from '../utils/labels.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import MiniKalender from '../components/MiniKalender.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
+import LinkZeilen from '../components/LinkZeilen.js'
+import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
+import { bestaetigen, hinweis } from '../utils/dialog.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
 
 // Terminfindung (Nuudel-artig): Optionen, Abstimmungsmatrix mit Summenzeile, Kommentare, Termin festlegen
 export default {
   name: 'TerminfindungSeite',
-  components: { KurzTeilnehmende, MenuDropdown, MiniKalender },
+  components: { KurzTeilnehmende, LinkZeilen, MehrfachAuswahl, MenuDropdown, MiniKalender },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -29,11 +34,16 @@ export default {
             <p v-else-if="anonym" class="small muted mt-1">Trage unten deinen Namen ein und klicke die Termine an, die dir passen.</p>
           </div>
           <div class="actions">
-            <router-link v-if="!sitzung.kurz" :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
-            <router-link v-else-if="sitzung.datum" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll</router-link>
-            <MenuDropdown v-if="voll">
-              <button class="menu-item" @click="csvExport">Ergebnis als CSV exportieren</button>
-              <button v-if="tf.status === 'abgeschlossen'" class="menu-item" :disabled="protokollMitEintraegen" :title="protokollMitEintraegen ? 'Das Protokoll dieser Sitzung enthält bereits Einträge – zuerst das Protokoll entfernen' : ''" @click="wiederOeffnen">Terminfindung wieder öffnen</button>
+            <router-link v-if="!sitzung.kurz && sync.zugriff?.rolle !== 'link' && !nurLinkDokument" :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
+            <router-link v-else-if="sitzung.datum && !nurLinkDokument" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll</router-link>
+            <MenuDropdown v-if="linksSichtbar" text="Links" panel>
+              <p class="hint">Weitere allgemeine Links zu dieser Terminfindung, je mit eigenen Rechten.</p>
+              <LinkZeilen :sitzung="sitzung" dokument="terminfindung" />
+            </MenuDropdown>
+            <MenuDropdown v-if="voll || zugriffeVerwalten">
+              <router-link v-if="zugriffeVerwalten" :to="'/sitzung/' + sitzung.id + '/zugriffe'" class="menu-item">Zugriffe verwalten</router-link>
+              <button v-if="voll" class="menu-item" @click="csvExport">Ergebnis als CSV exportieren</button>
+              <button v-if="voll && tf.status === 'abgeschlossen'" class="menu-item" :disabled="protokollMitEintraegen" :title="protokollMitEintraegen ? 'Das Protokoll dieser Sitzung enthält bereits Einträge – zuerst das Protokoll entfernen' : ''" @click="wiederOeffnen">Terminfindung wieder öffnen</button>
             </MenuDropdown>
           </div>
         </div>
@@ -83,6 +93,10 @@ export default {
             </div>
           </div>
         </div>
+        <div v-if="darfFreigeben" class="stack-xs">
+          <span class="label">Bearbeitung freigeben an</span>
+          <MehrfachAuswahl v-model="tf.freigabe" :optionen="freigabeOptionen" placeholder="+ Rolle oder Person …" />
+        </div>
         <div class="row" style="gap: 0.5rem 1.5rem">
           <label class="check small"><input v-model="tf.einzelwahl" type="checkbox" /> Nur eine Option mit «Ja» wählbar</label>
           <label class="check small"><input v-model="tf.verdeckt" type="checkbox" /> Verdeckt (Teilnehmende sehen nur die eigene Stimme)</label>
@@ -103,7 +117,7 @@ export default {
                   <div class="datum">{{ formatDatum(o.datum) }}</div>
                   <div class="zeit">{{ o.von }}<span v-if="o.bis"> – {{ o.bis }}</span></div>
                 </th>
-                <th v-if="voll"></th>
+                <th v-if="spalteAktion"></th>
               </tr>
             </thead>
             <tbody>
@@ -112,12 +126,15 @@ export default {
                 <td v-for="o in tf.optionen" :key="o.id" :class="{ best: besteIds.has(o.id) }">
                   <button class="stimme" :class="z.wahl[o.id] || 'leer'" :disabled="!darfStimmen(z)" :title="z.wahl[o.id] || '–'" @click="stimmen(z, o.id)">{{ STIMME[z.wahl[o.id]] || '' }}</button>
                 </td>
-                <td v-if="voll" class="right"><button v-if="!z.eigene" class="btn btn-danger btn-icon" title="Zeile löschen" @click="zeileLoeschen(z)">✕</button></td>
+                <td v-if="spalteAktion" class="right">
+                  <button v-if="z.personId && darfEntfernen(z) && tf.status === 'offen'" class="btn btn-ghost btn-icon" :title="z.eigene ? 'Ich kann nicht teilnehmen – entschuldigen' : 'Aus der Terminfindung entfernen (entschuldigt)'" @click="entfernen(z)">✕</button>
+                  <button v-else-if="!z.personId && voll" class="btn btn-danger btn-icon" title="Zeile löschen" @click="zeileLoeschen(z)">✕</button>
+                </td>
               </tr>
               <tr v-if="neueZeileErlaubt" class="neu">
                 <td class="name"><input v-model.trim="neuerName" class="input" :placeholder="voll ? 'Weitere Person …' : 'Dein Name …'" /></td>
                 <td v-for="o in tf.optionen" :key="o.id"><button class="stimme leer" :disabled="!neuerName" title="Stimme für diese Person eintragen" @click="stimmenNeu(o.id)"></button></td>
-                <td v-if="voll"></td>
+                <td v-if="spalteAktion"></td>
               </tr>
             </tbody>
             <tfoot v-if="ergebnisSichtbar">
@@ -126,7 +143,7 @@ export default {
                 <td v-for="o in tf.optionen" :key="o.id" :class="{ best: besteIds.has(o.id) }">
                   <strong>{{ summe(o.id).ja }}</strong><span class="leise"> / {{ summe(o.id).vielleicht }}</span>
                 </td>
-                <td v-if="voll"></td>
+                <td v-if="spalteAktion"></td>
               </tr>
               <tr v-if="voll && tf.status === 'offen'">
                 <td></td>
@@ -135,6 +152,24 @@ export default {
               </tr>
             </tfoot>
           </table>
+        </div>
+        <div v-if="entfernte.length" class="row mt-2 small">
+          <span class="muted">Entschuldigt:</span>
+          <span v-for="p in entfernte" :key="p.id" class="chip" :class="{ 'ohne-x': !darfEntfernen(p) }">
+            {{ p.name }}
+            <button v-if="darfEntfernen(p) && tf.status === 'offen'" type="button" class="chip-x" title="Wieder aufnehmen" @click="aufnehmen(p)">↺</button>
+          </span>
+        </div>
+        <!-- Über einen allgemeinen Link mit Konto dazugekommen: Leitung / Aktuariat / Superadmin verknüpfen sie mit einem Mitglied -->
+        <div v-if="weiterePersonen.length && darfVerknuepfen" class="stack-sm mt-2">
+          <span class="label">Weitere Personen mit Konto</span>
+          <div v-for="p in weiterePersonen" :key="p.id" class="row small">
+            <span class="grow"><strong>{{ p.name }}</strong><span class="leise"> · {{ p.email }}</span></span>
+            <select class="input klein w-lg" @change="verknuepfen(p, $event)">
+              <option value="">Mit Mitglied verknüpfen …</option>
+              <option v-for="m in gremium.mitglieder" :key="m.id" :value="m.id">{{ m.name }}{{ tf.entfernt.includes(m.id) ? ' (entfernt)' : '' }}</option>
+            </select>
+          </div>
         </div>
         <p v-if="tf.verdeckt && !voll" class="muted small mt-2">Verdeckte Abstimmung: du siehst nur deine eigene Stimme.</p>
         <p v-else-if="tf.optionen.length" class="muted small mt-2">Klick wechselt zwischen ✓ Ja, ? Vielleicht und ✕ Nein. Die Spalte mit den meisten Ja-Stimmen ist hervorgehoben.</p>
@@ -150,7 +185,7 @@ export default {
           </div>
         </div>
         <p v-if="!tf.kommentare.length" class="muted small">Noch keine Kommentare.</p>
-        <form v-if="ich || voll || anonym" class="row mt-2" @submit.prevent="kommentieren">
+        <form v-if="(ich && tfRecht(sitzung, 'kommentieren')) || voll || (anonym && darfAnonym('kommentieren'))" class="row mt-2" @submit.prevent="kommentieren">
           <input v-if="!ich" v-model.trim="neuerName" class="input w-md" placeholder="Name" required />
           <input v-model.trim="neuerKommentar" class="input grow" placeholder="Kommentar …" required />
           <button class="btn">Senden</button>
@@ -160,7 +195,7 @@ export default {
     <p v-else class="muted">Zu dieser Sitzung gibt es keine Terminfindung.</p>
   `,
   data() {
-    return { neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME }
+    return { sync, neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME }
   },
   computed: {
     alleGewaehlt() {
@@ -179,8 +214,36 @@ export default {
     gremium() {
       return gremienStore.byId(this.sitzung.gremiumId)
     },
+    // Bearbeiten: wer die Sitzung eingetragen hat und wem die Bearbeitung freigegeben ist (sowie Superadmin / Eigentümer)
     voll() {
-      return vollzugriff(this.sitzung, 'protokoll')
+      return darfTerminfindung(this.sitzung)
+    },
+    darfFreigeben() {
+      return darfTerminfindungFreigeben(this.sitzung)
+    },
+    freigabeOptionen() {
+      const rollen = this.gremium.rollen.map((r) => ({ wert: 'rolle:' + r.id, label: 'Rolle: ' + r.name }))
+      return [...rollen, ...this.gremium.mitglieder.map((m) => ({ wert: m.id, label: m.name }))]
+    },
+    // Entfernte (entschuldigte) Personen
+    entfernte() {
+      const gaeste = this.vorprotokoll?.gaeste || []
+      return (this.tf.entfernt || []).map((id) => gremienStore.person(this.gremium.id, gaeste, id)).filter(Boolean)
+    },
+    weiterePersonen() {
+      return (this.vorprotokoll?.gaeste || []).filter((g) => g.weiterePerson)
+    },
+    // Weitere Personen verknüpfen: Superadmin / Eigentümer, Gremium-Zugang mit Bearbeitungsrecht, Leitung und Protokollführung, Präsidium / Aktuariat
+    darfVerknuepfen() {
+      const rolle = rolleIm(this.gremium.id)
+      if (rolle === 'admin') return true
+      if (rolle === 'gremium') return recht('sitzungen', this.gremium.id) === 'bearbeiten'
+      const personId = personIdIm(this.gremium.id)
+      const mitglied = this.gremium.mitglieder.find((m) => m.id === personId)
+      return rolle === 'person' && (istLeitung(this.sitzung, personId) || gremienStore.hatFesteRolle(this.gremium.id, mitglied))
+    },
+    spalteAktion() {
+      return this.voll || (!!this.ich && this.tf.status === 'offen')
     },
     vorprotokoll() {
       return sitzungenStore.vorprotokollVonSitzung(this.sitzungId)
@@ -189,22 +252,29 @@ export default {
       return sitzungenStore.protokollVonSitzung(this.sitzungId)
     },
     linksSichtbar() {
-      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id))
+      return linksSichtbar(this.sitzung)
+    },
+    zugriffeVerwalten() {
+      return verwaltetSitzung(this.sitzung)
     },
     // Abstimmende Person (Mitglied oder Gast hinter dem Zugang)
     ich() {
       const gaeste = sitzungenStore.vorprotokollVonSitzung(this.sitzungId)?.gaeste || []
       return aktuellePerson(this.gremium.id, gaeste)
     },
-    // Allgemeiner Freigabe-Link: keine feste Identität, Eintrag mit Namen
+    // Über einen Terminfindungs-Link eingetragen: nur diese Seite
+    nurLinkDokument() {
+      return sync.zugriff?.rolle === 'freigabe' && !!sync.zugriff.dokument && sync.zugriff.dokument !== 'vorprotokoll'
+    },
+        // Allgemeiner Freigabe-Link oder zusätzlicher Link: keine feste Identität, Eintrag mit Namen
     anonym() {
-      return sync.zugriff?.rolle === 'freigabe' && !sync.zugriff.personId
+      return (sync.zugriff?.rolle === 'freigabe' && !sync.zugriff.personId) || sync.zugriff?.rolle === 'link'
     },
     ergebnisSichtbar() {
       return this.voll || !this.tf.verdeckt
     },
     neueZeileErlaubt() {
-      return (this.voll || this.anonym) && this.tf.status === 'offen'
+      return (this.voll || (this.anonym && this.darfAnonym('abstimmen'))) && this.tf.status === 'offen'
     },
     // Zeilen: alle Mitglieder (auch nicht erwartete Rollen), Gäste, bereits abgegebene Stimmen (auch freie Namen);
     // die eigene Person steht immer in der Liste
@@ -212,21 +282,22 @@ export default {
       const gaeste = sitzungenStore.vorprotokollVonSitzung(this.sitzungId)?.gaeste || []
       // Kurzsitzung eines Gremiums: nur die Teilnehmenden
       const teilnehmende = this.sitzung.kurz && !this.gremium.kurz ? sitzungenStore.teilnehmende(this.sitzung) : null
-      const personen = [...this.gremium.mitglieder.filter((m) => !teilnehmende || teilnehmende.includes(m.id)), ...gaeste]
-      if (this.ich && !personen.some((p) => p.id === this.ich.id)) personen.push(this.ich)
+      const entfernt = this.tf.entfernt || []
+      const personen = [...this.gremium.mitglieder.filter((m) => !teilnehmende || teilnehmende.includes(m.id)), ...gaeste].filter((p) => !entfernt.includes(p.id))
+      if (this.ich && !entfernt.includes(this.ich.id) && !personen.some((p) => p.id === this.ich.id)) personen.push(this.ich)
       const stimmeVon = (personId, name) => this.tf.stimmen.find((s) => (personId ? s.personId === personId : s.name === name))
       const zeile = (personId, name) => {
         const stimme = stimmeVon(personId, name)
         const wahl = Object.fromEntries((stimme?.wahl || []).map((w) => [w.optionId, w.wert]))
         return { key: personId || 'name:' + name, personId, name, wahl, stimme, eigene: !!this.ich && personId === this.ich.id }
       }
-      const liste = this.ergebnisSichtbar ? personen.map((p) => zeile(p.id, p.name)) : this.ich ? [zeile(this.ich.id, this.ich.name)] : []
+      const liste = this.ergebnisSichtbar ? personen.map((p) => zeile(p.id, p.name)) : this.ich && !entfernt.includes(this.ich.id) ? [zeile(this.ich.id, this.ich.name)] : []
       // eigene Zeile zuoberst
       liste.sort((a, b) => (b.eigene ? 1 : 0) - (a.eigene ? 1 : 0))
       const vorhanden = new Set(liste.map((z) => z.key))
       this.tf.stimmen.forEach((s) => {
         const key = s.personId || 'name:' + s.name
-        if (!vorhanden.has(key) && (this.ergebnisSichtbar || key === this.ich?.id)) liste.push(zeile(s.personId, s.name))
+        if (!vorhanden.has(key) && !entfernt.includes(s.personId) && (this.ergebnisSichtbar || key === this.ich?.id)) liste.push(zeile(s.personId, s.name))
       })
       return liste
     },
@@ -236,7 +307,8 @@ export default {
       return new Set(max > 0 ? this.tf.optionen.filter((o) => this.summe(o.id).ja === max).map((o) => o.id) : [])
     },
     zurueck() {
-      if (sync.zugriff?.rolle === 'freigabe') return this.sitzung.kurz ? '' : `/sitzung/${this.sitzungId}/vorprotokoll`
+      if (sync.zugriff?.rolle === 'link') return ''
+      if (sync.zugriff?.rolle === 'freigabe') return this.sitzung.kurz || this.nurLinkDokument ? '' : `/sitzung/${this.sitzungId}/vorprotokoll`
       return zurueckZu(this.gremium.id).pfad
     },
     zurueckText() {
@@ -245,6 +317,7 @@ export default {
   },
   methods: {
     formatDatum,
+    tfRecht,
     summe(optionId) {
       const werte = this.tf.stimmen.flatMap((s) => s.wahl.filter((w) => w.optionId === optionId).map((w) => w.wert))
       return { ja: werte.filter((w) => w === 'ja').length, vielleicht: werte.filter((w) => w === 'vielleicht').length }
@@ -252,8 +325,38 @@ export default {
     darfStimmen(zeile) {
       if (this.tf.status !== 'offen') return false
       if (this.voll) return true
-      if (this.anonym) return !zeile.personId && this.tf.bearbeitbar // namentliche Zeilen (keine Mitglieder / Gäste mit Link)
-      return zeile.eigene && (this.tf.bearbeitbar || !zeile.stimme)
+      if (this.anonym) return !zeile.personId && this.tf.bearbeitbar && this.darfAnonym('abstimmen') // namentliche Zeilen (keine Mitglieder / Gäste mit Link)
+      return zeile.eigene && (this.tf.bearbeitbar || !zeile.stimme) && tfRecht(this.sitzung, 'abstimmen')
+    },
+    // Ohne Identität: allgemeiner Freigabe-Link darf abstimmen und kommentieren, ein zusätzlicher Link nach seinen Rechten
+    darfAnonym(recht) {
+      return sync.zugriff?.rolle !== 'link' || einzelrecht(this.sitzung, 'terminfindung', recht)
+    },
+    // Entfernen / wieder aufnehmen: wer die Terminfindung bearbeitet, und jede Person für sich selbst
+    darfEntfernen(person) {
+      return this.voll || (!!this.ich && (person.personId || person.id) === this.ich.id)
+    },
+    async entfernen(zeile) {
+      const text = zeile.eigene ? 'Du wirst aus der Terminfindung entfernt und bist für diese Sitzung entschuldigt.' : `${zeile.name} wird aus der Terminfindung entfernt und ist für diese Sitzung entschuldigt.`
+      if (!(await bestaetigen(text + ' Fortfahren?'))) return
+      this.tf.entfernt.push(zeile.personId)
+      if (this.vorprotokoll && !this.protokoll) this.vorprotokoll.anwesendeMitgliederIds = this.vorprotokoll.anwesendeMitgliederIds.filter((id) => id !== zeile.personId)
+    },
+    aufnehmen(person) {
+      this.tf.entfernt = this.tf.entfernt.filter((id) => id !== person.id)
+      const erwartet = gremienStore.erwarteteMitglieder(this.gremium.id).some((m) => m.id === person.id)
+      if (erwartet && this.vorprotokoll && !this.protokoll && !this.vorprotokoll.anwesendeMitgliederIds.includes(person.id)) this.vorprotokoll.anwesendeMitgliederIds.push(person.id)
+    },
+    async verknuepfen(person, event) {
+      const mitglied = this.gremium.mitglieder.find((m) => m.id === event.target.value)
+      event.target.value = ''
+      if (!mitglied || !(await bestaetigen(`${person.name} mit ${mitglied.name} verknüpfen? Stimmen und Kommentare gehen auf ${mitglied.name} über, und ${mitglied.name} ist wieder dabei.`))) return
+      try {
+        await api.anfrage('weitere_person_verknuepfen', this.gremium.id, { gastId: person.id, mitgliedId: mitglied.id })
+        await laden()
+      } catch (fehler) {
+        hinweis(fehler.message)
+      }
     },
     // Kalender-Klick: Tag hinzufügen, bei erneutem Klick alle Vorschläge dieses Tages entfernen
     tagUmschalten(datum) {
@@ -308,6 +411,7 @@ export default {
     // Bearbeiter: Stimme für eine weitere Person (freier Name) eintragen
     stimmenNeu(optionId) {
       const name = this.neuerName
+      if (this.anonym) nameMerken(name) // geht beim Anlegen eines Kontos auf dieses über
       const zeile = this.zeilen.find((z) => !z.personId && z.name === name) || { personId: null, name, stimme: null }
       this.stimmen(zeile, optionId)
       this.neuerName = ''
@@ -316,6 +420,7 @@ export default {
       if (zeile.stimme) this.tf.stimmen.splice(this.tf.stimmen.indexOf(zeile.stimme), 1)
     },
     kommentieren() {
+      if (!this.ich) nameMerken(this.neuerName)
       this.tf.kommentare.push({
         id: crypto.randomUUID(),
         personId: this.ich?.id || null,
@@ -325,8 +430,8 @@ export default {
       })
       this.neuerKommentar = ''
     },
-    festlegen(option) {
-      if (!confirm(`${formatDatum(option.datum)}, ${option.von} als Sitzungstermin festlegen?`)) return
+    async festlegen(option) {
+      if (!(await bestaetigen(`${formatDatum(option.datum)}, ${option.von} als Sitzungstermin festlegen?`))) return
       sitzungenStore.terminFestlegen(this.sitzungId, option.id)
     },
     // Ein bereits gestartetes, noch leeres Protokoll geht mit dem Termin weg – sonst bliebe das Vorprotokoll gesperrt

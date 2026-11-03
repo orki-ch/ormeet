@@ -1,5 +1,5 @@
 import { gremienStore } from '../stores/gremien.js'
-import { sitzungenStore } from '../stores/sitzungen.js'
+import { fristText, sitzungenStore } from '../stores/sitzungen.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, stimmenText } from '../utils/labels.js'
 
 // Suche über alles, was der aktuelle Zugang von diesem Gremium geladen hat: Sitzungen, Traktanden / Unterpunkte
@@ -86,7 +86,7 @@ export default {
     },
     status(e) {
       if (e.typ === 'antrag') return ['Beschluss: ' + (ANTRAG_STATUS[e.antragStatus] || ''), stimmenText(e)].filter(Boolean).join(' · ')
-      if (e.typ === 'pendenz') return [PENDENZ_STATUS[e.pendenzStatus], e.zugewiesenAnName, e.faelligBis && 'bis ' + formatDatum(e.faelligBis)].filter(Boolean).join(' · ')
+      if (e.typ === 'pendenz') return [PENDENZ_STATUS[e.pendenzStatus], e.zugewiesenAnName, fristText(e)].filter(Boolean).join(' · ')
       return ''
     },
   },

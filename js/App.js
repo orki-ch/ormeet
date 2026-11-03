@@ -3,26 +3,29 @@ import { appStand } from './api.js'
 import { updateStand, updatePruefen } from './stores/updates.js'
 import { startPfad } from './router.js'
 import Benachrichtigungen from './components/Benachrichtigungen.js'
+import KontoKarte from './components/KontoKarte.js'
+import EintragDialog from './components/EintragDialog.js'
+import { sitzungenStore } from './stores/sitzungen.js'
 
-const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', benutzer: 'Konto', freigabe: 'Freigabe-Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
+const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', benutzer: 'Konto', freigabe: 'Freigabe-Link', link: 'Allgemeiner Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
 
 export default {
   name: 'App',
-  components: { Benachrichtigungen },
+  components: { Benachrichtigungen, EintragDialog, KontoKarte },
   template: `
     <div class="app">
       <header class="topbar">
         <div class="topbar-inner">
           <router-link :to="startPfad" class="brand"><img src="omeet_logo.svg" alt="Ormeet" /></router-link>
           <nav class="topbar-nav">
-            <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="startPfad.startsWith('/meine') ? 'Meine Übersicht' : 'Gremien'">
+            <router-link v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe', 'link'].includes(sync.zugriff.rolle)" :to="startPfad" class="icon-btn" :data-tip="startPfad.startsWith('/meine') ? 'Meine Übersicht' : 'Gremien'">
               <svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>
             </router-link>
             <!-- Superadmin mit verknüpftem Konto: persönliche Übersicht dieses Kontos -->
             <router-link v-if="sync.zugriff?.rolle === 'admin' && sync.zugriff.konto" to="/uebersicht" class="icon-btn" data-tip="Meine Übersicht">
               <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>
             </router-link>
-            <Benachrichtigungen v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe'].includes(sync.zugriff.rolle)" />
+            <Benachrichtigungen v-if="sync.zugriff && !['verfolger', 'themenbereich', 'freigabe', 'link'].includes(sync.zugriff.rolle)" />
             <router-link to="/hilfe" class="icon-btn hilfe" data-tip="Hilfe & Dokumentation">
               <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/></svg>
             </router-link>
@@ -53,6 +56,9 @@ export default {
           <div class="grow"><strong>Ormeet wurde auf Version {{ appStand.neueVersion }} aktualisiert.</strong> Bitte die Seite neu laden, damit alles zusammenpasst.</div>
           <button class="btn btn-primary" @click="neuLaden">Neu laden</button>
         </div>
+        <!-- Allgemeiner Link: zuerst Name und E-Mail (eigener Link), danach mit einem Klick zum eigenen Konto einladen -->
+        <EintragDialog v-if="allgemeinerLink" />
+        <KontoKarte v-if="kontoEinladen" />
         <router-view />
       </main>
       <footer class="footer">
@@ -87,6 +93,18 @@ export default {
   computed: {
     startPfad() {
       return startPfad()
+    },
+    // Allgemeiner Link ohne feste Person (Freigabe-Link des Vorprotokolls oder zusätzlicher Link)
+    allgemeinerLink() {
+      const zugriff = sync.zugriff
+      return zugriff?.rolle === 'link' || (zugriff?.rolle === 'freigabe' && !zugriff.personId)
+    },
+    // Über einen allgemeinen Link eingetragen, noch ohne Konto
+    kontoEinladen() {
+      const zugriff = sync.zugriff
+      if (zugriff?.rolle !== 'freigabe' || !zugriff.weiterePerson) return false
+      const gast = sitzungenStore.vorprotokollById(zugriff.vorprotokollId)?.gaeste.find((g) => g.id === zugriff.personId)
+      return !!gast && !gast.benutzerId
     },
     istAdmin() {
       return sync.zugriff?.rolle === 'admin'

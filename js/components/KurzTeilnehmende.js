@@ -2,6 +2,7 @@ import { gremienStore } from '../stores/gremien.js'
 import { sync } from '../stores/sync.js'
 import { neuerKey } from '../utils/keys.js'
 import InfoKnopf from './InfoKnopf.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 // Teilnehmende einer Kurzsitzung. Mit Gremium: Mitglieder frei an- und abwählen. Ohne Gremium (Behälter):
 // die Eingeladenen sind seine Mitglieder – mit E-Mail und persönlichem Link, neue lassen sich direkt einladen.
@@ -81,8 +82,8 @@ export default {
       this.ziel[this.feld].push(mitglied.id)
       this.neu = { name: '', email: '' }
     },
-    entfernen(m) {
-      if (!confirm(`${m.name} ausladen? Der persönliche Link wird damit ungültig.`)) return
+    async entfernen(m) {
+      if (!(await bestaetigen(`${m.name} ausladen? Der persönliche Link wird damit ungültig.`, { gefahr: true }))) return
       this.gremium.mitglieder = this.gremium.mitglieder.filter((x) => x.id !== m.id)
       this.ziel[this.feld] = this.ziel[this.feld].filter((id) => id !== m.id)
     },

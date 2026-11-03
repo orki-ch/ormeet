@@ -3,6 +3,8 @@ import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { ANTRAG_STATUS, EINTRAG_TYP_WAHL, PENDENZ_STATUS, TYP_BADGE, TYP_LABELS, formatDatum, stimmenText } from '../utils/labels.js'
 import ThemenbereichSelect from './ThemenbereichSelect.js'
 import PersonInput from './PersonInput.js'
+import FristFeld from './FristFeld.js'
+import { fristText } from '../stores/sitzungen.js'
 import MenuDropdown from './MenuDropdown.js'
 
 // Einträge (Information / Antrag / Pendenz) eines Traktandums oder Unterpunkts.
@@ -12,7 +14,7 @@ import MenuDropdown from './MenuDropdown.js'
 // Ausnahme Kurzsitzung (antraegeFrei): Anträge werden direkt hier erfasst, formuliert und entschieden.
 export default {
   name: 'EintragListe',
-  components: { MenuDropdown, PersonInput, ThemenbereichSelect },
+  components: { FristFeld, MenuDropdown, PersonInput, ThemenbereichSelect },
   mixins: [bearbeitenMixin],
   inject: { aenderung: { default: null } }, // Protokoll nach Abschluss: Klick auf einen Eintrag beantragt eine Änderung
   props: {
@@ -25,11 +27,12 @@ export default {
     personId: { type: String, default: null }, // eigene Pendenzen bleiben im Status änderbar
     typ: { type: String, default: '' }, // vom Traktandum vorgegebener Typ: alle Einträge sind dann von diesem Typ (antrag: nur abstimmen)
     antraegeFrei: { type: Boolean, default: false }, // Kurzsitzung: Anträge entstehen direkt hier (kein Vorprotokoll)
+    erlaubteTypen: { type: Array, default: null }, // Einzelrechte: nur Einträge dieser Typen bearbeiten / hinzufügen
   },
   template: `
     <div>
       <!-- Vorschau und Bearbeitung im selben Layout: Titel und Inhalt werden direkt im Eintrag getippt -->
-      <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="[typ ? '' : 'typ-' + e.typ, { editing: aktiv === e.id, klickbar: aktiv !== e.id && !nurLesen }]" @click.capture="aktiv !== e.id && !nurLesen && oeffnen(e)" @click="nurLesen && aenderung?.aktiv() && aenderung.oeffnen(e.id, e.titel || TYP_LABELS[e.typ], $event)">
+      <div v-for="e in eigene" :id="e.id" :key="e.id" class="eintrag" :class="[typ ? '' : 'typ-' + e.typ, { editing: aktiv === e.id, klickbar: aktiv !== e.id && bearbeitbar(e) }]" @click.capture="aktiv !== e.id && bearbeitbar(e) && oeffnen(e)" @click="nurLesen && aenderung?.aktiv() && aenderung.oeffnen(e.id, e.titel || TYP_LABELS[e.typ], $event)">
         <div class="eintrag-zeile">
           <template v-if="aktiv === e.id && e.typ === 'antrag' && !antraegeFrei">
             <span v-if="!typ" class="badge" :class="TYP_BADGE.antrag">{{ TYP_LABELS.antrag }}</span>
@@ -86,13 +89,13 @@ export default {
               <option v-for="(label, wert) in PENDENZ_STATUS" :key="wert" :value="wert">{{ label }}</option>
             </select>
             <PersonInput v-model="e.zugewiesenAnName" v-model:person-id="e.zugewiesenAn" :personen="personen" class="w-md klein" placeholder="Zugewiesen an" />
-            <input v-model="e.faelligBis" type="date" class="input klein w-sm" title="Bis wann" />
+            <FristFeld v-model="e.faelligBis" />
           </template>
           <button class="btn ml-auto" @click="schliessen">Fertig</button>
         </div>
       </div>
 
-      <button v-if="!nurLesen && typ !== 'antrag' && typ !== 'antraege'" class="btn btn-ghost" @click="hinzufuegen">+ {{ typ ? TYP_LABELS[typ] : 'Eintrag' }}</button>
+      <button v-if="!nurLesen && typ !== 'antrag' && typ !== 'antraege' && neuerTyp" class="btn btn-ghost" @click="hinzufuegen">+ {{ typ || (erlaubteTypen && Object.keys(typWahl).length === 1) ? TYP_LABELS[neuerTyp] : 'Eintrag' }}</button>
     </div>
   `,
   data() {
@@ -110,10 +113,19 @@ export default {
       return this.eintraege.filter((e) => e.traktandumId === this.traktandumId)
     },
     typWahl() {
-      return this.antraegeFrei ? TYP_LABELS : EINTRAG_TYP_WAHL
+      const wahl = this.antraegeFrei ? TYP_LABELS : EINTRAG_TYP_WAHL
+      return this.erlaubteTypen ? Object.fromEntries(Object.entries(wahl).filter(([typ]) => this.erlaubteTypen.includes(typ))) : wahl
+    },
+    // Typ eines neuen Eintrags: vorgegebener Typ oder der erste erlaubte (null: nichts hinzufügen)
+    neuerTyp() {
+      if (this.typ) return !this.erlaubteTypen || this.erlaubteTypen.includes(this.typ) ? this.typ : null
+      return Object.keys(this.typWahl).find((typ) => typ !== 'antrag' || this.antraegeFrei) || null
     },
   },
   methods: {
+    bearbeitbar(e) {
+      return !this.nurLesen && (!this.erlaubteTypen || this.erlaubteTypen.includes(e.typ))
+    },
     eigenePendenz(e) {
       return e.typ === 'pendenz' && this.personId && e.zugewiesenAn === this.personId
     },
@@ -124,7 +136,7 @@ export default {
     meta(e) {
       if (e.typ === 'antrag') return [ANTRAG_STATUS[e.antragStatus], stimmenText(e)].filter(Boolean).join(' · ')
       if (e.typ === 'pendenz') {
-        return [PENDENZ_STATUS[e.pendenzStatus], e.zugewiesenAnName, e.faelligBis && 'bis ' + formatDatum(e.faelligBis)].filter(Boolean).join(' · ')
+        return [PENDENZ_STATUS[e.pendenzStatus], e.zugewiesenAnName, fristText(e)].filter(Boolean).join(' · ')
       }
       return ''
     },
@@ -150,7 +162,7 @@ export default {
     },
     // Neuer Eintrag entsteht direkt im Bearbeitungsmodus
     hinzufuegen() {
-      const eintrag = { id: crypto.randomUUID(), traktandumId: this.traktandumId, themenbereichId: this.themenbereichId, typ: this.typ || 'information', titel: '', inhalt: '' }
+      const eintrag = { id: crypto.randomUUID(), traktandumId: this.traktandumId, themenbereichId: this.themenbereichId, typ: this.neuerTyp, titel: '', inhalt: '' }
       this.typGeaendert(eintrag)
       this.eintraege.push(eintrag)
       this.oeffnen(eintrag)

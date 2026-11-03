@@ -1,22 +1,42 @@
 /* =====================================================================
    Ormeet – eigenes Stylesheet (verschachteltes CSS, kein Framework)
-   Gestaltung nach Orki-Vorlage, Farbgebung wie ormeet.ch (Creme, Waldgrün, Limette)
+   Gestaltung nach Orki-Vorlage, Farbgebung wie ormeet.ch (Creme, Waldgrün, Limette);
+   Formen, Schatten und Schrift (Manrope) nach dem aeweb-Designsystem
    ===================================================================== */
 
 @font-face {
   font-family: 'OrmeetFont';
-  src: url('font/RaveoVF.woff2') format('woff2');
-  font-weight: 100 900;
+  src: url('font/Manrope-Regular.woff2') format('woff2');
+  font-weight: 400;
   font-display: swap;
-  font-style: normal;
 }
 
 @font-face {
   font-family: 'OrmeetFont';
-  src: url('font/Switzer-VariableItalic.woff2') format('woff2');
-  font-weight: 100 900;
+  src: url('font/Manrope-Medium.woff2') format('woff2');
+  font-weight: 500;
   font-display: swap;
-  font-style: italic;
+}
+
+@font-face {
+  font-family: 'OrmeetFont';
+  src: url('font/Manrope-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OrmeetFont';
+  src: url('font/Manrope-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'OrmeetFont';
+  src: url('font/Manrope-ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-display: swap;
 }
 
 /* ---------- Design-Tokens ---------- */
@@ -25,8 +45,8 @@
   --brand: #b4c410; /* Ormeet-Limette */
   --brand-hell: #dfe6a3;
   --brand-hell2: #edf2c2;
-  --brand-dunkel: #8a980c; /* für Text und Links auf Weiss */
-  --brand-tief: #6d780a;
+  --brand-dunkel: #5f6a07; /* für Text und Links auf Weiss (Kontrast mind. 4.5:1) */
+  --brand-tief: #566006;
   --auf-brand: #1c3326; /* Text auf Limette */
   --wald: #1c3326; /* dunkles Waldgrün, Primärbuttons */
   --wald-2: #27452f;
@@ -34,25 +54,27 @@
   --minze: #dfe9da;
   --bg: #f4f2e9; /* Seitenhintergrund, warmes Creme */
   --flaeche: #ffffff;
-  --flaeche-soft: rgba(28, 51, 38, 0.035);
+  --flaeche-soft: rgba(28, 51, 38, 0.06);
   --text: #1b221d;
   --text-muted: #5a655d;
-  --text-leise: #8c968f;
+  --text-leise: #666f68;
   --linie: rgba(28, 51, 38, 0.14);
   --linie-leise: rgba(28, 51, 38, 0.08);
   --ring: rgba(28, 51, 38, 0.16);
-  --ok: #3c9a4e;
-  --warn: #c98a00;
-  --err: #d0433a;
-  --info: #3c7fb1;
+  --ok: #2b7239;
+  --warn: #8a5f00;
+  --err: #b8352d;
+  --info: #2f6d9c;
+  --feld-rand: #7d8780; /* Rand von Eingabefeldern (Kontrast mind. 3:1) */
   --r-gross: 20px;
   --r: 10px;
   --r-klein: 5px;
-  --schatten-karte: 0.25rem 0.25rem 1rem 0.2rem rgba(28, 51, 38, 0.04);
-  --schatten-hover: 4px 6px 16px -4px rgba(28, 51, 38, 0.12);
-  --schatten-feld: 0.1rem 0.1rem 0 0.1rem rgba(28, 51, 38, 0.05), inset 0 0 0 1px var(--ring);
-  --schatten-feld-fokus: 0.1rem 0.1rem 0 0.1rem rgba(28, 51, 38, 0.09), inset 0 0 0 2px var(--brand);
-  --schatten-modal: 6px 7px 53px -4px rgba(28, 51, 38, 0.35);
+  --schatten-karte: 4px 4px 16px 3.2px rgba(0, 0, 0, 0.03);
+  --schatten-hover: 6px 8px 24px 4px rgba(0, 0, 0, 0.05);
+  --schatten-feld: inset 0 0 0 1px var(--feld-rand);
+  --schatten-feld-fokus: 1.6px 1.6px 0 1.6px rgba(47, 49, 59, 0.09), inset 0 0 0 2px var(--brand);
+  --schatten-modal: 0 20px 60px rgba(0, 0, 0, 0.2);
+  --schatten-tooltip: -5px 13px 26px -5px rgba(0, 0, 0, 0.36);
   --tc: all 0.35s ease;
   /* Bewegung (aeweb-Designsystem): ruhig, kurze Wege, ohne Nachfedern */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
@@ -102,7 +124,7 @@ body {
   min-height: 100svh;
   background: var(--bg);
   color: var(--text);
-  font-family: 'OrmeetFont', 'Segoe UI', Roboto, sans-serif;
+  font-family: 'OrmeetFont', sans-serif;
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
 }
@@ -604,8 +626,9 @@ details > summary::-webkit-details-marker {
     font-size: var(--fs-label);
     font-weight: 500;
     line-height: 1;
-    padding: 0.45rem 0.65rem;
-    border-radius: var(--r-klein);
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: var(--schatten-tooltip);
     white-space: nowrap;
     pointer-events: none;
     opacity: 0;
@@ -760,7 +783,6 @@ details > summary::-webkit-details-marker {
 
 .card {
   background: var(--flaeche);
-  border: 1px solid var(--linie);
   border-radius: var(--r-gross);
   padding: 2rem;
   box-shadow: var(--schatten-karte);
@@ -770,7 +792,6 @@ details > summary::-webkit-details-marker {
 @media (max-width: 700px) {
   .card {
     padding: 1.25rem;
-    border-radius: 14px;
   }
 }
 
@@ -963,6 +984,7 @@ details > summary::-webkit-details-marker {
 .btn-icon {
   padding: 0.45rem 0.6rem;
   min-width: 2.5rem;
+  border-radius: 40px;
   font-size: 1.1rem;
   line-height: 1;
   letter-spacing: 0;
@@ -1022,7 +1044,7 @@ details > summary::-webkit-details-marker {
   width: 100%;
   min-height: 2.5rem;
   padding: 0.5rem 0.75rem;
-  background: white;
+  background-color: var(--bg);
   color: var(--text);
   border: 0;
   border-radius: var(--r);
@@ -1032,12 +1054,16 @@ details > summary::-webkit-details-marker {
   &::placeholder {
     color: var(--text-leise);
   }
+  &:hover {
+    box-shadow: inset 0 0 0 1px var(--text-muted);
+  }
   &:focus, &:focus-within {
+    background-color: white;
     box-shadow: var(--schatten-feld-fokus);
   }
   &:disabled {
-    background: var(--flaeche-soft);
-    box-shadow: none;
+    background-color: transparent;
+    box-shadow: inset 0 0 0 1px var(--linie);
     color: var(--text-muted);
   }
 }
@@ -1158,7 +1184,7 @@ input[type="color"].input, .farbe {
   padding: 0.2rem;
   border: 0;
   border-radius: var(--r);
-  background: white;
+  background: var(--bg);
   box-shadow: var(--schatten-feld);
   cursor: pointer;
   flex: none;
@@ -1188,11 +1214,11 @@ input[type="color"].input, .farbe {
 input[type="checkbox"],
 input[type="radio"] {
   appearance: none;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 18px;
+  height: 18px;
   margin: 0;
   flex: none;
-  border: 1.5px solid var(--text-leise);
+  border: 1.5px solid var(--feld-rand);
   background-color: white;
   background-repeat: no-repeat;
   background-position: center;
@@ -1221,7 +1247,7 @@ input[type="radio"] {
 }
 
 input[type="checkbox"] {
-  border-radius: var(--r-klein);
+  border-radius: 4px;
   &:checked {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 12.5l5 5L20 6.5' fill='none' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   }
@@ -1252,7 +1278,7 @@ input[type="radio"] {
   gap: 0.25rem;
   background: var(--minze);
   color: var(--wald);
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 0.2rem 0.6rem 0.2rem 0.75rem;
   font-size: var(--fs-sm);
   .chip-x {
@@ -1291,14 +1317,30 @@ input[type="radio"] {
     outline: none;
     padding: 0.2rem;
   }
+  /* Mehrfachauswahl: Auswahl hinter den Pillen */
+  select {
+    flex: 1 1 9rem;
+    min-width: 9rem;
+    border: 0;
+    background: transparent;
+    outline: none;
+    padding: 0.2rem;
+    font-size: var(--fs-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    box-shadow: none;
+    &:focus {
+      box-shadow: none;
+    }
+  }
 }
 
 /* ---------- Badges ---------- */
 
 .badge {
   display: inline-block;
-  padding: 0.15rem 0.6rem;
-  border-radius: 999px;
+  padding: 2.4px 8px;
+  border-radius: 16px;
   font-size: var(--fs-label);
   font-weight: 600;
   white-space: nowrap;
@@ -1364,7 +1406,7 @@ input[type="radio"] {
     gap: 0.5rem;
     padding: 0.75rem 1rem;
     border-radius: var(--tab-r) var(--tab-r) 0 0;
-    background: var(--tint-5);
+    background: var(--tint-10);
     color: var(--text-muted);
     font-size: var(--fs-sm);
     font-weight: 700;
@@ -1372,11 +1414,11 @@ input[type="radio"] {
     transition: var(--tc);
     -webkit-tap-highlight-color: transparent;
     &:hover {
-      background: var(--tint-10);
+      background: var(--tint-20);
       color: var(--text);
     }
     &:not(.aktiv):active {
-      background: var(--tint-20);
+      background: color-mix(in srgb, var(--wald) 28%, transparent);
       transition-duration: var(--dauer-druck);
     }
     &:focus-visible {
@@ -1476,7 +1518,7 @@ input[type="radio"] {
     cursor: pointer;
     transition: var(--tc);
     &:hover {
-      background: var(--flaeche-soft);
+      background: var(--bg);
     }
   }
 }
@@ -1544,7 +1586,6 @@ input[type="radio"] {
     border-radius: var(--r);
     padding: 0.4rem;
     box-shadow: var(--schatten-modal);
-    border: 1px solid var(--linie-leise);
     /* Panel mit Formularfeldern (bleibt beim Klick darin offen) */
     &.panel {
       min-width: 20rem;
@@ -1609,8 +1650,8 @@ select.btn-pille {
   display: block;
   width: 100%;
   text-align: left;
-  padding: 0.65rem 0.85rem;
-  border-radius: var(--r-klein);
+  padding: 8px 12px;
+  border-radius: var(--r);
   font-size: var(--fs-sm);
   color: var(--text);
   transition: var(--tc);
@@ -1635,7 +1676,7 @@ select.btn-pille {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgba(28, 51, 38, 0.4);
+  background: color-mix(in srgb, var(--bg) 30%, transparent);
   backdrop-filter: blur(15px);
   display: flex;
   align-items: center;
@@ -1644,22 +1685,53 @@ select.btn-pille {
   animation: einblenden var(--dauer) ease both;
 }
 
+/* Wie die Bestätigungen ($.confirm): Titel im Rahmen, weisse Karte 3px vom Rand, Knöpfe darunter ohne eigene Fläche */
 .modal {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  max-width: 30rem;
-  background: white;
-  border-radius: var(--r-gross);
-  padding: 2rem;
-  box-shadow: var(--schatten-modal);
+  max-width: 560px;
   max-height: 95svh;
+  background: var(--bg);
+  border-radius: var(--r-gross);
+  box-shadow: var(--schatten-modal);
+  overflow: hidden;
+  animation: skalieren 0.2s var(--ease-out) backwards;
+}
+.modal-titel {
+  margin: 0;
+  padding: 1rem calc(3px + 1.5rem);
+  font-size: var(--fs-h2);
+  font-weight: 600;
+  color: var(--wald);
+}
+.modal-inhalt {
+  margin: 0 3px;
+  padding: 1.5rem;
+  border-radius: var(--r-gross);
+  background: white;
   overflow: auto;
-  animation: aufsteigen var(--dauer-eintritt) var(--ease-out) backwards;
+}
+.modal-inhalt:last-child {
+  margin-bottom: 3px;
+}
+.modal-fuss {
+  padding: 1rem;
+  .row {
+    justify-content: flex-end;
+  }
+}
+
+@keyframes skalieren {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
 }
 
 @media (max-width: 700px) {
-  .modal {
+  .modal-inhalt {
     padding: 1.25rem;
-    border-radius: 14px;
   }
 }
 
@@ -1929,6 +2001,15 @@ select.btn-pille {
     display: flex;
     flex-direction: column;
   }
+  /* Stufen-Schalter bzw. Pille «Individuell» mit ⋯-Menü für Einzelrechte */
+  .rechte-steuerung {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .link-zeilen .text .nahtlos {
+    font-weight: 600;
+  }
   .teilen-zeile {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1999,7 +2080,8 @@ select.btn-pille {
 @media (max-width: 700px) {
   .teilen .teilen-zeile {
     grid-template-columns: auto minmax(0, 1fr);
-    .schalter {
+    .schalter,
+    .rechte-steuerung {
       grid-column: 2;
     }
   }
@@ -2110,6 +2192,12 @@ select.btn-pille {
   .titel {
     font-weight: 600;
   }
+  /* Protokolltext (Beschluss, Information, Pendenz) in normaler Grösse – hebt sich vom kleinen grauen Infotext ab */
+  .notiz {
+    font-size: var(--fs-base);
+    color: var(--text);
+    line-height: 1.5;
+  }
 }
 
 .pendenz-uebertragen {
@@ -2194,9 +2282,69 @@ select.btn-pille {
 
 /* ---------- Login ---------- */
 
+/* Schwebender Glasrahmen auf ruhig wanderndem Licht in Waldgrün und Limette (aeweb Auth-Kit) */
+.app:has(.login) {
+  position: relative;
+  isolation: isolate;
+  &::before,
+  &::after {
+    content: '';
+    position: fixed;
+    z-index: -1;
+    width: 46vmax;
+    height: 46vmax;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.32;
+    pointer-events: none;
+    animation: licht-wandern 26s ease-in-out infinite alternate;
+  }
+  &::before {
+    left: -12vmax;
+    top: -16vmax;
+    background: color-mix(in srgb, var(--wald) 55%, transparent);
+  }
+  &::after {
+    right: -14vmax;
+    bottom: -20vmax;
+    background: color-mix(in srgb, var(--brand) 40%, transparent);
+    animation-duration: 32s;
+    animation-delay: -8s;
+  }
+}
+
+@keyframes licht-wandern {
+  to {
+    transform: translate(6vmax, 4vmax) scale(1.12);
+  }
+}
+
+.page:has(> .login) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .login {
-  max-width: 24rem;
-  margin: 3rem auto 0;
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 32px 33px 29px;
+  gap: 28px;
+  background: rgb(from var(--flaeche) r g b / 0.92);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 30px 80px -30px rgb(from var(--wald) r g b / 0.25), var(--schatten-karte);
+  /* Nebenweg als ruhige Linkzeile unter einer Trennlinie */
+  > p:last-child {
+    padding-top: 16px;
+    border-top: 1px solid var(--linie-leise);
+  }
+}
+
+@media (max-width: 700px) {
+  .login {
+    padding: 24px 20px;
+  }
 }
 
 /* Gremium-Wechsel in der persönlichen Übersicht */
@@ -2278,6 +2426,10 @@ select.btn-pille {
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  .app:has(.login)::before,
+  .app:has(.login)::after {
+    animation: none !important;
   }
 }
 
@@ -2456,8 +2608,9 @@ select.btn-pille {
     z-index: 50;
     width: max-content;
     max-width: min(20rem, 80vw);
-    padding: 0.55rem 0.75rem;
-    border-radius: var(--r-klein);
+    padding: 8px 12px;
+    border-radius: 8px;
+    box-shadow: var(--schatten-tooltip);
     background: color-mix(in srgb, var(--text) 88%, transparent);
     backdrop-filter: blur(15px);
     color: white;
@@ -2614,10 +2767,110 @@ select.btn-pille {
 
 .banner {
   background: var(--brand-hell2);
-  border-radius: var(--r-gross);
+  border: 1px solid var(--brand-hell);
+  border-radius: var(--r);
   padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+/* ---------- Dialoge (jquery-confirm, wie in Orki) ---------- */
+
+.jconfirm {
+  font-family: 'OrmeetFont', sans-serif;
+  .jconfirm-bg {
+    background-color: rgba(28, 51, 38, 0.35);
+  }
+  .jconfirm-box {
+    border-radius: var(--r-gross);
+    box-shadow: var(--schatten-modal);
+  }
+  /* Weisse Karte 3px vom Rand, Fuss ohne eigenen Hintergrund: nur die Knöpfe haben 1rem Abstand */
+  &.jconfirm-light .jconfirm-box div.jconfirm-content-pane {
+    display: block;
+    margin: 0 3px;
+  }
+  &.jconfirm-light .jconfirm-box .jconfirm-buttons {
+    background: transparent;
+    padding: 1rem;
+    margin: 0;
+  }
+  .jconfirm-box .jconfirm-title-c .jconfirm-title {
+    font-size: var(--fs-h2);
+    font-weight: 600;
+  }
+  .jconfirm-box .jconfirm-content {
+    color: var(--text-muted);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+  }
+  .jconfirm-box .jconfirm-content .input {
+    margin-top: 0.75rem;
+  }
+  .jconfirm-box .jconfirm-buttons button {
+    min-height: 2.5rem;
+    padding: 0.6rem 1.5rem;
+    border-radius: var(--r);
+    font-family: inherit;
+    font-size: var(--fs-sm);
+    font-weight: 700;
+  }
+}
+
+/* ---------- Cronjob einrichten (Einstellungen) ---------- */
+
+.modal:has(.cron) {
+  max-width: 760px;
+}
+
+.cron {
+  code {
+    display: block;
+    padding: 0.6rem 0.8rem;
+    border-radius: var(--r-klein);
+    background: var(--flaeche-soft);
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: var(--fs-sm);
+    word-break: break-all;
+    user-select: text;
+  }
+  code.leer {
+    background: transparent;
+    padding-left: 0;
+    font-style: italic;
+    color: var(--text-muted);
+  }
+  .cron-abschnitt {
+    padding-top: 1rem;
+    border-top: 1px solid var(--linie-leise);
+  }
+  .cron-code {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    code {
+      flex: 1 1 15rem;
+    }
+  }
+  .cron-feld {
+    display: grid;
+    grid-template-columns: 8rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+  }
+}
+@media (max-width: 700px) {
+  .cron .cron-feld {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.25rem;
+  }
+}
+
+/* Zugriffsübersicht: Abschnitte mit Personen und Links */
+.zugriffe .label {
+  margin-bottom: 0.25rem;
 }

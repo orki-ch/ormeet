@@ -24,7 +24,7 @@ export default {
   emits: ['schliessen'],
   template: `
     <Modal titel="Neue Kurzsitzung" @schliessen="$emit('schliessen')">
-      <form class="stack" @submit.prevent="erstellen">
+      <form id="formular-kurzsitzung" class="stack" @submit.prevent="erstellen">
         <div><span class="label">Titel</span><input v-model.trim="titel" class="input" placeholder="Worum geht es?" required autofocus /></div>
         <div class="row" style="gap: 0.5rem 1.5rem">
           <label class="check small"><input v-model="terminfindung" type="radio" :value="false" /> Jetzt bzw. Termin steht fest</label>
@@ -41,11 +41,13 @@ export default {
             <label v-for="m in gremium.mitglieder" :key="m.id" class="check small"><input v-model="teilnehmende" type="checkbox" :value="m.id" /> {{ m.name }}</label>
           </div>
         </div>
+      </form>
+      <template #fuss>
         <div class="row">
           <button type="button" class="btn" @click="$emit('schliessen')">Abbrechen</button>
-          <button class="btn btn-primary ml-auto">{{ terminfindung ? 'Zur Terminfindung' : 'Kurzsitzung starten' }}</button>
+          <button form="formular-kurzsitzung" class="btn btn-primary ml-auto">{{ terminfindung ? 'Zur Terminfindung' : 'Kurzsitzung starten' }}</button>
         </div>
-      </form>
+      </template>
     </Modal>
   `,
   data() {

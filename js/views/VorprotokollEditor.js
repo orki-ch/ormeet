@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
-import { aktuellePerson, darfEigene, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfEigene, eigeneKennung, einzelrecht, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -11,6 +11,7 @@ import PdfExportButton from '../components/PdfExportButton.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
 import TeilenKarte from '../components/TeilenKarte.js'
 import TraktandenListe from '../components/TraktandenListe.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 export default {
   name: 'VorprotokollEditor',
@@ -29,6 +30,8 @@ export default {
             <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
             <p v-if="sitzung.genehmigt" class="small text-ok mt-1">Das Protokoll dieser Sitzung wurde am {{ formatDatum(sitzung.genehmigt.datum) }} genehmigt – Vorprotokoll und Protokoll können nicht mehr bearbeitet werden.</p>
             <p v-else-if="gesperrt" class="muted small mt-1">Zu dieser Sitzung gibt es bereits ein Protokoll – das Vorprotokoll ist damit abgeschlossen und kann nicht mehr bearbeitet werden.<span v-if="darfProtokoll"> Änderungen sind erst wieder möglich, wenn das Protokoll entfernt wird (im Protokoll über ⋯).</span></p>
+            <p v-else-if="individuell" class="muted small mt-1">Bearbeiten kannst du hier: {{ einzelrechteText || 'nichts – nur ansehen' }}.</p>
+            <p v-else-if="istLink && !voll" class="muted small mt-1">Dieses Vorprotokoll ist über diesen Link nur zum Lesen freigegeben.</p>
             <p v-else-if="person && !voll && !eigene" class="muted small mt-1">Dieses Vorprotokoll ist für dich nur zum Lesen freigegeben.</p>
             <p v-else-if="person && !voll" class="muted small mt-1">Bearbeitbar sind die dir zugewiesenen Traktanden (farbiger Rahmen) und deine Anwesenheit.</p>
             <p v-else-if="person && voll" class="muted small mt-1">Als Sitzungsleitung / Protokollführung hast du vollen Zugriff auf dieses Vorprotokoll.</p>
@@ -40,6 +43,7 @@ export default {
             <MenuDropdown>
               <PdfExportButton typ="vorprotokoll" :sitzung-id="sitzung.id" class="menu-item" />
               <button v-if="linksSichtbar" class="menu-item" @click="kopieren(vorprotokoll.freigabeLinkKey)">Allgemeinen Freigabe-Link kopieren</button>
+              <router-link v-if="zugriffeVerwalten" :to="'/sitzung/' + sitzung.id + '/zugriffe'" class="menu-item">Zugriffe verwalten</router-link>
               <button v-if="voll && !gesperrt" class="menu-item menu-item-danger" @click="zuruecksetzen">Vorprotokoll neu aufsetzen</button>
             </MenuDropdown>
           </div>
@@ -68,16 +72,19 @@ export default {
 
         <section class="card">
           <h2 class="card-title">Gäste</h2>
-          <GaesteListe :gaeste="vorprotokoll.gaeste" :nur-lesen="!voll" />
+          <GaesteListe :gaeste="vorprotokoll.gaeste" :nur-lesen="!voll && !darfEinzeln('gaeste')" />
         </section>
       </div>
 
       <div>
         <p v-if="!nurLesen && eigene" class="muted small mb-2">Traktanden mit farbigem Rahmen kannst du anklicken und bearbeiten.</p>
-        <TraktandenListe :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="voll ? null : person" :nur-lesen="nurLesen || !eigene" />
+        <TraktandenListe v-if="individuell" :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl"
+          :nur-lesen="!darfEinzeln('traktandenBearbeiten') && !darfEinzeln('traktandenHinzufuegen')" :ohne-hinzufuegen="!darfEinzeln('traktandenHinzufuegen')"
+          :darf-punkt="darfEinzeln('traktandenBearbeiten') ? null : selbstHinzugefuegt" :neu-von="kennung" />
+        <TraktandenListe v-else :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="voll ? null : person" :nur-lesen="nurLesen || !eigene" />
       </div>
 
-      <TeilenKarte :sitzung="sitzung" dokument="vorprotokoll" :vorprotokoll="vorprotokoll" :darf-setzen="voll && !nurLesen" :links-sichtbar="linksSichtbar" />
+      <TeilenKarte :sitzung="sitzung" dokument="vorprotokoll" :vorprotokoll="vorprotokoll" :darf-setzen="voll && !nurLesen && !istLink" :links-sichtbar="linksSichtbar" />
 
     </div>
 
@@ -112,6 +119,19 @@ export default {
     voll() {
       return !this.gesperrt && vollzugriff(this.sitzung, 'vorprotokoll')
     },
+    // Einzelrechte («Individuell») über einen zusätzlichen Link oder eine persönliche Freigabe
+    individuell() {
+      return !this.gesperrt && istIndividuell(this.sitzung, 'vorprotokoll')
+    },
+    istLink() {
+      return sync.zugriff?.rolle === 'link'
+    },
+    kennung() {
+      return eigeneKennung(this.gremium.id) || ''
+    },
+    einzelrechteText() {
+      return Object.entries(EINZELRECHTE.vorprotokoll).filter(([recht]) => this.darfEinzeln(recht)).map(([, label]) => label).join(', ')
+    },
     // Eigene Traktanden bearbeiten (false bei Freigabe «Lesen»)
     eigene() {
       return !this.gesperrt && darfEigene(this.sitzung, 'vorprotokoll')
@@ -123,9 +143,12 @@ export default {
     nurLesen() {
       return rolleIm(this.gremium.id) === 'gremium' && recht('sitzungen', this.gremium.id) !== 'bearbeiten'
     },
-    // Links (Schlüssel) sind nur für Admin / Gremium-Zugang sichtbar
+    // Links (Schlüssel): Admin / Gremium-Zugang sowie Sitzungsleitung und Protokollführung dieser Sitzung
     linksSichtbar() {
-      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id)) && !this.nurLesen
+      return linksSichtbar(this.sitzung) && !this.nurLesen
+    },
+    zugriffeVerwalten() {
+      return verwaltetSitzung(this.sitzung)
     },
     zurueck() {
       return zurueckZu(this.gremium.id).pfad
@@ -168,7 +191,13 @@ export default {
       return vollzugriff(sitzungenStore.sitzungById(this.sitzungId), 'vorprotokoll')
     },
     darfAnwesenheit(m) {
-      return this.voll || (this.eigene && this.person && m.id === this.person.id)
+      return this.voll || this.darfEinzeln('anwesenheit') || (this.eigene && this.person && m.id === this.person.id)
+    },
+    darfEinzeln(recht) {
+      return !this.gesperrt && einzelrecht(this.sitzung, 'vorprotokoll', recht)
+    },
+    selbstHinzugefuegt(t) {
+      return !!this.kennung && t.hinzugefuegtVon === this.kennung
     },
     rolleName(rolleId) {
       return gremienStore.rolleName(this.gremium.id, rolleId)
@@ -177,8 +206,8 @@ export default {
       return location.href.split('#')[0] + '#/freigabe/' + key
     },
     // Vorprotokoll löschen und wie beim Anlegen der Sitzung neu aufsetzen (Vorlage, Anwesenheit, Pendenzen / Anträge an ihrem Ort)
-    zuruecksetzen() {
-      if (!confirm('Dieses Vorprotokoll löschen und neu aufsetzen? Traktanden, Anwesenheit und Gäste werden wie beim Anlegen der Sitzung neu erstellt; offene Pendenzen und vertagte Anträge werden dabei wieder an ihrem bisherigen Ort eingefügt.')) return
+    async zuruecksetzen() {
+      if (!(await bestaetigen('Dieses Vorprotokoll löschen und neu aufsetzen? Traktanden, Anwesenheit und Gäste werden wie beim Anlegen der Sitzung neu erstellt; offene Pendenzen und vertagte Anträge werden dabei wieder an ihrem bisherigen Ort eingefügt.', { gefahr: true }))) return
       sitzungenStore.setzeVorprotokollZurueck(this.sitzung.id)
     },
     kopieren(key) {

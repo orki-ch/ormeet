@@ -1,21 +1,26 @@
 import { gremienStore } from '../stores/gremien.js'
-import { sitzungenStore } from '../stores/sitzungen.js'
+import { fristText, sitzungenStore } from '../stores/sitzungen.js'
 import { sync, laden } from '../stores/sync.js'
 import { api } from '../api.js'
-import { istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
+import { darfEintragenVergeben, darfSitzungenEintragen, istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
 import GremiumSuche from '../components/GremiumSuche.js'
+import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
+import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
+import MenuDropdown from '../components/MenuDropdown.js'
+import SitzungDialog from '../components/SitzungDialog.js'
 import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 import SsoButtons from '../components/SsoButtons.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 const AKTIV_KEY = 'ormeet-aktives-gremium'
 
 // Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
 export default {
   name: 'PersonSeite',
-  components: { GremiumSuche, KurzsitzungenListe, SsoButtons, ThemenbereichLinks },
+  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MehrfachAuswahl, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
   },
@@ -74,7 +79,13 @@ export default {
       <GremiumSuche :gremium-id="gremium.id" />
 
       <section class="card">
-        <h2 class="card-title">Sitzungen</h2>
+        <div class="card-head">
+          <h2 class="card-title">Sitzungen</h2>
+          <div v-if="darfEintragen" class="row">
+            <button class="btn" @click="kurzDialog = true">+ Kurzsitzung</button>
+            <button class="btn btn-primary" @click="sitzungDialog = true">+ Sitzung</button>
+          </div>
+        </div>
         <p v-if="!sitzungen.length" class="muted small">Noch keine Sitzungen.</p>
         <div v-else class="zeilen" style="--spalten: auto 2fr auto 1fr">
           <div v-for="s in sitzungen" :key="s.id" class="zeile">
@@ -87,6 +98,9 @@ export default {
               <router-link v-if="s.terminfindung?.status === 'offen'" :to="'/sitzung/' + s.id + '/terminfindung'" class="btn btn-ghost">Terminfindung</router-link>
               <router-link v-if="vorprotokollVon(s) || istLeitung(s, person.id)" :to="'/sitzung/' + s.id + '/vorprotokoll'" class="btn btn-ghost">Vorprotokoll</router-link>
               <router-link v-if="s.datum && protokollVon(s)" :to="'/sitzung/' + s.id + '/protokoll'" class="btn btn-ghost">Protokoll</router-link>
+              <MenuDropdown v-if="darfLoeschen(s)">
+                <button class="menu-item menu-item-danger" @click="sitzungLoeschen(s)">Sitzung löschen</button>
+              </MenuDropdown>
             </div>
           </div>
         </div>
@@ -94,8 +108,18 @@ export default {
 
       <section v-if="kurzsitzungen.length" class="card">
         <h2 class="card-title">Kurzsitzungen</h2>
-        <KurzsitzungenListe :sitzungen="kurzsitzungen" />
+        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
       </section>
+
+      <!-- Präsidium / Aktuariat mit Konto: Recht «Sitzungen eintragen» an andere Konten vergeben -->
+      <section v-if="darfVergeben" class="card">
+        <h2 class="card-title">Sitzungen eintragen dürfen</h2>
+        <p class="hint">Präsidium und Aktuariat dürfen immer. Weitere Mitglieder mit Konto kannst du hier berechtigen.</p>
+        <MehrfachAuswahl :model-value="eintragende" :optionen="eintragendeOptionen" placeholder="+ Person berechtigen …" @update:model-value="eintragendeSetzen" />
+      </section>
+
+      <SitzungDialog v-if="sitzungDialog" :gremium-id="gremium.id" @schliessen="sitzungDialog = false" />
+      <KurzsitzungDialog v-if="kurzDialog" :gremium-id="gremium.id" @schliessen="kurzDialog = false" />
 
       <section class="card">
         <h2 class="card-title">Meine Pendenzen</h2>
@@ -104,7 +128,7 @@ export default {
           <div v-for="{ eintrag, sitzung } in pendenzen" :key="eintrag.id" class="zeile">
             <span><strong>{{ eintrag.titel }}</strong><p v-if="eintrag.inhalt" class="muted">{{ eintrag.inhalt }}</p></span>
             <span class="nowrap muted">aus Sitzung {{ formatDatum(sitzung.datum) }}</span>
-            <span class="nowrap">{{ eintrag.faelligBis ? 'bis ' + formatDatum(eintrag.faelligBis) : '' }}</span>
+            <span class="nowrap">{{ fristText(eintrag, sitzung) }}</span>
             <select v-model="eintrag.pendenzStatus" class="input w-sm" :title="'Status: ' + PENDENZ_STATUS[eintrag.pendenzStatus]">
               <option v-for="(label, wert) in PENDENZ_STATUS" :key="wert" :value="wert">{{ label }}</option>
             </select>
@@ -137,6 +161,8 @@ export default {
       kontoForm: { name: sync.zugriff.personName || '', email, passwort: '' },
       kontoFehler: '',
       kontoLaeuft: false,
+      sitzungDialog: false,
+      kurzDialog: false,
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
       PENDENZ_STATUS,
@@ -171,6 +197,19 @@ export default {
     kurzsitzungen() {
       return sitzungenStore.kurzsitzungen(this.gremium.id).filter((s) => istLeitung(s, this.person.id) || sitzungenStore.teilnehmende(s).includes(this.person.id))
     },
+    darfEintragen() {
+      return darfSitzungenEintragen(this.gremium.id)
+    },
+    darfVergeben() {
+      return darfEintragenVergeben(this.gremium.id)
+    },
+    // Mitglieder mit Konto ohne feste Rolle, denen das Recht «Sitzungen eintragen» zugeteilt werden kann
+    eintragendeOptionen() {
+      return this.gremium.mitglieder.filter((m) => m.benutzerId && !gremienStore.hatFesteRolle(this.gremium.id, m)).map((m) => ({ wert: m.id, label: m.name }))
+    },
+    eintragende() {
+      return this.gremium.mitglieder.filter((m) => m.darfSitzungenEintragen && this.eintragendeOptionen.some((o) => o.wert === m.id)).map((m) => m.id)
+    },
     rolleName() {
       return gremienStore.rolleName(this.gremium.id, this.person.rolleId)
     },
@@ -196,6 +235,7 @@ export default {
     },
   },
   methods: {
+    fristText,
     formatDatum,
     sitzungStatus,
     istLeitung,
@@ -229,6 +269,18 @@ export default {
     },
     protokollVon(s) {
       return sitzungenStore.protokollVonSitzung(s.id)
+    },
+    // Eigene Sitzungen ohne Protokoll darf wieder löschen, wer Sitzungen eintragen darf
+    darfLoeschen(s) {
+      return this.darfEintragen && s.erstelltVon === this.person.id && !this.protokollVon(s)
+    },
+    async sitzungLoeschen(s) {
+      if (await bestaetigen(`Sitzung «${s.titel || 'Sitzung'}» ${s.datum ? 'vom ' + formatDatum(s.datum) + ' ' : ''}löschen?`, { gefahr: true })) sitzungenStore.loescheSitzung(s.id)
+    },
+    eintragendeSetzen(ids) {
+      this.gremium.mitglieder.forEach((m) => {
+        if (this.eintragendeOptionen.some((o) => o.wert === m.id)) m.darfSitzungenEintragen = ids.includes(m.id)
+      })
     },
     abgestimmt(s) {
       return s.terminfindung.stimmen.some((st) => st.personId === this.person.id)

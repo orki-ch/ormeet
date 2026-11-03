@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, istGenehmigt, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, einzelrecht, istGenehmigt, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
 import { allePunkte, dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -18,6 +18,7 @@ import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 import Aenderungsantraege from '../components/Aenderungsantraege.js'
 import { neuerKey } from '../utils/keys.js'
 import { neuesTraktandum } from '../utils/traktanden.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 export default {
   name: 'ProtokollEditor',
@@ -49,6 +50,7 @@ export default {
               <button class="menu-item" @click="speichern">Jetzt speichern <span class="leise">Ctrl+S</span></button>
               <PdfExportButton typ="protokoll" :sitzung-id="sitzungId" class="menu-item" @click.capture="speichern" />
               <button v-if="linksSichtbar" class="menu-item" @click="verfolgerLinkKopieren">Verfolger-Link kopieren</button>
+              <router-link v-if="zugriffeVerwalten" :to="'/sitzung/' + sitzungId + '/zugriffe'" class="menu-item">Zugriffe verwalten</router-link>
               <button v-if="!kurz" class="menu-item" @click="$router.push('/sitzung/' + sitzungId + '/vorprotokoll')">Zum Vorprotokoll</button>
               <button v-if="voll && sitzung.status === 'abgeschlossen'" class="menu-item" @click="sitzung.status = 'laufend'">{{ kurz ? 'Kurzsitzung' : 'Sitzung' }} wieder öffnen</button>
               <button v-if="darfEntfernen && !kurz" class="menu-item menu-item-danger" @click="entfernen">Protokoll entfernen</button>
@@ -136,7 +138,7 @@ export default {
             </p>
 
             <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
-            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" />
+            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" :erlaubte-typen="erlaubteTypen" />
 
             <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
               <template #default="{ u, typ, darf }">
@@ -147,7 +149,7 @@ export default {
                   an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
                 </p>
                 <div v-if="typ !== 'antraege'" class="mt-1">
-                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" />
+                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" :erlaubte-typen="erlaubteTypen" />
                 </div>
               </template>
             </Unterpunkte>
@@ -155,7 +157,7 @@ export default {
           <!-- Zeit unten rechts an der Karte -->
           <div v-if="t.dauer" class="dauer-zeile small">
             <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
-            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
+            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t) || !!erlaubteTypen" @change="dauerBereinigen(t.id)" /> Min.</span>
           </div>
           <div v-if="kurz && kurzAktiv === t.id" class="row mt-1">
             <button class="btn ml-auto" @click="kurzSchliessen(t)">Fertig</button>
@@ -310,11 +312,19 @@ export default {
     eigene() {
       return darfEigene(this.sitzung, 'protokoll')
     },
+    // Einzelrechte (zusätzlicher Link oder Freigabe «Individuell»): Einträge nur der freigegebenen Typen, überall
+    erlaubteTypen() {
+      if (!istIndividuell(this.sitzung, 'protokoll')) return null
+      return Object.keys(EINZELRECHTE.protokoll).filter((typ) => einzelrecht(this.sitzung, 'protokoll', typ))
+    },
     vorprotokollDokument() {
       return sitzungenStore.vorprotokollVonSitzung(this.sitzungId)
     },
     linksSichtbar() {
-      return ['admin', 'gremium'].includes(rolleIm(this.gremium.id))
+      return linksSichtbar(this.sitzung)
+    },
+    zugriffeVerwalten() {
+      return verwaltetSitzung(this.sitzung)
     },
     // Löschen nimmt der Server nur von Admin / Gremium-Zugang an
     darfEntfernen() {
@@ -422,6 +432,7 @@ export default {
       else delete this.protokoll.dauern[traktandumId]
     },
     darfTraktandum(t) {
+      if (this.erlaubteTypen) return this.erlaubteTypen.length > 0
       return this.voll || (this.eigene && this.person && istBerechtigt(t, this.person))
     },
     // Unterpunkt, auf dem die Person selbst berechtigt ist (Rechte von oben erbt der Baum)
@@ -516,9 +527,9 @@ export default {
       this.kurzAktiv = null
       if (t && !t.titel && !this.protokoll.eintraege.some((e) => e.traktandumId === t.id)) this.kurzEntfernen(t)
     },
-    kurzLoeschen(t) {
+    async kurzLoeschen(t) {
       const anzahl = this.protokoll.eintraege.filter((e) => e.traktandumId === t.id).length
-      if (anzahl && !confirm(`Traktandum «${t.titel || 'Ohne Titel'}» mit ${anzahl} Einträgen löschen?`)) return
+      if (anzahl && !(await bestaetigen(`Traktandum «${t.titel || 'Ohne Titel'}» mit ${anzahl} Einträgen löschen?`, { gefahr: true }))) return
       this.kurzEntfernen(t)
       this.kurzAktiv = null
     },
@@ -544,16 +555,16 @@ export default {
       this.speichern()
     },
     // Formell korrekter Weg zurück: erst das Protokoll entfernen, dann ist das Vorprotokoll wieder bearbeitbar
-    entfernen() {
-      if (!confirm('Protokoll dieser Sitzung entfernen? Alle Einträge gehen verloren; das Vorprotokoll kann danach wieder bearbeitet werden.')) return
+    async entfernen() {
+      if (!(await bestaetigen('Protokoll dieser Sitzung entfernen? Alle Einträge gehen verloren; das Vorprotokoll kann danach wieder bearbeitet werden.', { gefahr: true }))) return
       clearTimeout(this.speicherTimer)
       this.gespeichert = true // sonst würde beforeUnmount das gelöschte Protokoll erneut speichern
       sitzungenStore.loescheProtokoll(this.sitzungId)
       serverSpeichern()
       this.$router.push('/sitzung/' + this.sitzungId + '/vorprotokoll')
     },
-    genehmigen() {
-      if (!confirm('Protokoll vom ' + formatDatum(this.vorherige.datum) + ' genehmigen? Es kann danach von niemandem mehr geändert werden.')) return
+    async genehmigen() {
+      if (!(await bestaetigen('Protokoll vom ' + formatDatum(this.vorherige.datum) + ' genehmigen? Es kann danach von niemandem mehr geändert werden.'))) return
       sitzungenStore.genehmigen(this.vorherige.id, this.sitzungId)
       serverSpeichern()
     },

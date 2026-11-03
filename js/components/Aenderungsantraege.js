@@ -1,5 +1,6 @@
 import { springeZu } from '../utils/springen.js'
 import InfoKnopf from './InfoKnopf.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 const STATUS = { offen: 'Offen', uebernommen: 'Übernommen', abgelehnt: 'Abgelehnt' }
 const STATUS_KLASSE = { offen: 'gelb', uebernommen: 'gruen', abgelehnt: 'rot' }
@@ -63,8 +64,8 @@ export default {
       antrag.status = status
       antrag.entschiedenVon = this.entscheiderName
     },
-    zurueckziehen(antrag) {
-      if (!confirm('Änderungsantrag zurückziehen?')) return
+    async zurueckziehen(antrag) {
+      if (!(await bestaetigen('Änderungsantrag zurückziehen?', { gefahr: true }))) return
       this.alle.splice(this.alle.indexOf(antrag), 1)
     },
   },

@@ -4,6 +4,7 @@ import { gremiumLoeschen } from '../stores/sync.js'
 import { uebersichtsKonto } from '../utils/rechte.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 import MenuDropdown from './MenuDropdown.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 // Zeilen einer Liste von Kurzsitzungen; Löschen entfernt bei Kurzsitzungen ohne Gremium auch ihren Behälter
 export default {
@@ -37,7 +38,7 @@ export default {
     formatDatum,
     sitzungStatus,
     async loeschen(s) {
-      if (!confirm(`Kurzsitzung «${s.titel || 'Kurzsitzung'}» inkl. Protokoll unwiderruflich löschen?`)) return
+      if (!(await bestaetigen(`Kurzsitzung «${s.titel || 'Kurzsitzung'}» inkl. Protokoll unwiderruflich löschen?`, { gefahr: true }))) return
       const gremium = gremienStore.byId(s.gremiumId)
       if (!gremium.kurz) return sitzungenStore.loescheSitzung(s.id)
       await gremiumLoeschen(gremium.id)

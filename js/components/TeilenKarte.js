@@ -1,12 +1,15 @@
 import { gremienStore } from '../stores/gremien.js'
-import { FREIGABE_STUFEN, freigabeStufe, istLeitung, rolleIm, standardStufe } from '../utils/rechte.js'
+import { EINZELRECHTE, FREIGABE_STUFEN, freigabeRoh, freigabeStufe, istLeitung, rolleIm, standardStufe } from '../utils/rechte.js'
 import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
+import LinkZeilen from './LinkZeilen.js'
+import RechteSchalter from './RechteSchalter.js'
 
 // Teilen-Karte eines Vorprotokolls / Protokolls: wer hat welchen Zugriff, Freigabestufe pro Person setzen,
 // Links kopieren. Die Stufen sind mit den geltenden Rechten vorbelegt (Leitung «Alles», sonst «Eigene»);
 // eine gesetzte Stufe gilt nur für dieses Dokument und überschreibt die übrigen Rechte.
 export default {
   name: 'TeilenKarte',
+  components: { LinkZeilen, RechteSchalter },
   props: {
     sitzung: { type: Object, required: true },
     dokument: { type: String, required: true }, // vorprotokoll | protokoll
@@ -22,7 +25,7 @@ export default {
         <span class="zaehler"><span class="punkt"></span>{{ zeilen.length }} {{ linksSichtbar ? 'Links' : 'Personen' }}</span>
       </div>
       <p v-if="istPerson" class="hint">Du siehst dieses Dokument über deinen persönlichen Link. {{ darfSetzen ? 'Als Leitung kannst du hier festlegen, wer was darf.' : 'Einstellen musst du hier nichts – die Übersicht zeigt, wer was darf.' }}</p>
-      <p v-else class="hint">Lesen = nur ansehen · Eigene = zugewiesene Traktanden bearbeiten · Alles = das ganze Dokument bearbeiten. {{ linksSichtbar ? 'Klick auf eine Zeile zeigt den passenden Link.' : '' }}</p>
+      <p v-else class="hint">Lesen = nur ansehen · Eigene = zugewiesene Traktanden bearbeiten · Alles = das ganze Dokument bearbeiten · Einzelne Rechte über ⋯ (Individuell). {{ linksSichtbar ? 'Klick auf eine Zeile zeigt den passenden Link.' : '' }}</p>
 
       <div class="teilen-liste">
         <div v-for="z in zeilen" :key="z.id" class="teilen-zeile" :class="{ gewaehlt: linksSichtbar && gewaehlt === z.id, klick: linksSichtbar && z.link }" @click="linksSichtbar && z.link && (gewaehlt = z.id)">
@@ -31,9 +34,8 @@ export default {
             <strong>{{ z.name }}</strong>
             <span class="leise small">{{ z.beschreibung }}</span>
           </span>
-          <span v-if="z.personId" class="schalter" :class="{ gesetzt: z.gesetzt }" :title="z.gesetzt ? 'Für dieses Dokument gesetzt (weicht vom Standard ab)' : 'Standard'">
-            <button v-for="(label, stufe) in FREIGABE_STUFEN" :key="stufe" type="button" :class="{ aktiv: z.stufe === stufe }" :disabled="!darfSetzen" @click.stop="setzen(z, stufe)">{{ label }}</button>
-          </span>
+          <RechteSchalter v-if="z.personId" :stufe="z.stufe" :stufen="FREIGABE_STUFEN" :rechte="z.rechte" :einzelrechte="EINZELRECHTE[dokument]" :gesetzt="z.gesetzt" :disabled="!darfSetzen"
+            @stufe="setzen(z, $event)" @rechte="rechteSetzen(z, $event)" @zuruecksetzen="setzen(z, standardStufe(sitzung, z.personId))" />
           <span v-else class="schalter fix"><button type="button" class="aktiv" disabled>{{ z.fix }}</button></span>
         </div>
       </div>
@@ -43,6 +45,11 @@ export default {
         <button type="button" class="btn btn-ghost" @click="kopieren">{{ kopiert ? 'Kopiert ✓' : 'Kopieren' }}</button>
       </div>
 
+      <template v-if="linksSichtbar">
+        <h3 class="label mt-3">Weitere allgemeine Links</h3>
+        <LinkZeilen :sitzung="sitzung" :dokument="dokument" />
+      </template>
+
       <div v-if="darfSetzen && abweichungen" class="row mt-2">
         <button type="button" class="btn" @click="zuruecksetzen">Auf Standardfreigabe zurücksetzen</button>
         <span class="leise small">{{ abweichungen }} {{ abweichungen === 1 ? 'Abweichung' : 'Abweichungen' }} vom Standard</span>
@@ -50,7 +57,7 @@ export default {
     </section>
   `,
   data() {
-    return { gewaehlt: '', kopiert: false, FREIGABE_STUFEN }
+    return { gewaehlt: '', kopiert: false, FREIGABE_STUFEN, EINZELRECHTE }
   },
   computed: {
     gremium() {
@@ -111,7 +118,9 @@ export default {
         beschreibung: [rolle, zuweisung].filter(Boolean).join(' · '),
         initialen: this.initialen(person.name),
         stufe,
-        gesetzt: stufe !== standardStufe(this.sitzung, person.id),
+        // Über einen Link eingetragene Personen: ohne gesetzte Freigabe die Rechte ihres Links
+        rechte: stufe === 'individuell' ? freigabeRoh(this.sitzung, this.sitzung.kurz ? 'protokoll' : this.dokument, person.id) : [],
+        gesetzt: stufe !== standardStufe(this.sitzung, person.id) && person.id in this.freigaben,
         link,
       }
     },
@@ -133,6 +142,12 @@ export default {
       this.sitzung.freigaben[this.dokument] ??= {}
       if (stufe === standardStufe(this.sitzung, zeile.personId)) delete this.sitzung.freigaben[this.dokument][zeile.personId]
       else this.sitzung.freigaben[this.dokument][zeile.personId] = stufe
+    },
+    standardStufe,
+    rechteSetzen(zeile, rechte) {
+      this.sitzung.freigaben ??= { vorprotokoll: {}, protokoll: {} }
+      this.sitzung.freigaben[this.dokument] ??= {}
+      this.sitzung.freigaben[this.dokument][zeile.personId] = rechte
     },
     zuruecksetzen() {
       this.sitzung.freigaben[this.dokument] = {}

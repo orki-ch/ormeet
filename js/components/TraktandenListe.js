@@ -25,6 +25,11 @@ export default {
     bearbeiterAuswahl: { type: Array, required: true }, // Personen + Rollen + Gruppen
     nurPerson: { type: Object, default: null }, // Mitglied / Gast hinter einem persönlichen Link
     nurLesen: { type: Boolean, default: false },
+    // Einzelrechte: ohneHinzufuegen blendet «Neues Traktandum» aus; darfPunkt(t) ersetzt die Prüfung pro Traktandum;
+    // neuVon markiert neue Traktanden als selbst hinzugefügt (bleiben dann bearbeitbar)
+    ohneHinzufuegen: { type: Boolean, default: false },
+    darfPunkt: { type: Function, default: null },
+    neuVon: { type: String, default: '' },
   },
   template: `
     <div class="stack">
@@ -79,7 +84,7 @@ export default {
 
       <p v-if="gesamtDauer" class="muted small">Geplante Dauer insgesamt: {{ formatDauer(gesamtDauer) }}</p>
 
-      <form v-if="!nurLesen" class="row" @submit.prevent="hinzufuegen">
+      <form v-if="!nurLesen && !ohneHinzufuegen" class="row" @submit.prevent="hinzufuegen">
         <input v-model.trim="neu" class="input grow" placeholder="Neues Traktandum …" required />
         <button class="btn">Hinzufügen</button>
       </form>
@@ -101,6 +106,7 @@ export default {
     kindTyp,
     hauptEditierbar(t) {
       if (this.nurLesen) return false
+      if (this.darfPunkt) return this.darfPunkt(t)
       return !this.nurPerson || istBerechtigt(t, this.nurPerson)
     },
     // Unterpunkt allein bearbeitbar (Person mit Rechten darauf), wenn das Element darüber gesperrt ist
@@ -129,6 +135,7 @@ export default {
         reihenfolge: this.traktanden.length + 1,
         verantwortliche: person ? [{ id: person.id, name: person.name }] : [],
       })
+      if (this.neuVon) traktandum.hinzugefuegtVon = this.neuVon
       this.traktanden.push(traktandum)
       this.neu = ''
       this.aktiv = traktandum.id

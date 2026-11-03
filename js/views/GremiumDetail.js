@@ -8,20 +8,23 @@ import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } fro
 import GremiumSuche from '../components/GremiumSuche.js'
 import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
 import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
+import SitzungDialog from '../components/SitzungDialog.js'
 import MenuDropdown from '../components/MenuDropdown.js'
+import ZugriffeListe from '../components/ZugriffeListe.js'
 import Modal from '../components/Modal.js'
 import PersonenInput from '../components/PersonenInput.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
+import { bestaetigen, hinweis } from '../utils/dialog.js'
 
 // Kurzsitzungen: eigener Reiter neben den Sitzungen, mit denselben Rechten wie die Sitzungen
-const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen' }
+const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen', zugriffe: 'Zugriffe' }
 const TAB_BEREICH = { kurzsitzungen: 'sitzungen' }
 const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearbeiten' }
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, ThemenbereichLinks, TraktandenListe },
+  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -196,6 +199,12 @@ export default {
         </section>
 
         <section class="card">
+          <h2 class="card-title">Erinnerung</h2>
+          <p class="hint">So viele Tage vor einer Sitzung erinnert Ormeet die Beteiligten – in der Glocke und, falls eingerichtet, per E-Mail.</p>
+          <label class="row small"><input v-model.number="gremium.erinnerungTage" class="input w-sm" type="number" min="0" max="60" /> Tage vorher</label>
+        </section>
+
+        <section class="card">
           <h2 class="card-title">Fusstext</h2>
           <p class="hint">Erscheint am Ende jedes Protokolls.</p>
           <textarea v-model.trim="gremium.fusstext" class="input" rows="2"></textarea>
@@ -234,9 +243,16 @@ export default {
         </form>
       </section>
 
+      <!-- Tab: Zugriffe (Eigentümer, Superadmin): wer Zugriff hat und worüber -->
+      <section v-if="tab === 'zugriffe'" class="card">
+        <h2 class="card-title">Wer hat Zugriff?</h2>
+        <p class="hint">Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. Über ⋯ sperrst du Zugänge, erneuerst Links oder versiehst allgemeine Links mit Passwort und Ablauf.</p>
+        <ZugriffeListe :gremium-id="gremiumId" />
+      </section>
+
       <!-- Dialog: Mitglied -->
       <Modal v-if="mitglied" :titel="mitglied.id ? 'Mitglied bearbeiten' : 'Neues Mitglied'" @schliessen="mitglied = null">
-        <form class="stack" @submit.prevent="mitgliedSpeichern">
+        <form id="formular-mitglied" class="stack" @submit.prevent="mitgliedSpeichern">
           <div><span class="label">Name</span><input v-model.trim="mitglied.name" class="input" required autofocus /></div>
           <div><span class="label">E-Mail</span><input v-model.trim="mitglied.email" class="input" type="email" /></div>
           <div>
@@ -246,6 +262,7 @@ export default {
             </select>
           </div>
           <label class="check"><input v-model="mitglied.hatStimmrecht" type="checkbox" /> Stimmberechtigt</label>
+          <label v-if="mitglied.benutzerId && !gremienStore.hatFesteRolle(gremiumId, mitglied)" class="check"><input v-model="mitglied.darfSitzungenEintragen" type="checkbox" /> Darf Sitzungen eintragen (mit Konto)</label>
           <div v-if="istSuperadmin" class="block-soft stack-sm">
             <span class="label" style="margin: 0">Konto</span>
             <select v-model="mitglied.benutzerId" class="input">
@@ -263,40 +280,18 @@ export default {
               <button type="button" class="btn btn-ghost" @click="mitgliedLinkErneuern">Erneuern</button>
             </div>
           </div>
+        </form>
+        <template #fuss>
           <div class="row">
             <button v-if="mitglied.id" type="button" class="btn btn-danger" @click="mitgliedEntfernen">Entfernen</button>
             <button type="button" class="btn ml-auto" @click="mitglied = null">Abbrechen</button>
-            <button class="btn btn-primary">Speichern</button>
+            <button form="formular-mitglied" class="btn btn-primary">Speichern</button>
           </div>
-        </form>
+        </template>
       </Modal>
 
       <!-- Dialog: Sitzung -->
-      <Modal v-if="sitzungDialog" titel="Neue Sitzung" @schliessen="sitzungDialog = false">
-        <form class="stack" @submit.prevent="sitzungHinzufuegen">
-          <div class="row" style="gap: 0.5rem 1.5rem">
-            <label class="check small"><input v-model="neueSitzung.terminfindung" type="radio" :value="false" /> Termin steht fest</label>
-            <label class="check small"><input v-model="neueSitzung.terminfindung" type="radio" :value="true" /> Termin per Abstimmung finden</label>
-          </div>
-          <div v-if="!neueSitzung.terminfindung" class="grid-2">
-            <div><span class="label">Datum</span><input v-model="neueSitzung.datum" class="input" type="date" required autofocus /></div>
-            <div><span class="label">Zeit</span><input v-model="neueSitzung.zeit" class="input" type="time" /></div>
-          </div>
-          <p v-else class="small muted">Nach dem Erfassen legst du Terminvorschläge an; die Beteiligten stimmen über ihre Links ab. Das Vorprotokoll kann trotzdem schon vorbereitet werden.</p>
-          <div><span class="label">Ort</span><input v-model.trim="neueSitzung.ort" class="input" /></div>
-          <div>
-            <span class="label">Vorprotokoll-Vorlage</span>
-            <select v-model="neueSitzung.vorlageId" class="input">
-              <option value="">Leeres Vorprotokoll</option>
-              <option v-for="v in gremium.vorlagen" :key="v.id" :value="v.id">{{ v.name }}</option>
-            </select>
-          </div>
-          <div class="row" style="justify-content: flex-end">
-            <button type="button" class="btn" @click="sitzungDialog = false">Abbrechen</button>
-            <button class="btn btn-primary">{{ neueSitzung.terminfindung ? 'Weiter zur Terminfindung' : 'Sitzung erfassen' }}</button>
-          </div>
-        </form>
-      </Modal>
+      <SitzungDialog v-if="sitzungDialog" :gremium-id="gremiumId" @schliessen="sitzungDialog = false" />
     </div>
   `,
   data() {
@@ -315,11 +310,11 @@ export default {
       neueVorlage: '',
       anwendenAuf: {}, // pro Vorlage: gewählte Sitzungs-IDs
       angewendet: '',
-      neueSitzung: { datum: '', zeit: '', ort: '', vorlageId: '', terminfindung: false },
       ROLLEN_TYPEN,
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
       sync,
+      gremienStore,
     }
   },
   computed: {
@@ -351,7 +346,7 @@ export default {
     sichtbareTabs() {
       const tabs = {}
       for (const [id, label] of Object.entries(TABS)) {
-        if (id === 'teilen' ? this.istAdmin : recht(TAB_BEREICH[id] || id, this.gremiumId) !== 'keine') tabs[id] = label
+        if (['teilen', 'zugriffe'].includes(id) ? this.istAdmin : recht(TAB_BEREICH[id] || id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
     },
@@ -391,8 +386,8 @@ export default {
       this.kopiert = zugang.id
       setTimeout(() => (this.kopiert = ''), 2000)
     },
-    linkErneuern(zugang) {
-      if (confirm('Link erneuern? Der bisherige Link wird sofort ungültig.')) zugang.key = neuerKey()
+    async linkErneuern(zugang) {
+      if (await bestaetigen('Link erneuern? Der bisherige Link wird sofort ungültig.')) zugang.key = neuerKey()
     },
     zugangHinzufuegen() {
       this.gremium.zugaenge.push(neuerZugang(this.neuerZugangName))
@@ -406,8 +401,8 @@ export default {
       this.kopiert = this.mitglied.id
       setTimeout(() => (this.kopiert = ''), 2000)
     },
-    mitgliedLinkErneuern() {
-      if (confirm('Persönlichen Link erneuern? Der bisherige Link wird sofort ungültig.')) this.mitglied.zugangsKey = neuerKey()
+    async mitgliedLinkErneuern() {
+      if (await bestaetigen('Persönlichen Link erneuern? Der bisherige Link wird sofort ungültig.')) this.mitglied.zugangsKey = neuerKey()
     },
     mitgliedSpeichern() {
       const liste = this.gremium.mitglieder
@@ -451,32 +446,25 @@ export default {
       const alle = this.sitzungenOhneProtokoll.map((s) => s.id)
       this.anwendenAuf[vorlage.id] = this.anwendenAuf[vorlage.id].length === alle.length ? [] : alle
     },
-    vorlageAnwenden(vorlage) {
+    async vorlageAnwenden(vorlage) {
       const ids = this.anwendenAuf[vorlage.id]
-      if (!confirm(`Vorlage «${vorlage.name}» auf ${ids.length} ${ids.length === 1 ? 'Sitzung' : 'Sitzungen'} anwenden? Bestehende Traktanden dieser Vorprotokolle werden ersetzt.`)) return
+      if (!(await bestaetigen(`Vorlage «${vorlage.name}» auf ${ids.length} ${ids.length === 1 ? 'Sitzung' : 'Sitzungen'} anwenden? Bestehende Traktanden dieser Vorprotokolle werden ersetzt.`))) return
       ids.forEach((id) => sitzungenStore.wendeVorlageAn(id, vorlage.id))
       this.anwendenAuf[vorlage.id] = []
       this.angewendet = vorlage.id
       setTimeout(() => (this.angewendet = ''), 3000)
     },
-    sitzungHinzufuegen() {
-      const sitzung = sitzungenStore.erstelleSitzung(this.gremiumId, this.neueSitzung)
-      const terminfindung = this.neueSitzung.terminfindung
-      this.neueSitzung = { datum: '', zeit: '', ort: '', vorlageId: this.neueSitzung.vorlageId, terminfindung: false }
-      this.sitzungDialog = false
-      if (terminfindung) this.$router.push('/sitzung/' + sitzung.id + '/terminfindung')
-    },
-    sitzungLoeschen(sitzung) {
+    async sitzungLoeschen(sitzung) {
       if (sitzung.genehmigt) {
-        alert('Das Protokoll dieser Sitzung wurde an der Sitzung vom ' + formatDatum(sitzung.genehmigt.datum) + ' genehmigt. Es kann erst gelöscht werden, wenn jene Sitzung gelöscht wird.')
+        hinweis('Das Protokoll dieser Sitzung wurde an der Sitzung vom ' + formatDatum(sitzung.genehmigt.datum) + ' genehmigt. Es kann erst gelöscht werden, wenn jene Sitzung gelöscht wird.')
         return
       }
-      if (confirm('Sitzung vom ' + formatDatum(sitzung.datum) + ' inkl. Protokoll löschen?')) {
+      if (await bestaetigen('Sitzung vom ' + formatDatum(sitzung.datum) + ' inkl. Protokoll löschen?', { gefahr: true })) {
         sitzungenStore.loescheSitzung(sitzung.id)
       }
     },
     async loeschen() {
-      if (!confirm('Gremium «' + this.gremium.name + '» inkl. aller Sitzungen unwiderruflich löschen?')) return
+      if (!(await bestaetigen('Gremium «' + this.gremium.name + '» inkl. aller Sitzungen unwiderruflich löschen?', { gefahr: true }))) return
       await gremiumLoeschen(this.gremiumId)
       sitzungenStore.loescheSitzungenVonGremium(this.gremiumId)
       gremienStore.loesche(this.gremiumId)

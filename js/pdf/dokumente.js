@@ -1,4 +1,5 @@
 import { ANTRAG_STATUS, PENDENZ_STATUS, PUNKT_TYP, TYP_LABELS, formatDatum, formatDauer, stimmenText } from '../utils/labels.js'
+import { fristText } from '../stores/sitzungen.js'
 import { allePunkte, dauerSumme, istAntragPunkt, kindTyp, personenText } from '../utils/traktanden.js'
 
 const STYLES = {
@@ -65,7 +66,7 @@ function pendenzenTabelle(pendenzen) {
     pendenzen.map(({ eintrag, sitzung }) => [
       { stack: [eintrag.titel, ...(eintrag.inhalt ? [{ text: eintrag.inhalt, style: 'klein' }] : [])] },
       eintrag.zugewiesenAnName || '–',
-      formatDatum(eintrag.faelligBis),
+      fristText(eintrag, sitzung).replace(/^bis /, '') || '–',
       PENDENZ_STATUS[eintrag.pendenzStatus],
       formatDatum(sitzung.datum),
     ]),
@@ -119,7 +120,7 @@ function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, ue
 function eintragBlock(eintrag, label = TYP_LABELS[eintrag.typ]) {
   let status = ''
   if (eintrag.typ === 'pendenz') {
-    status = [PENDENZ_STATUS[eintrag.pendenzStatus], eintrag.zugewiesenAnName, eintrag.faelligBis && `bis ${formatDatum(eintrag.faelligBis)}`]
+    status = [PENDENZ_STATUS[eintrag.pendenzStatus], eintrag.zugewiesenAnName, fristText(eintrag)]
       .filter(Boolean)
       .join(' · ')
   }

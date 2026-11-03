@@ -2,6 +2,8 @@ import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync } from '../stores/sync.js'
 import { rolleIm } from '../utils/rechte.js'
+import { formatDatum } from '../utils/labels.js'
+import { gastPfad } from '../router.js'
 import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
 import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 
@@ -36,6 +38,16 @@ export default {
         </router-link>
       </div>
 
+      <!-- Als weitere Person (über einen allgemeinen Link mit Konto) bei einzelnen Sitzungen dabei -->
+      <section v-if="gastSitzungen.length" class="card">
+        <h2 class="card-title">Sitzungen als Gast</h2>
+        <div class="liste">
+          <router-link v-for="g in gastSitzungen" :key="g.sitzungId" :to="gastPfad(g)" class="liste-zeile">
+            <strong class="grow">{{ titel(g) }}</strong><span class="leise small">{{ g.name }}</span>
+          </router-link>
+        </div>
+      </section>
+
       <template v-if="kurzsitzungen.length || darfKurzAnlegen">
         <header class="page-header row between" style="margin: 1rem 0 0">
           <h1 class="title">Kurzsitzungen</h1>
@@ -58,13 +70,16 @@ export default {
       return this.persoenlich ? sync.zugriff?.konto : sync.zugriff?.rolle === 'benutzer' ? sync.zugriff : null
     },
     gremien() {
-      const ids = this.konto && new Set(this.konto.gremien.map((g) => g.gremiumId))
+      const ids = this.konto && new Set(this.konto.gremien.filter((g) => g.rolle !== 'gast').map((g) => g.gremiumId))
       return gremienStore.state.gremien.filter((g) => !g.kurz && (!ids || ids.has(g.id)))
     },
     // Kurzsitzungen ohne Gremium (ihr Behälter ist ein verstecktes Gremium)
     kurzsitzungen() {
       const ids = this.konto && new Set(this.konto.gremien.map((g) => g.gremiumId))
       return sitzungenStore.kurzsitzungen().filter((s) => gremienStore.byId(s.gremiumId)?.kurz && (!ids || ids.has(s.gremiumId)))
+    },
+    gastSitzungen() {
+      return (this.konto?.gremien || []).filter((g) => g.rolle === 'gast')
     },
     darfAnlegen() {
       return !this.persoenlich && (sync.zugriff?.rolle === 'admin' || !!this.konto?.darfGremienAnlegen)
@@ -74,6 +89,11 @@ export default {
     },
   },
   methods: {
+    gastPfad,
+    titel(gast) {
+      const sitzung = sitzungenStore.sitzungById(gast.sitzungId)
+      return (sitzung?.titel || 'Sitzung') + (sitzung?.datum ? ' · ' + formatDatum(sitzung.datum) : ' · Termin wird gesucht')
+    },
     anzahlSitzungen(gremiumId) {
       return sitzungenStore.sitzungenVonGremium(gremiumId).length
     },

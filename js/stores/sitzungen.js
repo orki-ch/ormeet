@@ -1,5 +1,6 @@
 import { gremienStore } from './gremien.js'
 import { neuerKey } from '../utils/keys.js'
+import { formatDatum } from '../utils/labels.js'
 import { allePunkte, istAntragPunkt, kopiereTraktandum, neuesTraktandum, neuesUntertraktandum, punkteMitElternTyp, punktMitPfad, titelPfad, unterPunktEinfuegen } from '../utils/traktanden.js'
 
 const state = Vue.reactive({ sitzungen: [], vorprotokolle: [], protokolle: [] })
@@ -15,11 +16,37 @@ export function neueTerminfindung() {
     verdeckt: false, // Ergebnisse nur für Bearbeiter sichtbar
     bearbeitbar: true, // Teilnehmende dürfen ihre Stimme später ändern
     gewaehlteOptionId: null,
+    freigabe: [], // Rollen (rolle:<id>) und Personen, die die Terminfindung zusätzlich bearbeiten dürfen
+    entfernt: [], // entfernte Personen: für diese Sitzung entschuldigt
   }
+}
+
+// Frist einer Pendenz als Datum: «bis zur nächsten Sitzung» (faelligBis = 'naechste') wird zum Termin der nächsten
+// Sitzung nach der Sitzung der Pendenz – leer, solange es noch keinen gibt
+export function fristDatum(eintrag, sitzung = null) {
+  if (eintrag.faelligBis !== 'naechste') return eintrag.faelligBis || ''
+  const herkunft = sitzung || sitzungenStore.sitzungById(state.protokolle.find((p) => p.eintraege.some((e) => e.id === eintrag.id))?.sitzungId)
+  return (herkunft && sitzungenStore.naechsteSitzung(herkunft.id)?.datum) || ''
+}
+
+// Frist als Text: «bis 12.12.2026» oder «bis zur nächsten Sitzung (12.12.2026)»
+export function fristText(eintrag, sitzung = null) {
+  if (eintrag.faelligBis !== 'naechste') return eintrag.faelligBis ? 'bis ' + formatDatum(eintrag.faelligBis) : ''
+  const datum = fristDatum(eintrag, sitzung)
+  return 'bis zur nächsten Sitzung' + (datum ? ` (${formatDatum(datum)})` : '')
 }
 
 export const sitzungenStore = {
   state,
+
+  // Nächste Sitzung nach dieser: der im Protokoll festgelegte nächste Termin, sonst die nächste mit späterem Datum
+  naechsteSitzung(sitzungId) {
+    const sitzung = sitzungenStore.sitzungById(sitzungId)
+    if (!sitzung?.datum) return null
+    const festgelegt = sitzungenStore.sitzungById(sitzung.naechsterTerminId)
+    if (festgelegt?.datum) return festgelegt
+    return sitzungenStore.sitzungenVonGremium(sitzung.gremiumId).find((s) => s.datum > sitzung.datum) || null
+  },
 
   sitzungById(id) {
     return state.sitzungen.find((s) => s.id === id)
@@ -102,7 +129,7 @@ export const sitzungenStore = {
       .filter(({ eintrag, sitzung }) => eintrag.typ === 'antrag' && eintrag.antragStatus === 'vertagt' && !behandelt.has(eintrag.id) && !sitzung.kurz && sitzung.datum && sitzung.datum < vorDatum)
   },
 
-  erstelleSitzung(gremiumId, { datum, zeit, ort, vorlageId, terminfindung = false }) {
+  erstelleSitzung(gremiumId, { datum, zeit, ort, vorlageId, terminfindung = false, erstelltVon = null }) {
     const vorlage = gremienStore.byId(gremiumId).vorlagen.find((v) => v.id === vorlageId)
     const kopie = (liste) => (liste || []).map((p) => ({ ...p }))
     const sitzung = {
@@ -123,6 +150,9 @@ export const sitzungenStore = {
       terminfindung: terminfindung ? neueTerminfindung() : null,
       status: terminfindung ? 'terminfindung' : 'geplant',
       kurz: false, // Kurzsitzung (siehe erstelleKurzsitzung)
+      erstelltVon, // Person, die die Sitzung eingetragen hat (bearbeitet die Terminfindung); leer: Sitzungsleitung
+      links: [], // zusätzliche allgemeine Links pro Dokument: [{ id, key, name, dokument, stufe, rechte, ablauf }]
+      gesperrt: [], // für diese Sitzung gesperrte Personen
     }
     state.sitzungen.push(sitzung)
     return sitzung
@@ -131,7 +161,7 @@ export const sitzungenStore = {
   // Kurzsitzung: sofort oder per Terminfindung; ohne Vorlage, Leitung und Protokollführung ist die anlegende Person.
   // Das versteckte Vorprotokoll hält Teilnehmende (Mitglieder), Gäste mit Links und die im Protokoll erfassten Traktanden.
   erstelleKurzsitzung(gremiumId, { titel, datum, zeit, ort, terminfindung = false, teilnehmende = [], leitung = [] }) {
-    const sitzung = sitzungenStore.erstelleSitzung(gremiumId, { datum, zeit, ort, terminfindung })
+    const sitzung = sitzungenStore.erstelleSitzung(gremiumId, { datum, zeit, ort, terminfindung, erstelltVon: leitung[0]?.id || null })
     Object.assign(sitzung, { kurz: true, titel, vorlageId: null, sitzungsleitung: leitung.map((p) => ({ ...p })), protokollfuehrung: leitung.map((p) => ({ ...p })), bemerkungen: '' })
     const vorprotokoll = sitzungenStore.erstelleVorprotokoll(sitzung.id)
     vorprotokoll.anwesendeMitgliederIds = [...teilnehmende]
@@ -188,9 +218,12 @@ export const sitzungenStore = {
       id: crypto.randomUUID(),
       sitzungId,
       freigabeLinkKey: neuerKey(),
+      freigabeLinkAblauf: '',
       personenKeys: {}, // persönliche Freigabe-Links für Gäste: { [gastId]: key }
+      aliasKeys: {}, // frühere Links zusammengeführter Personen: { [key]: personId }
       gaeste: [],
-      anwesendeMitgliederIds: kurz ? [] : gremienStore.erwarteteMitglieder(gremium.id).map((m) => m.id),
+      // Aus der Terminfindung entfernte Personen sind entschuldigt
+      anwesendeMitgliederIds: kurz ? [] : gremienStore.erwarteteMitglieder(gremium.id).map((m) => m.id).filter((id) => !sitzung.terminfindung?.entfernt?.includes(id)),
       traktanden: (vorlage?.traktanden || []).map(kopiereTraktandum),
     }
     state.vorprotokolle.push(vorprotokoll)

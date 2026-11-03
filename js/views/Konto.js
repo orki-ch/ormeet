@@ -38,6 +38,12 @@ export default {
       </section>
 
       <section class="card stack">
+        <h2 class="card-title">E-Mails</h2>
+        <p class="hint">Gibt es Neues – eine Sitzung steht bevor, deine Stimme fehlt, eine Pendenz ist fällig –, erhältst du höchstens eine Sammelmail pro Tag an {{ konto.email }}.</p>
+        <label class="check small"><input type="checkbox" :checked="!konto.mailsAus" :disabled="laeuft" @change="speichern({ mailsAus: !$event.target.checked })" /> Mitteilungen per E-Mail erhalten</label>
+      </section>
+
+      <section class="card stack">
         <h2 class="card-title">Geräte</h2>
         <p class="small muted">Du bist auf {{ konto.geraete || 1 }} Gerät(en) angemeldet. Alle anderen Anmeldungen kannst du hier beenden.</p>
         <div><button class="btn" :disabled="laeuft" @click="speichern({ alleAbmelden: true })">Andere Geräte abmelden</button></div>

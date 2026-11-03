@@ -1,10 +1,11 @@
 import { gremienStore } from '../stores/gremien.js'
-import { sitzungenStore } from '../stores/sitzungen.js'
+import { fristText, sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
 import { neuerKey } from '../utils/keys.js'
 import { rolleIm, zurueckZu } from '../utils/rechte.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import { ANTRAG_STATUS, PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, formatDatum, stimmenText } from '../utils/labels.js'
+import { bestaetigen } from '../utils/dialog.js'
 
 export default {
   name: 'ThemenbereichSummary',
@@ -47,7 +48,7 @@ export default {
             <strong>{{ eintrag.titel }}</strong>
             <span class="muted">{{ eintrag.inhalt }}</span>
             <span>{{ eintrag.zugewiesenAnName || '–' }}</span>
-            <span class="nowrap">{{ eintrag.faelligBis ? formatDatum(eintrag.faelligBis) : '–' }}</span>
+            <span class="nowrap">{{ fristText(eintrag, sitzung).replace(/^bis /, '') || '–' }}</span>
             <span><span class="badge" :class="PENDENZ_STATUS_KLASSE[eintrag.pendenzStatus]">{{ PENDENZ_STATUS[eintrag.pendenzStatus] }}</span></span>
           </div>
         </div>
@@ -146,6 +147,7 @@ export default {
     },
   },
   methods: {
+    fristText,
     formatDatum,
     stimmenText,
     linkKopieren() {
@@ -153,8 +155,8 @@ export default {
       this.kopiert = true
       setTimeout(() => (this.kopiert = false), 3000)
     },
-    linkErneuern() {
-      if (confirm('Übersichts-Link erneuern? Der bisherige Link wird sofort ungültig.')) this.themenbereich.freigabeKey = neuerKey()
+    async linkErneuern() {
+      if (await bestaetigen('Übersichts-Link erneuern? Der bisherige Link wird sofort ungültig.')) this.themenbereich.freigabeKey = neuerKey()
     },
     anzahl(status) {
       if (status === 'alle') return this.allePendenzen.length

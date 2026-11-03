@@ -40,8 +40,11 @@ header('Content-Type: text/html; charset=utf-8');
     <title>Ormeet – Sitzungsprotokolle</title>
 
     <meta name="ormeet-kontakt" content="<?= htmlspecialchars($kontakt) ?>" />
+    <link rel="stylesheet" href="lib/jquery-confirm.min.css?v=<?= $v ?>">
     <link rel="stylesheet" href="css/ormeet.css?v=<?= $v ?>">
 
+    <script src="lib/jquery.min.js?v=<?= $v ?>"></script>
+    <script src="lib/jquery-confirm.min.js?v=<?= $v ?>"></script>
     <script src="lib/vue.global.prod.js?v=<?= $v ?>"></script>
     <script src="lib/vue-router.global.prod.js?v=<?= $v ?>"></script>
     <script src="lib/pdfmake.min.js?v=<?= $v ?>"></script>

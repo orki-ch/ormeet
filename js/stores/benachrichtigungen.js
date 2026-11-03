@@ -1,8 +1,8 @@
 import { gremienStore } from './gremien.js'
-import { sitzungenStore } from './sitzungen.js'
+import { fristDatum, sitzungenStore } from './sitzungen.js'
 import { sync } from './sync.js'
 import { updateStand } from './updates.js'
-import { rolleIm, personIdIm, istLeitung } from '../utils/rechte.js'
+import { rolleIm, personIdIm, istLeitung, verwaltetSitzung } from '../utils/rechte.js'
 import { alleUnterpunkte, istBerechtigt } from '../utils/traktanden.js'
 import { formatDatum } from '../utils/labels.js'
 
@@ -84,7 +84,7 @@ export function benachrichtigungen() {
       } else {
         if (s.datum && (verwaltet || erwartet || leitung)) {
           const d = tageBis(s.datum)
-          if (d >= 0 && d <= 7) melde(`bald:${s.id}:${s.datum}`, `Sitzung ${sitzungName(s)} findet ${inTagen(d)} statt`, `/sitzung/${s.id}/${p ? 'protokoll' : 'vorprotokoll'}`, g)
+          if (d >= 0 && d <= (g.erinnerungTage ?? 3)) melde(`bald:${s.id}:${s.datum}`, `Sitzung ${sitzungName(s)} findet ${inTagen(d)} statt`, `/sitzung/${s.id}/${p ? 'protokoll' : 'vorprotokoll'}`, g)
         }
         if (leitung) melde(`leitung:${s.id}`, `Du bist Sitzungsleitung / Protokollführung der Sitzung ${sitzungName(s)}`, `/sitzung/${s.id}/vorprotokoll`, g)
         if (person && vp && !leitung) {
@@ -95,6 +95,14 @@ export function benachrichtigungen() {
               if (!haupt && istBerechtigt(u, person)) melde(`traktandum:${u.id}`, `Unterpunkt «${u.titel}» ist dir zugewiesen (${sitzungName(s)})`, `/sitzung/${s.id}/vorprotokoll`, g)
             }
           }
+        }
+      }
+      // Über einen allgemeinen Link eingetragen, gleicher Name oder gleiche E-Mail wie eine erfasste Person: Vorschlag
+      // zum Zusammenführen an Sitzungsleitung, Protokollführung, Präsidium / Aktuariat, Eigentümer und Superadmin
+      if (vp && (verwaltetSitzung(s) || (person && gremienStore.hatFesteRolle(g.id, person)))) {
+        const ziel = verwaltetSitzung(s) ? `/sitzung/${s.id}/zugriffe` : `/sitzung/${s.id}/terminfindung`
+        for (const gast of vp.gaeste) {
+          if (gast.vorschlag?.status === 'offen') melde(`vorschlag:${gast.id}`, `«${gast.name}» hat sich bei ${sitzungName(s)} eingetragen – vielleicht dieselbe Person wie eine bereits erfasste. Bitte prüfen.`, ziel, g)
         }
       }
       // Änderungsanträge (bis zur Genehmigung): Sitzungsleitung zur Ansicht, Protokollführung zur Anpassung,
@@ -111,10 +119,11 @@ export function benachrichtigungen() {
         for (const e of p.eintraege) {
           if (e.typ !== 'pendenz' || e.zugewiesenAn !== personId || e.pendenzStatus === 'erfuellt') continue
           melde(`pendenz:${e.id}`, `Neue Pendenz für dich: «${e.titel}»`, `/sitzung/${s.id}/protokoll`, g)
-          if (!e.faelligBis) continue
-          const d = tageBis(e.faelligBis)
-          if (d < 0) melde(`ueberfaellig:${e.id}:${e.faelligBis}`, `Pendenz «${e.titel}» ist seit ${formatDatum(e.faelligBis)} überfällig`, `/sitzung/${s.id}/protokoll`, g)
-          else if (d <= 7) melde(`faellig:${e.id}:${e.faelligBis}`, `Pendenz «${e.titel}» ist ${inTagen(d)} fällig`, `/sitzung/${s.id}/protokoll`, g)
+          const frist = fristDatum(e, s) // auch «bis zur nächsten Sitzung», sobald deren Termin feststeht
+          if (!frist) continue
+          const d = tageBis(frist)
+          if (d < 0) melde(`ueberfaellig:${e.id}:${frist}`, `Pendenz «${e.titel}» ist seit ${formatDatum(frist)} überfällig`, `/sitzung/${s.id}/protokoll`, g)
+          else if (d <= 7) melde(`faellig:${e.id}:${frist}`, `Pendenz «${e.titel}» ist ${inTagen(d)} fällig`, `/sitzung/${s.id}/protokoll`, g)
         }
       }
     }

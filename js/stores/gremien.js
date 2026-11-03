@@ -9,7 +9,7 @@ export const BEREICHE = { sitzungen: 'Sitzungen', mitglieder: 'Mitglieder & Roll
 export const ROLLEN_TYPEN = { praesidium: 'Sitzungsleitung', aktuariat: 'Protokollführung' }
 
 export function neuerZugang(name) {
-  return { id: crypto.randomUUID(), key: neuerKey(), name, rechte: { sitzungen: 'bearbeiten', mitglieder: 'lesen', einstellungen: 'lesen' } }
+  return { id: crypto.randomUUID(), key: neuerKey(), name, rechte: { sitzungen: 'bearbeiten', mitglieder: 'lesen', einstellungen: 'lesen' }, ablauf: '' }
 }
 
 export const gremienStore = {
@@ -48,6 +48,12 @@ export const gremienStore = {
     return gremium.mitglieder.filter((m) => rolleIds.includes(m.rolleId)).map(({ id, name }) => ({ id, name }))
   },
 
+  // Hat das Mitglied eine feste Rolle (Präsidium / Aktuariat)?
+  hatFesteRolle(gremiumId, mitglied) {
+    const typ = gremienStore.byId(gremiumId)?.rollen.find((r) => r.id === mitglied?.rolleId)?.typ
+    return typ === 'praesidium' || typ === 'aktuariat'
+  },
+
   // Mitglieder, deren Rolle an Sitzungen erwartet wird (Grundlage für Anwesenheit / Entschuldigte)
   erwarteteMitglieder(gremiumId) {
     const gremium = gremienStore.byId(gremiumId)
@@ -70,6 +76,7 @@ export const gremienStore = {
       fusstext:
         'Rückmeldungen, Korrekturen und Ergänzungen zum Protokoll können innert 30 Tagen an die Protokollführung erfolgen. Danach gilt das Protokoll als angenommen.',
       themenbereiche: [],
+      erinnerungTage: 3, // Erinnerung «Sitzung steht bevor» (Glocke, E-Mail)
       rollen: [
         { id: crypto.randomUUID(), name: 'Präsidium', typ: 'praesidium', sollAnwesend: true },
         { id: crypto.randomUUID(), name: 'Aktuariat', typ: 'aktuariat', sollAnwesend: true },

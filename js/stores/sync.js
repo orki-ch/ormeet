@@ -6,8 +6,12 @@ import { ergaenzeFelder } from './migration.js'
 const { reactive, watch } = Vue
 const TYPEN = ['gremien', 'sitzungen', 'vorprotokolle', 'protokolle']
 
-// Sichtbarer Zustand für Navigation und Editoren; konten: alle Konten (nur Superadmin)
-export const sync = reactive({ zugriff: null, konten: [], ausstehend: false, status: 'gespeichert', fehler: '' })
+// Sichtbarer Zustand für Navigation und Editoren; konten: alle Konten (nur Superadmin);
+// gesperrt: der Link braucht ein Passwort, ist abgelaufen oder gesperrt ({ grund, name, ziel })
+export const sync = reactive({ zugriff: null, konten: [], ausstehend: false, status: 'gespeichert', fehler: '', gesperrt: null })
+
+// Angaben pro Gremium für die Zugriffsübersicht (nicht gespeichert): zuletzt genutzt { [ref]: Datum }, Links mit Passwort [ref]
+export const zugriffsDaten = reactive({})
 
 // Zuletzt mit dem Server abgeglichener Stand pro Datensatz: { [typ]: { [id]: { gremiumId, json } } }
 let zuletzt = leererStand()
@@ -32,6 +36,7 @@ function gremiumIdVon(typ, eintrag) {
 // Server-Stand in die Stores übernehmen; lokal geänderte, noch nicht gespeicherte Datensätze haben Vorrang
 function uebernehmen(bundles) {
   const migriert = new Set(bundles.filter(ergaenzeFelder).map((b) => b.gremium.id))
+  for (const b of bundles) zugriffsDaten[b.gremium.id] = { nutzung: Array.isArray(b.nutzung) ? {} : b.nutzung || {}, geschuetzt: b.geschuetzt || [] }
 
   for (const typ of TYPEN) {
     const lokal = liste(typ)
@@ -77,6 +82,7 @@ export function recht(bereich, gremiumId) {
 export async function laden() {
   const daten = await api.anfrage('laden')
   sync.zugriff = daten.zugriff
+  sync.gesperrt = null
   sync.konten = daten.konten || []
   uebernehmen(daten.gremien)
   speichern()
@@ -167,6 +173,7 @@ export function abmelden() {
   sync.fehler = ''
   sync.ausstehend = false
   zuletzt = leererStand()
+  for (const id of Object.keys(zugriffsDaten)) delete zugriffsDaten[id]
   gremienStore.state.gremien = []
   for (const typ of ['sitzungen', 'vorprotokolle', 'protokolle']) sitzungenStore.state[typ] = []
   location.hash = '#/login'
@@ -183,6 +190,11 @@ export async function abgleichen() {
     speichern()
   } catch (fehler) {
     if (fehler.status === 401) abmelden()
+    if (fehler.gesperrt) {
+      // Link inzwischen abgelaufen oder gesperrt
+      sync.gesperrt = fehler.gesperrt
+      location.hash = '#/gesperrt'
+    }
   }
 }
 setInterval(abgleichen, 30000)

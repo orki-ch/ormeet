@@ -3,6 +3,7 @@ import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
 import { gremienStore } from './stores/gremien.js'
 import { rolleIm, vollzugriff } from './utils/rechte.js'
+import { bestaetigen } from './utils/dialog.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
 import GremiumDetail from './views/GremiumDetail.js'
@@ -17,6 +18,10 @@ import Einstellungen from './views/Einstellungen.js'
 import Benutzer from './views/Benutzer.js'
 import Konto from './views/Konto.js'
 import Datenschutz from './views/Datenschutz.js'
+import LinkGesperrt from './views/LinkGesperrt.js'
+import FreigabeSeite from './views/FreigabeSeite.js'
+import ZugriffeSeite from './views/ZugriffeSeite.js'
+import PasswortNeu from './views/PasswortNeu.js'
 
 // Hash-History: läuft auf jedem Webserver ohne Rewrite-Regeln
 const router = VueRouter.createRouter({
@@ -25,6 +30,10 @@ const router = VueRouter.createRouter({
     { path: '/login', component: Login },
     { path: '/hilfe', component: Hilfe },
     { path: '/datenschutz', component: Datenschutz },
+    // Link mit Passwort, abgelaufen oder gesperrt
+    { path: '/gesperrt', component: LinkGesperrt },
+    // Passwort vergessen: Link aus der E-Mail
+    { path: '/passwort/:code', component: PasswortNeu, props: true },
     { path: '/', component: GremiumListe },
     { path: '/meine/:gremiumId?', component: PersonSeite, props: true },
     // Persönliche Übersicht des Superadmins (über das mit ihm verknüpfte Konto)
@@ -37,10 +46,15 @@ const router = VueRouter.createRouter({
     { path: '/sitzung/:sitzungId/vorprotokoll', component: VorprotokollEditor, props: true },
     { path: '/sitzung/:sitzungId/protokoll', component: ProtokollEditor, props: true },
     { path: '/sitzung/:sitzungId/terminfindung', component: TerminfindungSeite, props: true },
+    // Zugriffsübersicht einer Sitzung (Sitzungsleitung, Protokollführung, Eigentümer, Superadmin)
+    { path: '/sitzung/:sitzungId/zugriffe', component: ZugriffeSeite, props: true },
     // Links: Gremium-Zugang / zentraler Personen-Link
     { path: '/zugang/:zugangsKey', name: 'zugang', component: GremiumListe },
-    // Freigabe-Link: Bearbeitung eines einzelnen Vorprotokolls (allgemein oder Gast)
-    { path: '/freigabe/:freigabeLinkKey', name: 'freigabe', component: VorprotokollEditor, props: true },
+    // Freigabe-Link: Bearbeitung eines einzelnen Vorprotokolls (allgemein oder Gast); Gäste behalten ihren Link in der
+    // Adresse auch auf Terminfindung und Protokoll (seite), damit er sich kopieren und auf einem anderen Gerät öffnen lässt
+    { path: '/freigabe/:freigabeLinkKey/:seite?', name: 'freigabe', component: FreigabeSeite, props: true },
+    // Zusätzlicher allgemeiner Link: ein Dokument einer Sitzung mit den Rechten des Links
+    { path: '/link/:linkKey', name: 'link', component: GremiumListe },
     // Verfolger-Link: Live-Ansicht eines Protokolls (nur lesen)
     { path: '/verfolgen/:verfolgerKey', name: 'verfolgen', component: ProtokollAnsicht, props: true },
     // Übersichts-Link eines Themenbereichs (nur lesen)
@@ -48,17 +62,25 @@ const router = VueRouter.createRouter({
   ],
 })
 
-// Daten mit dem gespeicherten Token laden (einmalig); bei ungültigem Token Token verwerfen
+// Daten mit dem gespeicherten Token laden (einmalig); bei ungültigem Token Token verwerfen.
+// Link mit Passwort, abgelaufen oder gesperrt: Token behalten, Grund merken (-> /gesperrt)
 async function angemeldet() {
   if (sync.zugriff) return true
   if (!api.token) return false
   try {
     await laden()
     return true
-  } catch {
-    api.setToken('')
+  } catch (fehler) {
+    if (fehler.gesperrt) sync.gesperrt = fehler.gesperrt
+    else api.setToken('')
     return false
   }
+}
+
+// Gesperrter Link: nach dem Passwort zurück an dieses Ziel
+function gesperrtPfad(to) {
+  sync.gesperrt.ziel = to.fullPath
+  return '/gesperrt'
 }
 
 // Link-Route: passt der aktuelle Zugang nicht, mit dem Link-Key als Token laden
@@ -72,7 +94,8 @@ async function mitLinkAnmelden(key, passt) {
 }
 
 router.beforeEach(async (to) => {
-  if (['/login', '/hilfe', '/datenschutz'].includes(to.path)) return true
+  if (['/login', '/hilfe', '/datenschutz'].includes(to.path) || to.path.startsWith('/passwort/')) return true
+  if (to.path === '/gesperrt') return sync.gesperrt ? true : '/'
 
   if (to.name === 'zugang') {
     const key = to.params.zugangsKey
@@ -81,7 +104,7 @@ router.beforeEach(async (to) => {
       // Eigener, schon verknüpfter Link (z. B. aus dem Kalender-Abo): direkt weiter
       const eigenes = sync.zugriff.gremien.find((g) => g.zugangsKey === key)
       if (eigenes) return to.query.weiter?.startsWith('/') ? to.query.weiter : `/meine/${eigenes.gremiumId}`
-      if (confirm(`Du bist mit dem Konto ${sync.zugriff.email} angemeldet. Persönlichen Link mit diesem Konto verknüpfen? «Abbrechen» öffnet den Link ohne Konto.`)) {
+      if (await bestaetigen(`Du bist mit dem Konto ${sync.zugriff.email} angemeldet. Persönlichen Link mit diesem Konto verknüpfen?`, { titel: 'Link verknüpfen', ja: 'Verknüpfen', nein: 'Ohne Konto öffnen' })) {
         const verknuepft = await api.anfrage('verknuepfen', '', { key }).catch(() => null)
         if (verknuepft) {
           sync.zugriff = null
@@ -92,16 +115,23 @@ router.beforeEach(async (to) => {
     }
     api.setToken(key)
     sync.zugriff = null
-    if (!(await angemeldet())) return '/login'
+    if (!(await angemeldet())) return sync.gesperrt ? gesperrtPfad(to) : '/login'
     if (to.query.weiter?.startsWith('/')) return to.query.weiter // z. B. aus dem Kalender direkt ins Vorprotokoll
     return startPfad()
   }
   if (to.name === 'freigabe') {
     const key = to.params.freigabeLinkKey
     await mitLinkAnmelden(key, () => sitzungenStore.vorprotokollByKey(key) || sitzungenStore.vorprotokollByPersonKey(key))
-    // Gast-Link einer Kurzsitzung: es gibt kein Vorprotokoll, nur Terminfindung bzw. Protokoll
-    const sitzung = sitzungenStore.sitzungById(sitzungenStore.vorprotokollById(sync.zugriff?.vorprotokollId)?.sitzungId)
-    return sitzung?.kurz ? kurzPfad(sitzung) : true
+    if (sync.gesperrt) return gesperrtPfad(to)
+    if (sync.zugriff?.rolle === 'person') return startPfad() // frühere Adresse einer mit einem Mitglied zusammengeführten Person
+    if (sync.zugriff?.rolle !== 'freigabe') return to.params.seite ? `/freigabe/${key}` : true // z. B. Superadmin mit dem Link
+    // Gast: nur die Seiten seiner Sitzung, die sein Link öffnet
+    const seiten = freigabeSeiten()
+    return seiten.includes(to.params.seite || 'vorprotokoll') || freigabePfad(seiten[0])
+  }
+  if (to.name === 'link') {
+    await mitLinkAnmelden(to.params.linkKey, () => sync.zugriff?.rolle === 'link' && api.token === to.params.linkKey)
+    return sync.gesperrt ? gesperrtPfad(to) : linkPfad()
   }
   if (to.name === 'verfolgen') {
     return mitLinkAnmelden(to.params.verfolgerKey, () => sitzungenStore.protokollByVerfolgerKey(to.params.verfolgerKey))
@@ -110,7 +140,7 @@ router.beforeEach(async (to) => {
     return mitLinkAnmelden(to.params.freigabeKey, () => sync.zugriff?.themenbereichId)
   }
 
-  if (!(await angemeldet())) return '/login'
+  if (!(await angemeldet())) return sync.gesperrt ? gesperrtPfad(to) : to.path === '/' ? '/login' : { path: '/login', query: { weiter: to.fullPath } }
   const zugriff = sync.zugriff
   const sitzungsPfad = to.path.startsWith('/sitzung/')
   const sitzung = sitzungsPfad ? sitzungenStore.sitzungById(to.params.sitzungId) : null
@@ -122,13 +152,12 @@ router.beforeEach(async (to) => {
 
   if (zugriff.rolle === 'verfolger') return `/verfolgen/${api.token}`
   if (zugriff.rolle === 'themenbereich') return `/themenbereich/${api.token}`
+  if (zugriff.rolle === 'link') return to.path === linkPfad() || linkPfad()
   if (zugriff.rolle === 'freigabe') {
-    // Vorprotokoll-Link: zusätzlich die Terminfindung der zugehörigen Sitzung
-    const vp = sitzungenStore.vorprotokollById(zugriff.vorprotokollId)
-    if (to.path === `/sitzung/${vp?.sitzungId}/terminfindung`) return true
-    const eigene = sitzungenStore.sitzungById(vp?.sitzungId)
-    if (eigene?.kurz) return to.path === `/sitzung/${eigene.id}/protokoll` || kurzPfad(eigene)
-    return `/freigabe/${api.token}`
+    // Freigabe-Link: Seiten der eigenen Sitzung, immer mit dem Link in der Adresse
+    const seiten = freigabeSeiten()
+    const seite = to.path.split('/')[3]
+    return freigabePfad(sitzungsPfad && to.params.sitzungId === freigabeSitzung()?.id && seiten.includes(seite) ? seite : seiten[0])
   }
   if (['/einstellungen', '/benutzer', '/uebersicht'].includes(to.path) && zugriff.rolle !== 'admin') return startPfad()
   if (to.path === '/uebersicht' && !zugriff.konto) return '/'
@@ -139,6 +168,11 @@ router.beforeEach(async (to) => {
   const rolle = rolleIm(gremiumId)
   if (zugriff.rolle === 'person' && to.path === '/meine') return gremienStore.byId(zugriff.gremiumId)?.kurz ? startPfad() : true
   if (zugriff.rolle === 'benutzer' && (to.path === '/' || to.path.startsWith('/meine'))) return to.params.gremiumId && rolle !== 'person' ? '/' : true
+  // Konto als weitere Person (Gast einer Sitzung): nur diese Sitzung
+  if (zugriff.rolle === 'benutzer' && rolle === 'freigabe') {
+    const gast = zugriff.gremien.find((g) => g.gremiumId === gremiumId)
+    return (sitzungsPfad && to.params.sitzungId === gast.sitzungId) || gastPfad(gast)
+  }
   if (rolle === 'person') {
     if (to.path.includes('/themenbereich/')) return true
     if (!sitzungsPfad) return startPfad()
@@ -170,14 +204,59 @@ export function startPfad() {
     return kurz ? kurzPfad(kurz) : '/meine'
   }
   if (zugriff.rolle === 'benutzer') {
-    const gremien = zugriff.gremien.filter((g) => !g.kurz)
+    // Nur als weitere Person bei einer Sitzung dabei: direkt dorthin
+    if (zugriff.gremien.length && zugriff.gremien.every((g) => g.rolle === 'gast')) return gastPfad(zugriff.gremien[0])
+    const gremien = zugriff.gremien.filter((g) => !g.kurz && g.rolle !== 'gast')
     const mitglied = gremien.filter((g) => g.rolle === 'mitglied')
     const nurEines = mitglied.length === gremien.length && mitglied.length === 1 && gremien.length === zugriff.gremien.length
     if (nurEines && !zugriff.darfGremienAnlegen && !zugriff.darfKurzsitzungenAnlegen) return `/meine/${mitglied[0].gremiumId}`
     return '/'
   }
   if (zugriff.rolle === 'gremium') return `/gremium/${zugriff.gremiumId}`
+  if (zugriff.rolle === 'link') return linkPfad()
   return '/'
+}
+
+// Sitzung des Freigabe-Links
+function freigabeSitzung() {
+  const vp = sitzungenStore.vorprotokollById(sync.zugriff?.vorprotokollId)
+  return sitzungenStore.sitzungById(sync.zugriff?.sitzungId || vp?.sitzungId)
+}
+
+// Seiten, die ein Freigabe-Link öffnet (die erste ist der Einstieg): Vorprotokoll und Terminfindung; über einen
+// Link eingetragene Personen nur das Dokument ihres Links; Kurzsitzungen Terminfindung bzw. Protokoll
+export function freigabeSeiten() {
+  const sitzung = freigabeSitzung()
+  if (!sitzung) return ['vorprotokoll']
+  if (sitzung.kurz) {
+    const kurz = kurzPfad(sitzung).split('/').pop()
+    return sitzung.datum ? [kurz, ...['terminfindung', 'protokoll'].filter((s) => s !== kurz && (s !== 'terminfindung' || sitzung.terminfindung))] : [kurz]
+  }
+  const dokument = sync.zugriff.dokument || 'vorprotokoll'
+  if (dokument === 'terminfindung') return sitzung.terminfindung ? ['terminfindung'] : ['vorprotokoll']
+  if (dokument === 'protokoll') return ['protokoll']
+  return sitzung.terminfindung ? ['vorprotokoll', 'terminfindung'] : ['vorprotokoll']
+}
+
+export function freigabePfad(seite) {
+  return `/freigabe/${api.token}${seite && seite !== 'vorprotokoll' ? '/' + seite : ''}`
+}
+
+// Weitere Person: ihre Sitzung – Terminfindung, solange sie läuft, sonst Vorprotokoll bzw. Protokoll (Kurzsitzung)
+export function gastPfad(gast) {
+  const sitzung = sitzungenStore.sitzungById(gast.sitzungId)
+  if (!sitzung) return '/konto'
+  if (sitzung.kurz) return kurzPfad(sitzung)
+  return `/sitzung/${sitzung.id}/${sitzung.terminfindung?.status === 'offen' ? 'terminfindung' : 'vorprotokoll'}`
+}
+
+// Zusätzlicher allgemeiner Link: sein Dokument (Kurzsitzung: Terminfindung bzw. Protokoll)
+function linkPfad() {
+  const zugriff = sync.zugriff
+  if (zugriff?.rolle !== 'link') return '/login'
+  const sitzung = sitzungenStore.sitzungById(zugriff.sitzungId)
+  if (sitzung?.kurz && zugriff.dokument === 'vorprotokoll') return kurzPfad(sitzung)
+  return `/sitzung/${zugriff.sitzungId}/${zugriff.dokument}`
 }
 
 // Kurzsitzung öffnen: solange der Termin gesucht wird die Terminfindung, sonst das Protokoll
