@@ -127,11 +127,11 @@ schluessel();
 // Leere personenKeys als Objekt ({}) statt Array ([]) ausgeben
 function normalisiere(array $bundle) {
   aufgabenMerken($bundle);
-  foreach ($bundle['gremium']['rollen'] ?? [] as &$r) {
+  if (isset($bundle['gremium']['rollen'])) foreach ($bundle['gremium']['rollen'] as &$r) {
     if (array_key_exists('rechte', $r) && empty($r['rechte'])) $r['rechte'] = new stdClass();
   }
   unset($r);
-  foreach ($bundle['sitzungen'] ?? [] as &$s) {
+  if (isset($bundle['sitzungen'])) foreach ($bundle['sitzungen'] as &$s) {
     if (array_key_exists('zuschnitt', $s) && empty($s['zuschnitt'])) $s['zuschnitt'] = new stdClass();
   }
   unset($s);
@@ -144,7 +144,37 @@ function normalisiere(array $bundle) {
 
 function lesen($datei) {
   $bundle = json_decode(dateiLesen($datei), true);
+  if ($bundle) kontoAngabenUebernehmen($bundle);
   return $bundle ? normalisiere($bundle) : null;
+}
+
+// Mit einem Konto verknüpfte Mitglieder und Gäste: Name und E-Mail kommen immer vom Konto (auch nach einer Änderung im Konto).
+// Gäste im Protokoll zählen nur mit dem Konto ihres Eintrags im Vorprotokoll (dort setzt es nur der Server, gastFelderBewahren).
+function kontoAngabenUebernehmen(array &$daten, array $gastKonten = []) {
+  static $konten = null;
+  $konten ??= array_column(benutzerLesen(), null, 'id');
+  $setzen = function (array &$p, $benutzerId) use ($konten) {
+    $k = $konten[$benutzerId ?? ''] ?? null;
+    if (!$k) return;
+    if (($k['name'] ?? '') !== '') $p['name'] = $k['name'];
+    if (($k['email'] ?? '') !== '') $p['email'] = $k['email'];
+  };
+  // foreach mit Referenz braucht die Liste selbst (bei «?? []» würde eine Kopie geändert)
+  if (isset($daten['gremium']['mitglieder'])) foreach ($daten['gremium']['mitglieder'] as &$m) $setzen($m, $m['benutzerId'] ?? null);
+  unset($m);
+  if (isset($daten['vorprotokolle'])) foreach ($daten['vorprotokolle'] as &$vp) {
+    if (isset($vp['gaeste'])) foreach ($vp['gaeste'] as &$g) {
+      if (!empty($g['benutzerId'])) $gastKonten[$g['id']] = $g['benutzerId'];
+      $setzen($g, $g['benutzerId'] ?? null);
+    }
+    unset($g);
+  }
+  unset($vp);
+  if (isset($daten['protokolle'])) foreach ($daten['protokolle'] as &$pr) {
+    if (isset($pr['gaeste'])) foreach ($pr['gaeste'] as &$g) $setzen($g, $gastKonten[$g['id'] ?? ''] ?? null);
+    unset($g);
+  }
+  unset($pr);
 }
 
 function alleBundles() {
@@ -1920,7 +1950,10 @@ function bundleAendern($gremiumId, callable $aendern) {
   $handle = fopen(dateiVon($gremiumId), 'c+');
   flock($handle, LOCK_EX);
   $bundle = json_decode(entschluesseln(stream_get_contents($handle)), true);
-  if ($bundle) aufgabenMerken($bundle);
+  if ($bundle) {
+    kontoAngabenUebernehmen($bundle);
+    aufgabenMerken($bundle);
+  }
   $ergebnis = $bundle ? $aendern($bundle) : null;
   if ($bundle) {
     ftruncate($handle, 0);
@@ -2659,14 +2692,6 @@ if ($aktion === 'speichern') {
       }
       unset($m);
     }
-    // Neu verknüpft: Name und E-Mail kommen vom Konto
-    $alteKonten = array_column($bundle['gremium']['mitglieder'] ?? [], 'benutzerId', 'id');
-    $kontenById = indexById(benutzerLesen());
-    if (isset($aenderungen['gremium']['mitglieder'])) foreach ($aenderungen['gremium']['mitglieder'] as &$m) {
-      $k = $kontenById[$m['benutzerId'] ?? ''] ?? null;
-      if ($k && ($alteKonten[$m['id']] ?? null) !== $k['id']) { $m['name'] = $k['name']; $m['email'] = $k['email']; }
-    }
-    unset($m);
     // Ob ein Gremium eine Kurzsitzung ohne Gremium ist, steht beim Anlegen fest
     $aenderungen['gremium']['kurz'] = $neu ? $neueKurzsitzung : !empty($bundle['gremium']['kurz']);
   }
@@ -2692,6 +2717,10 @@ if ($aktion === 'speichern') {
 
   if ($rolle === 'link') $aenderungen = linkRechteAnwenden($bundle, $aenderungen, $zugriff);
   $aenderungen = gastFelderBewahren($bundle, $aenderungen);
+  // Mit Konto verknüpft: Name und E-Mail kommen vom Konto, nicht aus der Eingabe
+  $gastKonten = [];
+  foreach ($bundle['vorprotokolle'] as $vp) foreach ($vp['gaeste'] as $g) if (!empty($g['benutzerId'])) $gastKonten[$g['id']] = $g['benutzerId'];
+  kontoAngabenUebernehmen($aenderungen, $gastKonten);
   $aenderungen = abmeldungenUebertragen($bundle, $aenderungen);
   $aenderungen = absagenDurchsetzen($bundle, $aenderungen);
 

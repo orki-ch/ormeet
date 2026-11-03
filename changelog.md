@@ -1,5 +1,8 @@
 # Änderungsverlauf
 
+## 1.5.06
+- Ist ein Mitglied oder ein Gast mit einem Konto verknüpft, kommen Name und E-Mail immer vom Konto. Solche Personen erhalten damit auch Einladungen, und im Mitglieder-Dialog lassen sich Name und E-Mail nicht mehr separat ändern.
+
 ## 1.5.05
 - Sitzungsleitung und Protokollführung sind neu Aufgaben statt Rollen. Du hinterlegst sie zentral unter «Mitglieder & Rollen › Aufgaben». Wer eine Aufgabe hat, übernimmt sie in jeder neuen Sitzung und darf dort alles bis zur Genehmigung.
 - Fehlt an einer Sitzung jemand mit einer Aufgabe, zeigt das Vorprotokoll einen Hinweis. Beim Start der Sitzung wählst du eine Vertretung aus den Anwesenden.

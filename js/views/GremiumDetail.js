@@ -290,8 +290,9 @@ export default {
       <!-- Dialog: Mitglied -->
       <Modal v-if="mitglied" :titel="mitglied.id ? 'Mitglied bearbeiten' : 'Neues Mitglied'" @schliessen="mitglied = null">
         <form id="formular-mitglied" class="stack" @submit.prevent="mitgliedSpeichern">
-          <div><span class="label">Name</span><input v-model.trim="mitglied.name" class="input" required autofocus /></div>
-          <div><span class="label">E-Mail</span><input v-model.trim="mitglied.email" class="input" type="email" /></div>
+          <div><span class="label">Name</span><input v-model.trim="mitglied.name" class="input" required autofocus :disabled="!!mitglied.benutzerId" :title="mitglied.benutzerId ? 'Kommt vom verknüpften Konto' : null" /></div>
+          <div><span class="label">E-Mail</span><input v-model.trim="mitglied.email" class="input" type="email" :disabled="!!mitglied.benutzerId" :title="mitglied.benutzerId ? 'Kommt vom verknüpften Konto' : null" /></div>
+          <p v-if="mitglied.benutzerId" class="small muted">Name und E-Mail kommen vom verknüpften Konto. Den Namen ändert die Person selbst unter «Mein Konto».</p>
           <div>
             <span class="label">Rolle</span>
             <select v-model="mitglied.rolleId" class="input">
