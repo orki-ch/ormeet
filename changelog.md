@@ -1,5 +1,9 @@
 # Änderungsverlauf
 
+## 1.5.08
+- Ist der Superadmin mit einem eigenen Konto verknüpft, findet er im Menü jetzt «Mein Konto». Dort verknüpft er zum Beispiel Orki mit diesem Konto und bleibt dabei als Superadmin angemeldet.
+- Nach dem Verknüpfen eines Anbieters geht es direkt zurück zu «Mein Konto».
+
 ## 1.5.07
 - Die Anmeldung über Orki oder Sublevia läuft in einem eigenen Fenster. Danach schliesst es sich, und Ormeet öffnet die Seite, die du aufrufen wolltest.
 - Orki übernimmt nur noch die Anmeldung, ohne Daten von Orki. Unter «Mein Konto» verknüpfst du Orki mit deinem Konto. Oder du registrierst dich über deinen persönlichen Link mit Orki – dann gibt es kein eigenes Passwort, und Name und E-Mail kommen aus Ormeet.

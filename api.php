@@ -252,7 +252,7 @@ function superadminZugriff($token) {
     $i = benutzerById($benutzer, $superadmin['benutzerId'] ?? '');
     if ($i === null) return ['rolle' => 'admin'];
     $b = $benutzer[$i];
-    return ['rolle' => 'admin', 'konto' => ['benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
+    return ['rolle' => 'admin', 'konto' => benutzerOeffentlich($b) + ['benutzerId' => $b['id'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
   }
   return null;
 }
@@ -2505,9 +2505,8 @@ if ($aktion === 'sso_callback') {
     if ($i !== null && $i !== $ziel) { $fehlerSeite("Diese Anmeldung bei {$anbieter['name']} ist schon mit einem anderen Ormeet-Konto verknüpft"); exit; }
     $i = $ziel;
     $benutzer[$i]['sso'][$state['anbieter']] = $info['sub'];
-    $neuerToken = anmeldungAnlegen($benutzer[$i]);
     benutzerSchreiben($benutzer);
-    ssoZiel(basisUrl() . '#/zugang/' . $neuerToken . '?weiter=' . rawurlencode('/konto'), $popup);
+    ssoZiel(basisUrl() . '#/konto', $popup); // bisherige Anmeldung bleibt (Konto oder Superadmin mit verknüpftem Konto)
     exit;
   }
   // Anbieter ohne eigene Daten (Orki): Ein noch nicht verknüpftes Konto entsteht nur beim Registrieren über einen
@@ -2949,9 +2948,11 @@ if ($aktion === 'abmelden') {
 }
 
 if ($aktion === 'konto_aendern') {
-  if (!$konto) antwort(['fehler' => 'Kein Konto angemeldet'], 403);
+  $eigenesKonto = $konto ?? ($istSuperadmin ? ($zugriff['konto'] ?? null) : null); // Superadmin: das mit ihm verknüpfte Konto
+  if (!$eigenesKonto) antwort(['fehler' => 'Kein Konto angemeldet'], 403);
   $benutzer = benutzerLesen();
-  $i = benutzerById($benutzer, $konto['benutzerId']);
+  $i = benutzerById($benutzer, $eigenesKonto['benutzerId']);
+  if ($i === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
   $b = &$benutzer[$i];
   if (isset($eingabe['name']) && trim($eingabe['name']) !== '') $b['name'] = trim($eingabe['name']);
   if (isset($eingabe['passwortNeu'])) {

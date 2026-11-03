@@ -51,11 +51,12 @@ export default {
     </div>
   `,
   data() {
-    return { name: sync.zugriff.name, passwortAlt: '', passwortNeu: '', laeuft: false, meldung: '', fehler: false }
+    return { name: (sync.zugriff.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff).name, passwortAlt: '', passwortNeu: '', laeuft: false, meldung: '', fehler: false }
   },
   computed: {
+    // Konto-Anmeldung: der Zugriff selbst; Superadmin mit verknüpftem Konto: dieses Konto
     konto() {
-      return sync.zugriff
+      return sync.zugriff.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff
     },
   },
   methods: {
@@ -64,7 +65,7 @@ export default {
       this.meldung = ''
       try {
         const antwort = await api.anfrage('konto_aendern', '', daten)
-        Object.assign(sync.zugriff, antwort.benutzer)
+        Object.assign(this.konto, antwort.benutzer)
         this.fehler = false
         this.meldung = 'Gespeichert.'
       } catch (fehler) {

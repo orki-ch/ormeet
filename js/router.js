@@ -173,7 +173,7 @@ router.beforeEach(async (to) => {
   }
   if (['/einstellungen', '/benutzer', '/uebersicht'].includes(to.path) && zugriff.rolle !== 'admin') return startPfad()
   if (to.path === '/uebersicht' && !zugriff.konto) return '/'
-  if (to.path === '/konto') return zugriff.rolle === 'benutzer' ? true : startPfad()
+  if (to.path === '/konto') return zugriff.rolle === 'benutzer' || (zugriff.rolle === 'admin' && zugriff.konto) ? true : startPfad()
 
   // Wirksame Rolle im betroffenen Gremium (Konto: je Gremium Eigentümer oder Mitglied)
   const gremiumId = sitzung?.gremiumId || to.params.gremiumId || zugriff.gremiumId

@@ -84,7 +84,8 @@ sich schliesst; ohne Popup oder öffnendes Fenster geht es wie bisher im selben 
 Orki (`nurVerknuepft`) liefert meist keine E-Mail und übernimmt nur die Anmeldung: angemeldet werden Konten mit dieser
 Orki-Kennung (`sso.orki`). Neu entsteht ein Konto nur beim Registrieren über einen persönlichen Link (Name und E-Mail von
 dieser Person, kein Passwort); keine Übernahme per E-Mail. *Mein Konto* verknüpft über einen signierten, zehn Minuten
-gültigen Code (`sso_verknuepfen_code`, `state.konto`) genau das angemeldete Konto. `mitgliedVerknuepfen` verschiebt nie:
+gültigen Code (`sso_verknuepfen_code`, `state.konto`) genau das angemeldete Konto – auch das mit dem Superadmin
+verknüpfte (`zugriff.konto`, dann auch *Mein Konto* und `konto_aendern`); danach geht es ohne neue Anmeldung zurück zu `#/konto`. `mitgliedVerknuepfen` verschiebt nie:
 Gehört das Konto im Gremium schon zu einem anderen Mitglied (oder das Mitglied zu einem anderen Konto), bleibt alles.
 
 ### Rechte der Rollen

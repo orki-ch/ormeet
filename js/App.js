@@ -45,7 +45,7 @@ export default {
                   <strong>{{ rolleText }}</strong>
                   <span v-if="speichert" class="small" :class="'text-' + statusKlasse">● {{ statusText }}</span>
                 </div>
-                <router-link v-if="sync.zugriff.rolle === 'benutzer'" to="/konto" class="menu-item">Mein Konto</router-link>
+                <router-link v-if="sync.zugriff.rolle === 'benutzer' || (sync.zugriff.rolle === 'admin' && sync.zugriff.konto)" to="/konto" class="menu-item">Mein Konto</router-link>
                 <router-link v-if="istAdmin" to="/benutzer" class="menu-item">Benutzer & Links</router-link>
                 <router-link v-if="istAdmin" to="/einstellungen" class="menu-item">Einstellungen <span v-if="updateStand.verfuegbar" class="badge gelb">Update verfügbar</span></router-link>
                 <button type="button" class="menu-item" @click="abmeldenFragen">Abmelden</button>
