@@ -1,7 +1,7 @@
 import { BEREICHE, ROLLEN_TYPEN, gremienStore, neuerZugang } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht, gremiumLoeschen } from '../stores/sync.js'
-import { rolleIm } from '../utils/rechte.js'
+import { EINZELRECHTE, FREIGABE_STUFEN, rolleIm } from '../utils/rechte.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { neuerKey } from '../utils/keys.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
@@ -13,6 +13,7 @@ import MenuDropdown from '../components/MenuDropdown.js'
 import ZugriffeListe from '../components/ZugriffeListe.js'
 import Modal from '../components/Modal.js'
 import PersonenInput from '../components/PersonenInput.js'
+import RechteSchalter from '../components/RechteSchalter.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
@@ -24,7 +25,7 @@ const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearb
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
+  components: { GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, RechteSchalter, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -111,9 +112,26 @@ export default {
                   <button v-if="!r.typ" class="btn btn-danger btn-icon" @click="rolleEntfernen(r)">✕</button>
                   <button class="btn" @click="aktiv = null">Fertig</button>
                 </div>
-                <p v-if="r.typ" class="leise small">Feste Rolle «{{ ROLLEN_TYPEN[r.typ] }}»: wird bei neuen Sitzungen automatisch eingesetzt und hat dort vollen Zugriff. Kann umbenannt, aber nicht gelöscht werden.</p>
+                <p v-if="r.typ" class="leise small">Vorlage «{{ ROLLEN_TYPEN[r.typ] }}»: kann umbenannt und angepasst, aber nicht gelöscht werden.</p>
                 <label class="check small"><input v-model="r.sollAnwesend" type="checkbox" /> An Sitzungen erwartet</label>
                 <p class="leise small">Nicht erwartete Rollen sind standardmässig nicht als anwesend markiert und erscheinen nicht bei den Entschuldigten.</p>
+                <!-- Rechte der Rolle: gelten für alle Mitglieder mit dieser Rolle (Leitung einer Sitzung hat dort immer alles) -->
+                <span class="label mt-1">Rechte</span>
+                <div v-for="(label, dokument) in { vorprotokoll: 'Vorprotokoll', protokoll: 'Protokoll' }" :key="dokument" class="row small rolle-recht">
+                  <span class="grow">{{ label }}</span>
+                  <RechteSchalter :stufe="rolleStufe(r, dokument)" :stufen="FREIGABE_STUFEN" :rechte="rolleEinzelrechte(r, dokument)" :einzelrechte="EINZELRECHTE[dokument]" :gesetzt="!!r.rechte?.[dokument]"
+                    @stufe="rolleSetzen(r, dokument, $event)" @rechte="rolleSetzen(r, dokument, $event)" @zuruecksetzen="rolleSetzen(r, dokument, null)" />
+                </div>
+                <label class="row small rolle-recht"><span class="grow">Sitzung führen (wird bei neuen Sitzungen vorgeschlagen)</span>
+                  <select :value="gremienStore.rolleRechte(r).fuehrung" class="input klein" @change="rolleSetzen(r, 'fuehrung', $event.target.value)">
+                    <option value="">–</option>
+                    <option value="sitzungsleitung">wie Sitzungsleitung</option>
+                    <option value="protokollfuehrung">wie Protokollführung</option>
+                  </select>
+                </label>
+                <label class="check small"><input type="checkbox" :checked="gremienStore.rolleRechte(r).eintragen" @change="rolleSetzen(r, 'eintragen', $event.target.checked)" /> Sitzungen eintragen (und dieses Recht weiteren Mitgliedern geben)</label>
+                <label class="check small"><input type="checkbox" :checked="gremienStore.rolleRechte(r).zugriffe" @change="rolleSetzen(r, 'zugriffe', $event.target.checked)" /> Zugriffe verwalten (alle Sitzungen)</label>
+                <p class="leise small">Lesen = nur ansehen · Eigene = zugewiesene Traktanden bearbeiten · Alles = ganzes Dokument; über ⋯ einzelne Rechte (Individuell). Die Leitung und die Protokollführung einer Sitzung haben dort immer alles.</p>
               </div>
               <div v-else class="liste-zeile small" :class="{ klick: darf('mitglieder') }" @click="darf('mitglieder') && (aktiv = r.id)">
                 <span class="grow">{{ r.name }}</span>
@@ -262,14 +280,14 @@ export default {
             </select>
           </div>
           <label class="check"><input v-model="mitglied.hatStimmrecht" type="checkbox" /> Stimmberechtigt</label>
-          <label v-if="mitglied.benutzerId && !gremienStore.hatFesteRolle(gremiumId, mitglied)" class="check"><input v-model="mitglied.darfSitzungenEintragen" type="checkbox" /> Darf Sitzungen eintragen (mit Konto)</label>
-          <div v-if="istSuperadmin" class="block-soft stack-sm">
+          <label v-if="!gremienStore.hatFesteRolle(gremiumId, mitglied)" class="check"><input v-model="mitglied.darfSitzungenEintragen" type="checkbox" /> Darf Sitzungen eintragen (zusätzlich zur Rolle)</label>
+          <div v-if="kontenVerwalten" class="block-soft stack-sm">
             <span class="label" style="margin: 0">Konto</span>
-            <select v-model="mitglied.benutzerId" class="input">
+            <select v-model="mitglied.benutzerId" class="input" @change="kontoGewaehlt">
               <option :value="null">Kein Konto verknüpft</option>
-              <option v-for="k in sync.konten" :key="k.id" :value="k.id">{{ k.name }} · {{ k.email }}</option>
+              <option v-for="k in kontoAuswahl" :key="k.id" :value="k.id">{{ k.name }} · {{ k.email }}</option>
             </select>
-            <p class="small muted">Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link.</p>
+            <p class="small muted">Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link. Name und E-Mail kommen dann vom Konto.</p>
           </div>
           <p v-else-if="mitglied.benutzerId" class="small muted">Mit einem Konto verknüpft ({{ kontoName(mitglied.benutzerId) }}).</p>
           <div v-if="mitglied.id && mitglied.zugangsKey" class="block-soft stack-sm">
@@ -311,6 +329,8 @@ export default {
       anwendenAuf: {}, // pro Vorlage: gewählte Sitzungs-IDs
       angewendet: '',
       ROLLEN_TYPEN,
+      FREIGABE_STUFEN,
+      EINZELRECHTE,
       SITZUNG_STATUS,
       SITZUNG_STATUS_KLASSE,
       sync,
@@ -342,6 +362,15 @@ export default {
     },
     istSuperadmin() {
       return sync.zugriff?.rolle === 'admin'
+    },
+    // Konto verknüpfen / lösen: Superadmin (alle Konten) und Eigentümer (Konten aus seinen Gremien)
+    kontenVerwalten() {
+      return this.istSuperadmin || (sync.zugriff?.rolle === 'benutzer' && this.istAdmin)
+    },
+    // Konto mit der E-Mail des Mitglieds zuoberst
+    kontoAuswahl() {
+      const email = (this.mitglied?.email || '').toLowerCase()
+      return [...sync.konten].sort((a, b) => (b.email.toLowerCase() === email) - (a.email.toLowerCase() === email))
     },
     sichtbareTabs() {
       const tabs = {}
@@ -404,9 +433,17 @@ export default {
     async mitgliedLinkErneuern() {
       if (await bestaetigen('Persönlichen Link erneuern? Der bisherige Link wird sofort ungültig.')) this.mitglied.zugangsKey = neuerKey()
     },
-    mitgliedSpeichern() {
+    // Neu verknüpftes Konto: Name und E-Mail übernehmen (der Server tut es beim Speichern ebenfalls)
+    kontoGewaehlt() {
+      const konto = sync.konten.find((k) => k.id === this.mitglied.benutzerId)
+      if (konto) Object.assign(this.mitglied, { name: konto.name, email: konto.email })
+    },
+    async mitgliedSpeichern() {
       const liste = this.gremium.mitglieder
       const index = liste.findIndex((m) => m.id === this.mitglied.id)
+      if (index >= 0 && liste[index].benutzerId && !this.mitglied.benutzerId) {
+        if (!(await bestaetigen(`Konto von «${this.mitglied.name}» lösen? Die Person sieht dieses Gremium dann nicht mehr in ihrer Übersicht; ihr persönlicher Link bleibt gültig.`, { titel: 'Konto lösen', ja: 'Lösen' }))) return
+      }
       if (index >= 0) liste[index] = this.mitglied
       else liste.push({ ...this.mitglied, id: crypto.randomUUID(), zugangsKey: neuerKey() })
       this.mitglied = null
@@ -415,8 +452,22 @@ export default {
       this.gremium.mitglieder = this.gremium.mitglieder.filter((m) => m.id !== this.mitglied.id)
       this.mitglied = null
     },
+    rolleStufe(r, dokument) {
+      const stufe = gremienStore.rolleRechte(r)[dokument]
+      return Array.isArray(stufe) ? 'individuell' : stufe
+    },
+    rolleEinzelrechte(r, dokument) {
+      const stufe = gremienStore.rolleRechte(r)[dokument]
+      return Array.isArray(stufe) ? stufe : []
+    },
+    // null = zurück auf die Vorlage (Standard)
+    rolleSetzen(r, feld, wert) {
+      r.rechte ??= {}
+      if (wert === null) delete r.rechte[feld]
+      else r.rechte[feld] = wert
+    },
     rolleHinzufuegen() {
-      this.gremium.rollen.push({ id: crypto.randomUUID(), name: this.neueRolle, typ: null, sollAnwesend: true })
+      this.gremium.rollen.push({ id: crypto.randomUUID(), name: this.neueRolle, typ: null, sollAnwesend: true, rechte: {} })
       this.neueRolle = ''
     },
     rolleEntfernen(rolle) {

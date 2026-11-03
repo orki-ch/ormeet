@@ -84,8 +84,9 @@ export default {
     neuesUntertraktandum,
     istAntragPunkt,
     kindTyp,
+    // Ausgeblendete Punkte (individuelle Rechte): der Server liefert die Originalnummer in _nr
     nr(j) {
-      return `${this.nummer}.${j + 1}`
+      return this.liste[j]?._nr || `${this.nummer}.${j + 1}`
     },
     darf(u) {
       return this.geerbt || (this.pruefen ? this.pruefen(u) : false)

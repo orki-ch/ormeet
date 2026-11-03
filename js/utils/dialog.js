@@ -17,17 +17,28 @@ function html(text) {
 }
 
 // Ja / Abbrechen -> true / false; gefahr: roter Knopf (Löschen, Entfernen)
-export function bestaetigen(nachricht, { titel = 'Bitte bestätigen', ja = 'Ja', nein = 'Abbrechen', gefahr = false } = {}) {
+// extra: { text, fertigText, aktion } – zusätzlicher Knopf in der Mitte, der den Dialog offen lässt (z. B. Link kopieren)
+export function bestaetigen(nachricht, { titel = 'Bitte bestätigen', ja = 'Ja', nein = 'Abbrechen', gefahr = false, extra = null } = {}) {
   return new Promise((fertig) => {
+    const buttons = { abbrechen: { text: html(nein), action: () => fertig(false) } }
+    if (extra) {
+      buttons.extra = {
+        text: html(extra.text),
+        action() {
+          extra.aktion()
+          if (extra.fertigText) this.buttons.extra.setText(html(extra.fertigText))
+          return false
+        },
+      }
+    }
+    buttons.ok = { text: html(ja), btnClass: gefahr ? 'btn-red' : 'btn-blue', keys: ['enter'], action: () => fertig(true) }
     $.confirm({
       ...STANDARD,
+      ...(extra && { boxWidth: 'min(32rem, calc(100vw - 2rem))' }), // drei Knöpfe in einer Zeile
       title: html(titel),
       content: html(nachricht),
       escapeKey: 'abbrechen',
-      buttons: {
-        abbrechen: { text: html(nein), action: () => fertig(false) },
-        ok: { text: html(ja), btnClass: gefahr ? 'btn-red' : 'btn-blue', keys: ['enter'], action: () => fertig(true) },
-      },
+      buttons,
     })
   })
 }

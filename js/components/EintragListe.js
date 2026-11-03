@@ -28,6 +28,7 @@ export default {
     typ: { type: String, default: '' }, // vom Traktandum vorgegebener Typ: alle Einträge sind dann von diesem Typ (antrag: nur abstimmen)
     antraegeFrei: { type: Boolean, default: false }, // Kurzsitzung: Anträge entstehen direkt hier (kein Vorprotokoll)
     erlaubteTypen: { type: Array, default: null }, // Einzelrechte: nur Einträge dieser Typen bearbeiten / hinzufügen
+    darfEintrag: { type: Function, default: null }, // Regeln (individuelle Rechte): darf dieser Eintrag bearbeitet werden
   },
   template: `
     <div>
@@ -124,6 +125,7 @@ export default {
   },
   methods: {
     bearbeitbar(e) {
+      if (this.darfEintrag) return this.darfEintrag(e) || (!this.nurLesen && !this.erlaubteTypen)
       return !this.nurLesen && (!this.erlaubteTypen || this.erlaubteTypen.includes(e.typ))
     },
     eigenePendenz(e) {

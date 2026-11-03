@@ -1,7 +1,7 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, speichern as serverSpeichern } from '../stores/sync.js'
-import { EINZELRECHTE, aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, einzelrecht, istGenehmigt, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfAenderungEntscheiden, darfAenderungStellen, darfEigene, einzelrecht, istGenehmigt, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
 import { allePunkte, dauerSumme, istAntragPunkt, istBerechtigt, kindTyp, personenText, wirksamerTyp } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, PUNKT_TYP, TYP_BADGE, formatDatum, formatDauer, sitzungStatus } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
@@ -10,19 +10,21 @@ import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import PdfExportButton from '../components/PdfExportButton.js'
 import PendenzUebertragen from '../components/PendenzUebertragen.js'
+import RechteFenster from '../components/RechteFenster.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
-import TeilenKarte from '../components/TeilenKarte.js'
 import Unterpunkte from '../components/Unterpunkte.js'
 import Zusatztraktanden from '../components/Zusatztraktanden.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 import Aenderungsantraege from '../components/Aenderungsantraege.js'
 import { neuerKey } from '../utils/keys.js'
 import { neuesTraktandum } from '../utils/traktanden.js'
-import { bestaetigen } from '../utils/dialog.js'
+import { bestaetigen, hinweis } from '../utils/dialog.js'
+import { hatAbgesagt } from '../utils/einladungen.js'
+import { gleich, zusammenfuehren } from '../utils/zusammenfuehren.js'
 
 export default {
   name: 'ProtokollEditor',
-  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, SitzungKopfdaten, TeilenKarte, Unterpunkte, Zusatztraktanden, KurzTeilnehmende, Aenderungsantraege },
+  components: { EintragListe, GaesteListe, MenuDropdown, PdfExportButton, PendenzUebertragen, RechteFenster, SitzungKopfdaten, Unterpunkte, Zusatztraktanden, KurzTeilnehmende, Aenderungsantraege },
   props: {
     sitzungId: { type: String, required: true },
   },
@@ -70,7 +72,7 @@ export default {
         <KurzTeilnehmende :gremium="gremium" :ziel="protokoll" feld="anwesende" :voll="voll" :person-id="eigene ? person?.id : null" :links-sichtbar="linksSichtbar" />
         <div class="row mt-3">
           <strong class="small">Gäste</strong>
-          <GaesteListe :gaeste="protokoll.gaeste" :nur-lesen="!voll" />
+          <GaesteListe :gaeste="protokoll.gaeste" :nur-lesen="!voll" :rechte="rechteSetzen ? (gast) => (rechteFuer = gast.id) : null" :individuell="hatIndividuell" :link-kopieren="(gast) => personenLink(gast.id) && linkKopieren(gast.id)" :hat-link="(gast) => !!personenLink(gast.id)" />
         </div>
       </section>
       <section v-else class="card" :class="{ bearbeitbar: voll || person }">
@@ -78,12 +80,14 @@ export default {
         <div class="row" style="gap: 0.25rem 1.5rem">
           <label v-for="m in gremium.mitglieder" :key="m.id" class="check" :class="{ aus: !darfAnwesenheit(m) }">
             <input v-model="protokoll.anwesende" type="checkbox" :value="m.id" :disabled="!darfAnwesenheit(m)" /> {{ m.name }}
+            <button v-if="personenLink(m.id)" type="button" class="btn btn-ghost btn-icon rechte-knopf" :title="kopiert === m.id ? 'Kopiert ✓' : 'Link von ' + m.name + ' kopieren'" @click.prevent="linkKopieren(m.id)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
+            <button v-if="rechteSetzen" type="button" class="btn btn-ghost btn-icon rechte-knopf" :class="{ gesetzt: hatIndividuell(m.id) }" :title="'Individuelle Rechte von ' + m.name" @click.prevent="rechteFuer = m.id"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h4"/><path d="M12 17h8"/><circle cx="10" cy="17" r="2"/></svg></button>
           </label>
         </div>
         <p class="muted small mt-2">Abwesend / entschuldigt: {{ namen(abwesende) }}</p>
         <div class="row mt-3">
           <strong class="small">Gäste</strong>
-          <GaesteListe :gaeste="protokoll.gaeste" :nur-lesen="!voll" />
+          <GaesteListe :gaeste="protokoll.gaeste" :nur-lesen="!voll" :rechte="rechteSetzen ? (gast) => (rechteFuer = gast.id) : null" :individuell="hatIndividuell" :link-kopieren="(gast) => personenLink(gast.id) && linkKopieren(gast.id)" :hat-link="(gast) => !!personenLink(gast.id)" />
         </div>
       </section>
 
@@ -108,7 +112,7 @@ export default {
         <section :id="t.id" class="card mit-pille" :class="{ bearbeitbar: darfTraktandum(t) }">
           <!-- Kurzsitzung: Haupttraktanden entstehen hier; Klick auf den Titel öffnet ihn zum Bearbeiten -->
           <div class="traktandum-kopf" :class="{ 'zusatz-kopf': kurz && voll && kurzAktiv !== t.id }" @click="kopfKlick(t, i, $event)">
-            <span class="nr">{{ i + 1 }}.</span>
+            <span class="nr">{{ t._nr || i + 1 }}.</span>
             <template v-if="kurz && kurzAktiv === t.id">
               <input v-model.trim="t.titel" class="nahtlos h2 grow" placeholder="Traktandum" />
               <span class="werkzeuge">
@@ -138,9 +142,9 @@ export default {
             </p>
 
             <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
-            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" :erlaubte-typen="erlaubteTypen" />
+            <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" :erlaubte-typen="typenFuer(t)" :darf-eintrag="zuschnitt?.eintrag" />
 
-            <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
+            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
               <template #default="{ u, typ, darf }">
                 <!-- Übernommene Pendenzen und vertagte Anträge stehen seit 1.4.09 dort, wo sie zuletzt waren – auch als Unterpunkt -->
                 <PendenzUebertragen v-if="uebertragene[u.pendenzId]" class="mt-1" :eintrag="uebertragene[u.pendenzId].eintrag" :sitzung="uebertragene[u.pendenzId].sitzung" :personen="personen" :darf="darf" />
@@ -149,7 +153,7 @@ export default {
                   an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
                 </p>
                 <div v-if="typ !== 'antraege'" class="mt-1">
-                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf" :person-id="person?.id" :typ="typ" :erlaubte-typen="erlaubteTypen" />
+                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf && !zuschnitt" :person-id="person?.id" :typ="typ" :erlaubte-typen="typenFuer(u)" :darf-eintrag="zuschnitt?.eintrag" />
                 </div>
               </template>
             </Unterpunkte>
@@ -157,7 +161,7 @@ export default {
           <!-- Zeit unten rechts an der Karte -->
           <div v-if="t.dauer" class="dauer-zeile small">
             <span class="leise nowrap" title="Geplante Dauer (im Vorprotokoll festgelegt)">geplant {{ formatDauer(t.dauer) }}</span>
-            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfTraktandum(t) || !!erlaubteTypen" @change="dauerBereinigen(t.id)" /> Min.</span>
+            <span class="dauer nowrap" title="Tatsächliche Dauer in Minuten">tatsächlich <input v-model.number="protokoll.dauern[t.id]" type="number" min="0" step="5" class="input" placeholder="–" :disabled="!darfDauer(t)" @change="dauerBereinigen(t.id)" /> Min.</span>
           </div>
           <div v-if="kurz && kurzAktiv === t.id" class="row mt-1">
             <button class="btn ml-auto" @click="kurzSchliessen(t)">Fertig</button>
@@ -223,7 +227,35 @@ export default {
         </div>
       </div>
 
-      <TeilenKarte :sitzung="sitzung" dokument="protokoll" :vorprotokoll="vorprotokollDokument" :protokoll="protokoll" :darf-setzen="voll" :links-sichtbar="linksSichtbar" />
+      <RechteFenster v-if="rechteFuer" :sitzung="sitzung" :person-id="rechteFuer" @schliessen="rechteFuer = ''" />
+    </div>
+    <!-- Noch nicht gestartet: Vorschau der Traktanden, das Protokoll entsteht erst mit «Sitzung starten» -->
+    <div v-else-if="startbereit" class="stack-lg">
+      <header class="page-header" style="margin-bottom: 0">
+        <router-link v-if="zurueck" :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
+        <div class="kopf">
+          <div>
+            <p class="kicker">Vorschau · {{ formatDatum(sitzung.datum) }}</p>
+            <h1 class="title">{{ sitzung.titel || 'Sitzung' }}</h1>
+            <p class="muted small mt-1">Die Sitzung ist noch nicht gestartet. Mit «Sitzung starten» entsteht das Protokoll – das Vorprotokoll kann danach nicht mehr bearbeitet werden.</p>
+          </div>
+          <div class="actions">
+            <router-link :to="'/sitzung/' + sitzungId + '/vorprotokoll'" class="btn btn-ghost">Zum Vorprotokoll</router-link>
+            <button class="btn btn-primary" @click="sitzungStarten">Sitzung starten</button>
+          </div>
+        </div>
+      </header>
+      <section class="card">
+        <h2 class="card-title">Traktanden</h2>
+        <div v-if="traktanden.length" class="liste">
+          <div v-for="(t, i) in traktanden" :key="t.id" class="liste-zeile">
+            <strong class="grow">{{ i + 1 }}. {{ t.titel || 'Ohne Titel' }}</strong>
+            <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
+            <span v-if="t.dauer" class="leise small">{{ formatDauer(t.dauer) }}</span>
+          </div>
+        </div>
+        <p v-else class="muted small">Das Vorprotokoll hat noch keine Traktanden.</p>
+      </section>
     </div>
     <p v-else class="muted">Zu dieser Sitzung gibt es noch kein Protokoll.</p>
   `,
@@ -240,6 +272,10 @@ export default {
   data() {
     return {
       protokoll: null, // lokale Arbeitskopie, wird per Auto-Save in den Store geschrieben
+      basis: null, // Stand im Store, auf dem die Arbeitskopie beruht (für das Zusammenführen mit Änderungen anderer)
+      uebernimmt: false, // Arbeitskopie wird gerade aus dem Store übernommen (kein Auto-Save)
+      rechteFuer: '', // Fenster «Individuelle Rechte» für diese Person
+      kopiert: '', // eben kopierter persönlicher Link
       gespeichert: true,
       gespeichertUm: '',
       speicherTimer: null,
@@ -302,6 +338,10 @@ export default {
     voll() {
       return vollzugriff(this.sitzung, 'protokoll')
     },
+    // Vollzugriff, aber noch kein Protokoll: Vorschau mit «Sitzung starten»
+    startbereit() {
+      return this.voll && !!this.sitzung.datum && !this.kurz && !this.protokoll
+    },
     genehmigt() {
       return istGenehmigt(this.sitzung)
     },
@@ -313,6 +353,13 @@ export default {
       return darfEigene(this.sitzung, 'protokoll')
     },
     // Einzelrechte (zusätzlicher Link oder Freigabe «Individuell»): Einträge nur der freigegebenen Typen, überall
+    // Eigene Regeln (individuelle Rechte): bearbeitbare Punkte und Einträge
+    zuschnitt() {
+      return this.genehmigt ? null : zuschnittSicht(this.sitzung)
+    },
+    rechteSetzen() {
+      return this.voll && sync.zugriff?.rolle !== 'link'
+    },
     erlaubteTypen() {
       if (!istIndividuell(this.sitzung, 'protokoll')) return null
       return Object.keys(EINZELRECHTE.protokoll).filter((typ) => einzelrecht(this.sitzung, 'protokoll', typ))
@@ -392,21 +439,33 @@ export default {
     protokoll: {
       deep: true,
       handler(neu, alt) {
-        if (!alt) return // erstes Laden der Arbeitskopie
+        if (!alt || this.uebernimmt) return // erstes Laden der Arbeitskopie bzw. Stand von anderen übernommen
         this.gespeichert = false
         clearTimeout(this.speicherTimer)
         this.speicherTimer = setTimeout(this.speichern, 1500)
       },
     },
   },
+  // Neuer Stand im Store (Änderungen anderer): ohne eigene ungespeicherte Änderungen gleich anzeigen
+  beforeMount() {
+    this.$watch(
+      () => this.gespeichertesProtokoll,
+      (neu) => {
+        if (!neu || !this.protokoll || !this.gespeichert || gleich(neu, this.basis)) return
+        this.arbeitskopie(neu)
+      },
+      { deep: true },
+    )
+  },
   created() {
     if (this.voll && this.sitzung.datum) {
       if (!sitzungenStore.vorprotokollVonSitzung(this.sitzungId)) sitzungenStore.erstelleVorprotokoll(this.sitzungId)
-      if (!sitzungenStore.protokollVonSitzung(this.sitzungId)) sitzungenStore.starteProtokoll(this.sitzungId)
+      // Kurzsitzung: nur ein Dokument, kein Vorprotokoll zu sperren – das Protokoll entsteht sofort
+      if (this.kurz && !sitzungenStore.protokollVonSitzung(this.sitzungId)) sitzungenStore.starteProtokoll(this.sitzungId)
     }
     const protokoll = sitzungenStore.protokollVonSitzung(this.sitzungId)
     if (protokoll && this.voll) sitzungenStore.ergaenzeAntraege(protokoll.id) // später übernommene vertagte Anträge nachziehen
-    if (protokoll) this.protokoll = JSON.parse(JSON.stringify(protokoll))
+    if (protokoll) this.arbeitskopie(protokoll)
     this.gespeichertUm = this.uhrzeit()
   },
   mounted() {
@@ -432,12 +491,36 @@ export default {
       else delete this.protokoll.dauern[traktandumId]
     },
     darfTraktandum(t) {
+      if (this.zuschnitt) return this.zuschnitt.punkt(t) || (this.erlaubteTypen?.length ?? 0) > 0 || this.zuschnitt.eintragsRegeln
       if (this.erlaubteTypen) return this.erlaubteTypen.length > 0
       return this.voll || (this.eigene && this.person && istBerechtigt(t, this.person))
     },
     // Unterpunkt, auf dem die Person selbst berechtigt ist (Rechte von oben erbt der Baum)
     darfEigenen(u) {
+      if (this.zuschnitt) return this.zuschnitt.punkt(u) || this.zuschnitt.eintragsRegeln
       return Boolean(this.eigene && this.person && istBerechtigt(u, this.person))
+    },
+    // Eintragstypen pro Punkt: mit Regeln im bearbeitbaren Punkt alle, sonst die freigegebenen
+    typenFuer(t) {
+      if (this.zuschnitt) return this.zuschnitt.punkt(t) ? null : this.erlaubteTypen || []
+      return this.erlaubteTypen
+    },
+    darfDauer(t) {
+      return this.zuschnitt ? this.zuschnitt.punkt(t) : this.darfTraktandum(t) && !this.erlaubteTypen
+    },
+    // Persönlicher Link einer Person (Mitglied: zentraler Link, Gast: Gast-Link), sofern der eigene Zugang ihn sieht
+    personenLink(personId) {
+      const m = this.gremium.mitglieder.find((x) => x.id === personId)
+      const key = m ? m.zugangsKey : this.vorprotokollDokument?.personenKeys?.[personId]
+      return key ? location.href.split('#')[0] + (m ? '#/zugang/' : '#/freigabe/') + key : ''
+    },
+    linkKopieren(personId) {
+      navigator.clipboard.writeText(this.personenLink(personId))
+      this.kopiert = personId
+      setTimeout(() => (this.kopiert = ''), 2000)
+    },
+    hatIndividuell(personId) {
+      return Array.isArray(this.sitzung.freigaben?.protokoll?.[personId]) || !!this.sitzung.zuschnitt?.[personId]
     },
     darfAnwesenheit(m) {
       return this.voll || (this.eigene && this.person && m.id === this.person.id)
@@ -453,11 +536,29 @@ export default {
       }
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault()
-        this.speichern()
+        if (this.protokoll) this.speichern()
       }
+    },
+    // Arbeitskopie (und ihre Basis) aus dem Store übernehmen, ohne dabei ein Speichern auszulösen
+    arbeitskopie(stand) {
+      this.uebernimmt = true
+      this.protokoll = JSON.parse(JSON.stringify(stand))
+      this.basis = JSON.parse(JSON.stringify(stand))
+      this.$nextTick(() => (this.uebernimmt = false))
     },
     speichern() {
       clearTimeout(this.speicherTimer)
+      // Hat inzwischen jemand anderes gespeichert: dessen Änderungen mit den eigenen zusammenführen
+      const aktuell = this.gespeichertesProtokoll
+      if (this.basis && aktuell && !gleich(aktuell, this.basis)) {
+        const konflikte = []
+        const ohneAntraege = (p) => ({ ...p, aenderungsantraege: [] })
+        const zusammen = zusammenfuehren(ohneAntraege(this.basis), ohneAntraege(this.protokoll), ohneAntraege(aktuell), [], konflikte)
+        this.uebernimmt = true
+        this.protokoll = zusammen
+        this.$nextTick(() => (this.uebernimmt = false))
+        if (konflikte.length) hinweis('Jemand hat gleichzeitig dieselben Stellen im Protokoll geändert. Gespeichert ist deine Änderung.', 'Gleichzeitig bearbeitet')
+      }
       if (this.kurz) {
         // Kurzsitzung: Teilnehmende und Gäste (mit persönlichem Link) auch im versteckten Vorprotokoll führen
         const vp = this.vorprotokollDokument
@@ -467,6 +568,7 @@ export default {
       }
       // Änderungsanträge bleiben, wie sie im Store stehen (sie werden dort direkt bearbeitet)
       sitzungenStore.speichereProtokoll({ ...this.protokoll, abwesende: this.abwesende, aenderungsantraege: this.gespeichertesProtokoll.aenderungsantraege })
+      this.basis = JSON.parse(JSON.stringify(this.gespeichertesProtokoll))
       this.gespeichert = true
       this.gespeichertUm = this.uhrzeit()
       serverSpeichern()
@@ -483,7 +585,7 @@ export default {
     // Klick auf den Kopf eines Traktandums: Kurzsitzung bearbeitet den Titel, nach Abschluss ein Änderungsantrag
     kopfKlick(t, i, event) {
       if (this.kurz && this.voll && this.kurzAktiv !== t.id) return this.kurzOeffnen(t)
-      if (this.darfStellen) this.antragOeffnen(t.id, `${i + 1}. ${t.titel}`, event)
+      if (this.darfStellen) this.antragOeffnen(t.id, `${t._nr || i + 1}. ${t.titel}`, event)
     },
     // Offene Änderungsanträge an dieser Stelle (erledigte werden nicht mehr markiert)
     antraegeAn(zielId) {
@@ -552,6 +654,16 @@ export default {
     },
     abschliessen() {
       this.sitzung.status = 'abgeschlossen'
+      this.speichern()
+    },
+    // Bewusster Start: legt das Protokoll an und schliesst damit das Vorprotokoll ab
+    async sitzungStarten() {
+      if (!(await bestaetigen('Sitzung jetzt starten? Das Protokoll wird angelegt – das Vorprotokoll kann danach nicht mehr bearbeitet werden.', { titel: 'Sitzung starten', ja: 'Starten' }))) return
+      const vorhanden = sitzungenStore.protokollVonSitzung(this.sitzungId)
+      const protokoll = vorhanden || sitzungenStore.starteProtokoll(this.sitzungId)
+      // Gäste, die auf die Einladung abgesagt haben, kommen nicht ins Protokoll
+      if (!vorhanden) protokoll.gaeste = protokoll.gaeste.filter((g) => !hatAbgesagt(this.sitzung.gremiumId, this.sitzungId, g.id))
+      this.arbeitskopie(protokoll)
       this.speichern()
     },
     // Formell korrekter Weg zurück: erst das Protokoll entfernen, dann ist das Vorprotokoll wieder bearbeitbar

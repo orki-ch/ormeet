@@ -33,7 +33,7 @@ const VOLLE_RECHTE = ['sitzungen' => 'bearbeiten', 'mitglieder' => 'bearbeiten',
 // Einzelrechte («Individuell») pro Dokument für zusätzliche allgemeine Links und Personen
 const EINZELRECHTE = [
   'terminfindung' => ['abstimmen', 'kommentieren'],
-  'vorprotokoll' => ['traktandenBearbeiten', 'traktandenHinzufuegen', 'anwesenheit', 'gaeste'],
+  'vorprotokoll' => ['traktandenBearbeiten', 'traktandenAendern', 'traktandenHinzufuegen', 'anwesenheit', 'gaeste'],
   'protokoll' => ['information', 'pendenz', 'antrag'],
 ];
 
@@ -126,6 +126,14 @@ schluessel();
 
 // Leere personenKeys als Objekt ({}) statt Array ([]) ausgeben
 function normalisiere(array $bundle) {
+  foreach ($bundle['gremium']['rollen'] ?? [] as &$r) {
+    if (array_key_exists('rechte', $r) && empty($r['rechte'])) $r['rechte'] = new stdClass();
+  }
+  unset($r);
+  foreach ($bundle['sitzungen'] ?? [] as &$s) {
+    if (array_key_exists('zuschnitt', $s) && empty($s['zuschnitt'])) $s['zuschnitt'] = new stdClass();
+  }
+  unset($s);
   foreach ($bundle['vorprotokolle'] as &$vp) {
     if (empty($vp['personenKeys'])) $vp['personenKeys'] = new stdClass();
     if (array_key_exists('aliasKeys', $vp) && empty($vp['aliasKeys'])) $vp['aliasKeys'] = new stdClass();
@@ -262,13 +270,21 @@ function mailKopf($text) {
   return '=?UTF-8?B?' . base64_encode($text) . '?=';
 }
 
-// Nachricht senden; liefert null oder eine Fehlermeldung
-function mailSenden($an, $betreff, $text) {
+// Nachricht senden; liefert null oder eine Fehlermeldung. anhang: ['name', 'typ', 'inhalt'] (z. B. Kalendereintrag)
+function mailSenden($an, $betreff, $text, $anhang = null) {
   $m = mailEinstellungen();
   $von = $m['absender'] !== '' ? $m['absender'] : 'ormeet@' . preg_replace('/:\d+$/', '', $_SERVER['HTTP_HOST'] ?? 'localhost');
   $text = str_replace(["\r\n", "\n"], ["\n", "\r\n"], $text);
-  $kopf = ['From: ' . mailKopf($m['absenderName'] ?: 'Ormeet') . " <$von>", 'MIME-Version: 1.0', 'Content-Type: text/plain; charset=UTF-8',
-           'Content-Transfer-Encoding: 8bit', 'Date: ' . date('r'), 'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . substr(strrchr($von, '@'), 1) . '>'];
+  $art = ['Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: 8bit'];
+  if ($anhang) {
+    $grenze = 'ormeet-' . bin2hex(random_bytes(8));
+    $text = "--$grenze\r\n" . implode("\r\n", $art) . "\r\n\r\n$text\r\n"
+      . "--$grenze\r\nContent-Type: {$anhang['typ']}; charset=UTF-8; name=\"{$anhang['name']}\"\r\nContent-Transfer-Encoding: base64\r\n"
+      . "Content-Disposition: attachment; filename=\"{$anhang['name']}\"\r\n\r\n" . chunk_split(base64_encode($anhang['inhalt'])) . "--$grenze--\r\n";
+    $art = ["Content-Type: multipart/mixed; boundary=\"$grenze\""];
+  }
+  $kopf = array_merge(['From: ' . mailKopf($m['absenderName'] ?: 'Ormeet') . " <$von>", 'MIME-Version: 1.0'], $art,
+           ['Date: ' . date('r'), 'Message-ID: <' . bin2hex(random_bytes(12)) . '@' . substr(strrchr($von, '@'), 1) . '>']);
   if ($m['host'] === '') {
     return @mail($an, mailKopf($betreff), $text, implode("\r\n", $kopf), '-f' . $von) ? null : 'Die Mailfunktion des Servers hat die Nachricht nicht angenommen';
   }
@@ -376,6 +392,22 @@ function effektiverZugriff(array $zugriff, $gremiumId) {
   return ['rolle' => 'keine', 'gremiumId' => $gremiumId];
 }
 
+// Konten, die ein Eigentümer mit Mitgliedern verknüpfen darf: er selbst und alle Konten aus seinen eigenen Gremien
+// (Mitglieder und Gäste) – nur Name und E-Mail, keine Liste aller Ormeet-Konten
+function eigentuemerKonten($konto) {
+  if (!$konto) return [];
+  $ids = [];
+  foreach ($konto['gremien'] as $g) {
+    if ($g['rolle'] !== 'eigentuemer' || !($b = lesen(dateiVon($g['gremiumId'])))) continue;
+    $ids[$konto['benutzerId']] = true;
+    foreach ($b['gremium']['mitglieder'] as $m) if (!empty($m['benutzerId'])) $ids[$m['benutzerId']] = true;
+    foreach ($b['vorprotokolle'] as $vp) foreach ($vp['gaeste'] as $gast) if (!empty($gast['benutzerId'])) $ids[$gast['benutzerId']] = true;
+  }
+  $liste = [];
+  foreach (benutzerLesen() as $b) if (isset($ids[$b['id']])) $liste[] = ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email']];
+  return $liste;
+}
+
 // Mitglied eines Gremiums mit einem Konto verknüpfen (Datei mit Sperre bearbeiten)
 function mitgliedVerknuepfen($gremiumId, $personId, $benutzerId) {
   $datei = dateiVon($gremiumId);
@@ -407,6 +439,129 @@ function indexById(array $liste) {
   $index = [];
   foreach ($liste as $eintrag) $index[$eintrag['id']] = $eintrag;
   return $index;
+}
+
+// --- Gleichzeitiges Bearbeiten: Drei-Wege-Zusammenführung ----------------
+// basis: Stand, auf dem die Änderung beruht; meins: gesendeter Stand; ihres: aktueller Stand auf dem Server.
+// Übernommen wird nur, was sich gegenüber der Basis geändert hat – pro Feld, pro Listeneintrag (mit id) und bei
+// einfachen Listen (z. B. Anwesende) pro Wert. Haben beide dasselbe verschieden geändert, gilt die neuere Änderung
+// (meins); der Pfad landet in $konflikte (für den Hinweis an die Person, die gespeichert hat).
+const FEHLT = "\0fehlt";
+
+if (!function_exists('array_is_list')) { // erst ab PHP 8.1
+  function array_is_list(array $liste) {
+    return $liste === [] || array_keys($liste) === range(0, count($liste) - 1);
+  }
+}
+
+function zfAssoc($wert) {
+  return is_array($wert) && $wert !== [] && !array_is_list($wert);
+}
+
+function zfIdListe($wert) {
+  return is_array($wert) && $wert !== [] && array_is_list($wert) && is_array($wert[0]) && isset($wert[0]['id']);
+}
+
+function zfIds(array $liste) {
+  return array_map(fn($e) => $e['id'], $liste);
+}
+
+function zusammenfuehren($basis, $meins, $ihres, array $pfad, array &$konflikte) {
+  if ($meins === $ihres) return $meins;
+  if ($meins === $basis) return $ihres;
+  if ($ihres === $basis) return $meins;
+  if ($meins === FEHLT || $ihres === FEHLT) { // eine Seite hat gelöscht, die andere geändert: meine (neuere) Änderung gilt
+    $konflikte[] = $pfad;
+    return $meins;
+  }
+  $alle = [$basis, $meins, $ihres];
+  if (array_filter($alle, 'zfAssoc') && !array_filter($alle, fn($w) => $w !== FEHLT && $w !== null && !is_array($w))) {
+    $b = is_array($basis) ? $basis : [];
+    $m = is_array($meins) ? $meins : [];
+    $t = is_array($ihres) ? $ihres : [];
+    $ergebnis = [];
+    foreach (array_unique(array_merge(array_keys($m), array_keys($t), array_keys($b))) as $feld) {
+      $wert = zusammenfuehren(array_key_exists($feld, $b) ? $b[$feld] : FEHLT, array_key_exists($feld, $m) ? $m[$feld] : FEHLT,
+        array_key_exists($feld, $t) ? $t[$feld] : FEHLT, array_merge($pfad, [$feld]), $konflikte);
+      if ($wert !== FEHLT) $ergebnis[$feld] = $wert;
+    }
+    return $ergebnis;
+  }
+  if (array_filter($alle, 'zfIdListe') && !array_filter($alle, fn($w) => $w !== FEHLT && $w !== null && !(is_array($w) && ($w === [] || zfIdListe($w))))) {
+    $b = is_array($basis) ? indexById($basis) : [];
+    $m = is_array($meins) ? indexById($meins) : [];
+    $t = is_array($ihres) ? indexById($ihres) : [];
+    // Reihenfolge: hat nur die andere Seite umsortiert, gilt ihre, sonst meine; Neues der anderen Seite nach seinem Vorgänger
+    $gemeinsam = fn($ids) => array_values(array_filter($ids, fn($id) => isset($m[$id]) && isset($b[$id])));
+    $reihe = $gemeinsam(array_keys($m)) === $gemeinsam(array_keys($b)) ? array_keys($t) : array_keys($m);
+    $andere = $reihe === array_keys($t) ? array_keys($m) : array_keys($t);
+    $vorher = null;
+    foreach ($andere as $id) {
+      if (!in_array($id, $reihe, true)) {
+        $stelle = $vorher === null ? false : array_search($vorher, $reihe, true);
+        $pos = $vorher === null ? 0 : ($stelle === false ? count($reihe) : $stelle + 1);
+        array_splice($reihe, $pos, 0, [$id]);
+      }
+      $vorher = $id;
+    }
+    $ergebnis = [];
+    foreach ($reihe as $id) {
+      $eintrag = $m[$id] ?? $t[$id];
+      $wert = zusammenfuehren($b[$id] ?? FEHLT, $m[$id] ?? FEHLT, $t[$id] ?? FEHLT,
+        array_merge($pfad, ['«' . ($eintrag['titel'] ?? $eintrag['name'] ?? $eintrag['text'] ?? 'Eintrag') . '»']), $konflikte);
+      if ($wert !== FEHLT) $ergebnis[] = $wert;
+    }
+    return $ergebnis;
+  }
+  if (!array_filter($alle, fn($w) => is_array($w) && $w !== [] && !array_is_list($w)) && !array_filter($alle, fn($w) => $w !== FEHLT && $w !== null && !is_array($w))) {
+    // Liste einfacher Werte (Anwesende, IDs): Hinzufügen und Entfernen beider Seiten
+    $b = is_array($basis) ? $basis : [];
+    $m = is_array($meins) ? $meins : [];
+    $t = is_array($ihres) ? $ihres : [];
+    $ergebnis = array_values(array_filter($t, fn($w) => in_array($w, $m, true) || !in_array($w, $b, true)));
+    foreach ($m as $w) if (!in_array($w, $b, true) && !in_array($w, $ergebnis, true)) $ergebnis[] = $w;
+    return $ergebnis;
+  }
+  $konflikte[] = $pfad; // beide haben denselben Wert verschieden geändert: meine (neuere) Änderung gilt
+  return $meins;
+}
+
+// Gesendete Datensätze mit ihrer Basis (aenderungen.basis) und dem Serverstand zusammenführen; liefert Hinweise
+function gleichzeitigeAenderungen(array $bundle, array &$aenderungen) {
+  $basis = $aenderungen['basis'] ?? [];
+  unset($aenderungen['basis']);
+  $hinweise = [];
+  $titel = fn($sitzungId) => ($s = sitzungVon($bundle, $sitzungId)) ? ($s['titel'] ?: 'Sitzung') . ($s['datum'] ? ' vom ' . datumText($s['datum']) : '') : 'Sitzung';
+  $felder = ['titel' => 'Titel', 'inhalt' => 'Text', 'notiz' => 'Notiz', 'beschreibung' => 'Beschreibung', 'datum' => 'Datum', 'zeit' => 'Zeit',
+             'ort' => 'Ort', 'name' => 'Name', 'status' => 'Status', 'anwesende' => 'Anwesenheit', 'anwesendeMitgliederIds' => 'Anwesenheit'];
+  $melden = function (array $konflikte, $ort) use (&$hinweise, $felder) {
+    foreach ($konflikte as $pfad) {
+      // Nur benannte Einträge («…») und das betroffene Feld zeigen
+      $teile = array_values(array_filter($pfad, fn($teil, $i) => strpos((string) $teil, '«') === 0 || ($i === count($pfad) - 1 && isset($felder[$teil])), ARRAY_FILTER_USE_BOTH));
+      $teile = array_map(fn($teil) => $felder[$teil] ?? $teil, $teile);
+      $hinweise[] = $ort . ($teile ? ': ' . implode(' › ', $teile) : '');
+    }
+  };
+  foreach (['sitzungen' => 'Sitzung', 'vorprotokolle' => 'Vorprotokoll', 'protokolle' => 'Protokoll'] as $typ => $art) {
+    $server = indexById($bundle[$typ] ?? []);
+    foreach ($aenderungen[$typ] ?? [] as $k => $neu) {
+      $alt = $server[$neu['id'] ?? ''] ?? null;
+      $b = $basis[$typ][$neu['id'] ?? ''] ?? null;
+      if (!$alt || !is_array($b) || $alt === $neu) continue;
+      $konflikte = [];
+      $aenderungen[$typ][$k] = zusammenfuehren($b, $neu, $alt, [], $konflikte);
+      if ($aenderungen[$typ][$k] != $neu) $GLOBALS['zusammengefuehrt'] = true;
+      $melden($konflikte, $art . ' «' . $titel($typ === 'sitzungen' ? $neu['id'] : ($neu['sitzungId'] ?? '')) . '»');
+    }
+  }
+  if (isset($aenderungen['gremium'], $basis['gremium']) && is_array($basis['gremium']) && $bundle['gremium']) {
+    $konflikte = [];
+    $gesendet = $aenderungen['gremium'];
+    $aenderungen['gremium'] = zusammenfuehren($basis['gremium'], $gesendet, $bundle['gremium'], [], $konflikte);
+    if ($aenderungen['gremium'] != $gesendet) $GLOBALS['zusammengefuehrt'] = true;
+    $melden($konflikte, 'Gremium «' . $bundle['gremium']['name'] . '»');
+  }
+  return array_values(array_unique($hinweise));
 }
 
 // Änderungen (ganze Datensätze + gelöschte IDs) in ein Bundle einarbeiten
@@ -503,10 +658,17 @@ function istLeitung(array $sitzung, $personId) {
 // Freigabestufe einer Person für ein Dokument (vorprotokoll / protokoll): in der Sitzung gesetzte Freigabe,
 // sonst Standard – Leitung «alles», alle anderen «eigene» (zugewiesene Traktanden). «lesen» sperrt alles.
 // Über einen allgemeinen Link eingetragene Personen erhalten ohne gesetzte Freigabe die Rechte ihres Links (linkGastFreigabe).
+// Ohne gesetzte Freigabe: die Standardstufe der Rolle (Leitung der Sitzung: alles)
 function freigabeRoh(array $sitzung, string $dokument, $personId) {
+  if ($personId && in_array($personId, $sitzung['nurLesen'] ?? [], true)) return 'lesen'; // für diese Sitzung auf «nur lesen» gesperrt
   $stufe = $sitzung['freigaben'][$dokument][$personId] ?? null;
   $info = $GLOBALS['linkGaeste'][$personId] ?? null;
-  return $stufe === null && $info ? linkGastFreigabe($info, $dokument) : $stufe;
+  if ($stufe === null && $info) return linkGastFreigabe($info, $dokument);
+  if ($stufe === null && in_array($dokument, ['vorprotokoll', 'protokoll'], true) && !istLeitung($sitzung, $personId) && isset($GLOBALS['ormeetGremium'])) {
+    $standard = rolleRechte($GLOBALS['ormeetGremium'], $personId)[$dokument];
+    if ($standard !== 'eigene') return $standard;
+  }
+  return $stufe;
 }
 
 function freigabeStufe(array $sitzung, string $dokument, $personId) {
@@ -528,11 +690,20 @@ function einzelrechte(array $sitzung, string $dokument, $personId) {
 // hinzufügen – selbst hinzugefügte (hinzugefuegtVon) bleiben bearbeitbar –, Anwesenheit und Gäste
 function vorprotokollEinzelrechte(array $alt, array $neu, array $rechte, $kennung) {
   $bearbeiten = in_array('traktandenBearbeiten', $rechte, true);
+  $aendern = in_array('traktandenAendern', $rechte, true);
   $hinzufuegen = in_array('traktandenHinzufuegen', $rechte, true);
   $altIds = array_flip(array_column($alt['traktanden'], 'id'));
   $neuById = indexById($neu['traktanden'] ?? []);
   $liste = [];
-  if ($bearbeiten) {
+  if ($aendern && !$bearbeiten) {
+    // Ändern und verschieben (Unterpunkte frei): Haupttraktanden weder löschen noch – ohne Recht – hinzufügen
+    $gesehen = [];
+    foreach ($neu['traktanden'] ?? [] as $t) {
+      if (isset($altIds[$t['id']])) { $liste[] = $t; $gesehen[$t['id']] = true; }
+      elseif ($hinzufuegen) $liste[] = ['hinzugefuegtVon' => $kennung] + $t;
+    }
+    foreach ($alt['traktanden'] as $t) if (!isset($gesehen[$t['id']])) $liste[] = $t;
+  } elseif ($bearbeiten) {
     foreach ($neu['traktanden'] ?? [] as $t) {
       if (isset($altIds[$t['id']])) $liste[] = $t;
       elseif ($hinzufuegen) $liste[] = ['hinzugefuegtVon' => $kennung] + $t;
@@ -569,17 +740,216 @@ function protokollEinzelrechte(array $alt, array $neu, array $rechte) {
   return $alt;
 }
 
-// Mitglied hinter einem angemeldeten Konto (nicht über den persönlichen Link)
-function kontoMitglied(array $bundle, array $zugriff) {
-  if (empty($zugriff['konto'])) return null;
-  foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === ($zugriff['personId'] ?? null) && !empty($m['benutzerId'])) return $m;
-  return null;
+// --- Individuelle Rechte: Zuschnitt auf Themenbereiche, Personen und Traktanden --------------------------
+// sitzung.zuschnitt[personId] bzw. link.zuschnitt = { regeln: [{ modus: lesen|bearbeiten, art: themenbereich|person|
+// traktandum, id }], eigene: bool } gilt für Vorprotokoll und Protokoll, sobald dort «Individuell» gesetzt ist.
+// Regeln zählen zusammen; bearbeiten schliesst lesen ein. Wer Regeln hat, sieht nur, was sie abdecken (Kopfdaten,
+// Anwesenheit und Gäste bleiben). Unterpunkte erben von oben; Themenbereiche stehen am Haupttraktandum oder am Eintrag;
+// «Person» = verantwortlich, als Bearbeiter eingetragen (direkt, Rolle, Gruppe) oder Pendenz zugewiesen.
+function zuschnittVon(array $bundle, array $sitzung, $personId, $link = null) {
+  $z = $link ? ($link['zuschnitt'] ?? null) : (((array) ($sitzung['zuschnitt'] ?? []))[$personId] ?? null); // leer als {} (stdClass)
+  if (!$z && !$link && isset($GLOBALS['linkGaeste'][$personId])) {
+    // Über einen Link eingetragene Person ohne eigenen Zuschnitt: der ihres Links
+    foreach ($bundle['vorprotokolle'] as $vp) {
+      if ($vp['sitzungId'] !== $sitzung['id']) continue;
+      foreach ($vp['gaeste'] as $g) {
+        if ($g['id'] !== $personId) continue;
+        $herkunft = ($g['ueberLink'] ?? '') === 'freigabe' ? freigabeLinkObjekt($vp) : null;
+        foreach ($sitzung['links'] ?? [] as $l) if (($g['ueberLink'] ?? '') === $l['id']) $herkunft = $l;
+        if ($herkunft && $herkunft['stufe'] === 'individuell') $z = $herkunft['zuschnitt'] ?? null;
+      }
+    }
+  }
+  return $z && !empty($z['regeln']) ? $z : null;
 }
 
-// Feste Rolle (Präsidium / Aktuariat)?
+// Was der Zuschnitt sichtbar und bearbeitbar macht: Traktanden (alle Ebenen, auch Zusatztraktanden) und Einträge
+function zuschnittSicht(array $bundle, array $vp, $protokoll, array $zuschnitt, $selbst, array $typRechte = []) {
+  $regeln = $zuschnitt['regeln'];
+  $personen = [];
+  foreach ($regeln as $r) if ($r['art'] === 'person') $personen[$r['id']] = personDaten($bundle, $r['id']);
+  $passt = function (array $r, array $k, $tb) use ($personen) {
+    if ($r['art'] === 'themenbereich') return $tb !== '' && $tb === $r['id'];
+    if ($r['art'] === 'traktandum') return ($k['id'] ?? '') === $r['id'];
+    return isset($personen[$r['id']]) && istBerechtigt($k, $personen[$r['id']]);
+  };
+  $hat = function ($modus, array $k, $tb) use ($regeln, $passt) {
+    foreach ($regeln as $r) if (($modus === 'lesen' || $r['modus'] === 'bearbeiten') && $passt($r, $k, $tb)) return true;
+    return false;
+  };
+  $sicht = ['lesen' => [], 'bearbeiten' => [], 'kopf' => [], 'eltern' => []];
+  $gehe = function (array $liste, $tbOben, $erbtL, $erbtB, $eltern) use (&$gehe, &$sicht, $hat, $zuschnitt, $selbst) {
+    foreach ($liste as $k) {
+      $id = $k['id'] ?? '';
+      $tb = $tbOben !== null ? $tbOben : (string) ($k['themenbereichId'] ?? '');
+      $b = $erbtB || $hat('bearbeiten', $k, $tb) || (!empty($zuschnitt['eigene']) && $selbst && istBerechtigt($k, $selbst));
+      $l = $b || $erbtL || $hat('lesen', $k, $tb);
+      $sicht['eltern'][$id] = $eltern;
+      if ($b) $sicht['bearbeiten'][$id] = true;
+      if ($l) $sicht['lesen'][$id] = true;
+      $gehe($k['untertraktanden'] ?? [], $tb, $l, $b, $id);
+    }
+  };
+  $gehe($vp['traktanden'], null, false, false, null);
+  if ($protokoll) $gehe($protokoll['zusatztraktanden'] ?? [], null, false, false, null);
+
+  $pendenzVon = function ($modus, array $e) use ($regeln, $zuschnitt, $selbst) {
+    if (($e['typ'] ?? '') !== 'pendenz') return false;
+    if (!empty($zuschnitt['eigene']) && $selbst && ($e['zugewiesenAn'] ?? null) === $selbst['id']) return true; // eigene Pendenzen
+    foreach ($regeln as $r) if ($r['art'] === 'person' && ($modus === 'lesen' || $r['modus'] === 'bearbeiten') && ($e['zugewiesenAn'] ?? null) === $r['id']) return true;
+    return false;
+  };
+  $tbEintrag = function ($modus, array $e) use ($regeln) {
+    foreach ($regeln as $r) if ($r['art'] === 'themenbereich' && ($modus === 'lesen' || $r['modus'] === 'bearbeiten') && ($e['themenbereichId'] ?? '') === $r['id']) return true;
+    return false;
+  };
+  $sicht['eintragLesen'] = fn(array $e) => isset($sicht['lesen'][$e['traktandumId'] ?? '']) || $tbEintrag('lesen', $e) || $pendenzVon('lesen', $e);
+  $sicht['eintragBearbeiten'] = fn(array $e) => isset($sicht['bearbeiten'][$e['traktandumId'] ?? '']) || $tbEintrag('bearbeiten', $e) || $pendenzVon('bearbeiten', $e)
+    || (in_array($e['typ'] ?? '', $typRechte, true) && $sicht['eintragLesen']($e));
+  // Über sichtbaren Punkten und Einträgen steht ihr Pfad als Kopf (nur Titel)
+  $kopf = function ($id) use (&$sicht) {
+    for ($p = $sicht['eltern'][$id] ?? null; $p !== null; $p = $sicht['eltern'][$p] ?? null) if (!isset($sicht['lesen'][$p])) $sicht['kopf'][$p] = true;
+  };
+  foreach (array_keys($sicht['lesen']) as $id) $kopf($id);
+  foreach ($protokoll['eintraege'] ?? [] as $e) {
+    $t = $e['traktandumId'] ?? '';
+    if ($sicht['eintragLesen']($e) && !isset($sicht['lesen'][$t])) { $sicht['kopf'][$t] = true; $kopf($t); }
+  }
+  return $sicht;
+}
+
+// Ausliefern: nicht sichtbare Punkte weglassen (Originalnummer in _nr), Kopf-Punkte nur mit Titel, Einträge filtern
+function zuschnittListe(array $liste, array $sicht, $nummer = '') {
+  $aus = [];
+  foreach ($liste as $i => $k) {
+    $id = $k['id'] ?? '';
+    $nr = $nummer === '' ? (string) ($i + 1) : "$nummer." . ($i + 1);
+    if (!isset($sicht['lesen'][$id]) && !isset($sicht['kopf'][$id])) continue;
+    if (!isset($sicht['lesen'][$id])) $k['notiz'] = '';
+    $k['_nr'] = $nr;
+    $k['untertraktanden'] = zuschnittListe($k['untertraktanden'] ?? [], $sicht, $nr);
+    $aus[] = $k;
+  }
+  return $aus;
+}
+
+function ohneNummern(array $liste) {
+  foreach ($liste as &$k) {
+    unset($k['_nr']);
+    $k['untertraktanden'] = ohneNummern($k['untertraktanden'] ?? []);
+  }
+  return $liste;
+}
+
+// Speichern: bearbeitbare Punkte ganz übernehmen (inkl. Löschen, Unterpunkte), übrige behalten und darin weiter prüfen;
+// neue Haupttraktanden nur mit dem Einzelrecht «Traktanden hinzufügen»
+function zuschnittMergeListe(array $altListe, array $neuListe, array $sicht, $neueErlaubt, $kennung) {
+  $neuById = indexById($neuListe);
+  $altIds = [];
+  $liste = [];
+  foreach ($altListe as $t) {
+    $altIds[$t['id']] = true;
+    $n = $neuById[$t['id']] ?? null;
+    if (isset($sicht['bearbeiten'][$t['id']]) || ($neueErlaubt && ($t['hinzugefuegtVon'] ?? null) === $kennung)) {
+      if ($n) $liste[] = ohneNummern([$n])[0];
+      continue;
+    }
+    $t['untertraktanden'] = zuschnittMergeListe($t['untertraktanden'] ?? [], $n['untertraktanden'] ?? [], $sicht, false, $kennung);
+    $liste[] = $t;
+  }
+  if ($neueErlaubt) foreach ($neuListe as $t) if (!isset($altIds[$t['id']])) $liste[] = ['hinzugefuegtVon' => $kennung] + ohneNummern([$t])[0];
+  return $liste;
+}
+
+function zuschnittVorprotokoll(array $alt, array $neu, array $sicht, array $rechte, $kennung) {
+  $alt['traktanden'] = zuschnittMergeListe($alt['traktanden'], $neu['traktanden'] ?? [], $sicht, in_array('traktandenHinzufuegen', $rechte, true), $kennung);
+  if (in_array('anwesenheit', $rechte, true)) $alt['anwesendeMitgliederIds'] = $neu['anwesendeMitgliederIds'] ?? $alt['anwesendeMitgliederIds'];
+  if (in_array('gaeste', $rechte, true)) $alt['gaeste'] = $neu['gaeste'] ?? $alt['gaeste'];
+  return $alt;
+}
+
+// Protokoll: nur bearbeitbare Einträge übernehmen (Anträge: nur Beschluss und Stimmen, nicht neu), Dauer bearbeitbarer Punkte
+function zuschnittProtokoll(array $alt, array $neu, array $sicht) {
+  $darf = $sicht['eintragBearbeiten'];
+  $neuById = indexById($neu['eintraege'] ?? []);
+  $altIds = [];
+  $eintraege = [];
+  foreach ($alt['eintraege'] as $e) {
+    $altIds[$e['id']] = true;
+    $n = $neuById[$e['id']] ?? null;
+    if (!$darf($e)) $eintraege[] = $e;
+    elseif ($n && $darf($n)) $eintraege[] = $n;
+    elseif ($e['typ'] === 'antrag') $eintraege[] = $e;
+  }
+  foreach ($neu['eintraege'] ?? [] as $e) if (!isset($altIds[$e['id']]) && $darf($e) && $e['typ'] !== 'antrag') $eintraege[] = $e;
+  $alt['eintraege'] = $eintraege;
+  $alt['zusatztraktanden'] = zuschnittMergeListe($alt['zusatztraktanden'] ?? [], $neu['zusatztraktanden'] ?? [], $sicht, false, '');
+  $dauern = is_array($alt['dauern'] ?? null) ? $alt['dauern'] : [];
+  foreach (array_keys($sicht['bearbeiten']) as $id) {
+    if (isset($neu['dauern'][$id])) $dauern[$id] = $neu['dauern'][$id];
+    else unset($dauern[$id]);
+  }
+  $alt['dauern'] = $dauern;
+  return $alt;
+}
+
+// Ausgeliefertes Bundle für einen Zugang mit Zuschnitt: Vorprotokoll und Protokoll jeder betroffenen Sitzung kürzen
+function zuschnittAnwenden(array $bundle, array $zugriff) {
+  linkGaesteMerken($bundle);
+  $personId = $zugriff['personId'] ?? null;
+  $selbst = $personId ? personDaten($bundle, $personId) : null;
+  foreach ($bundle['sitzungen'] as $s) {
+    $link = null;
+    if (($zugriff['rolle'] ?? '') === 'link' || (($zugriff['rolle'] ?? '') === 'freigabe' && !$personId)) {
+      if ($s['id'] !== ($zugriff['sitzungId'] ?? '') || ($zugriff['stufe'] ?? '') !== 'individuell') continue;
+      $link = linkVonZugriff($bundle, $s, $zugriff);
+      if (!$link) continue;
+    } elseif (!$personId) continue;
+    $z = zuschnittVon($bundle, $s, $personId, $link);
+    if (!$z) continue;
+    $vpIndex = null;
+    foreach ($bundle['vorprotokolle'] as $i => $vp) if ($vp['sitzungId'] === $s['id']) $vpIndex = $i;
+    if ($vpIndex === null) continue;
+    $pIndex = null;
+    foreach ($bundle['protokolle'] as $i => $p) if ($p['sitzungId'] === $s['id']) $pIndex = $i;
+    $protokoll = $pIndex !== null ? $bundle['protokolle'][$pIndex] : null;
+    $rechte = $link ? ($link['rechte'] ?? []) : einzelrechte($s, 'protokoll', $personId);
+    $individuell = $link || freigabeStufe($s, 'vorprotokoll', $personId) === 'individuell' || freigabeStufe($s, 'protokoll', $personId) === 'individuell';
+    if (!$individuell) continue;
+    $sicht = zuschnittSicht($bundle, $bundle['vorprotokolle'][$vpIndex], $protokoll, $z, $selbst, $rechte);
+    $bundle['vorprotokolle'][$vpIndex]['traktanden'] = zuschnittListe($bundle['vorprotokolle'][$vpIndex]['traktanden'], $sicht);
+    if ($pIndex !== null) {
+      $p = &$bundle['protokolle'][$pIndex];
+      $p['eintraege'] = array_values(array_filter($p['eintraege'], $sicht['eintragLesen']));
+      $p['zusatztraktanden'] = zuschnittListe($p['zusatztraktanden'] ?? [], $sicht);
+      $sichtbar = $sicht['lesen'] + $sicht['kopf'];
+      $p['aenderungsantraege'] = array_values(array_filter($p['aenderungsantraege'] ?? [], fn($a) => isset($sichtbar[$a['zielId'] ?? '']) || in_array($a['zielId'] ?? '', array_column($p['eintraege'], 'id'), true)));
+      unset($p);
+    }
+  }
+  return $bundle;
+}
+
+// Rechte einer Rolle (rolle.rechte): Standardstufe pro Dokument (lesen / eigene / alles oder Liste von Einzelrechten),
+// Sitzungsführung (wird bei neuen Sitzungen als Sitzungsleitung bzw. Protokollführung vorgeschlagen), Sitzungen eintragen,
+// Zugriffe verwalten (alle Sitzungen). Ohne Angabe gelten die Vorlagen: Präsidium / Aktuariat führen und tragen ein.
+function rolleRechte(array $gremium, $personId) {
+  $standard = ['vorprotokoll' => 'eigene', 'protokoll' => 'eigene', 'fuehrung' => '', 'eintragen' => false, 'zugriffe' => false];
+  foreach ($gremium['mitglieder'] as $m) {
+    if ($m['id'] !== $personId) continue;
+    foreach ($gremium['rollen'] as $r) {
+      if ($r['id'] !== ($m['rolleId'] ?? null)) continue;
+      $typ = $r['typ'] ?? null;
+      $vorlage = $typ === 'praesidium' ? ['fuehrung' => 'sitzungsleitung', 'eintragen' => true] : ($typ === 'aktuariat' ? ['fuehrung' => 'protokollfuehrung', 'eintragen' => true] : []);
+      return array_filter((array) ($r['rechte'] ?? []), fn($w) => $w !== null) + $vorlage + $standard;
+    }
+  }
+  return $standard;
+}
+
+// Darf Sitzungen eintragen bzw. das Recht vergeben (Rolle) – über persönlichen Link wie über Konto
 function hatFesteRolle(array $gremium, array $mitglied) {
-  foreach ($gremium['rollen'] as $r) if ($r['id'] === ($mitglied['rolleId'] ?? null)) return in_array($r['typ'] ?? null, ['praesidium', 'aktuariat'], true);
-  return false;
+  return !empty(rolleRechte($gremium, $mitglied['id'] ?? '')['eintragen']);
 }
 
 // Wird die Rolle dieses Mitglieds an Sitzungen erwartet?
@@ -623,6 +993,18 @@ function terminfindungMerge(array $alt, array $neu, array $sitzung, array $perso
 
 // Aus der Terminfindung entfernte Personen sind entschuldigt: im Vorprotokoll (solange es kein Protokoll gibt) nicht
 // anwesend; wer wieder aufgenommen wird und an Sitzungen erwartet ist, gilt wieder als anwesend
+// Abgesagt (Einladung per E-Mail, mit Grund): bis zum Sitzungsbeginn nicht in der Anwesenheit – auch wenn ein älterer
+// Stand des Vorprotokolls gespeichert wird. Ändern kann das nur die Person selbst über den Link in ihrer Einladung.
+function absagenDurchsetzen(array $bundle, array $aenderungen) {
+  $hatProtokoll = array_flip(array_column($bundle['protokolle'], 'sitzungId'));
+  foreach ($aenderungen['vorprotokolle'] ?? [] as $k => $vp) {
+    if (isset($hatProtokoll[$vp['sitzungId'] ?? ''])) continue;
+    $abgesagt = array_keys(array_filter($bundle['einladungen'][$vp['sitzungId'] ?? ''] ?? [], fn($e) => ($e['antwort'] ?? '') === 'abgesagt'));
+    if ($abgesagt) $aenderungen['vorprotokolle'][$k]['anwesendeMitgliederIds'] = array_values(array_diff($vp['anwesendeMitgliederIds'] ?? [], $abgesagt));
+  }
+  return $aenderungen;
+}
+
 function abmeldungenUebertragen(array $bundle, array $aenderungen) {
   $altSitzungen = indexById($bundle['sitzungen']);
   $hatProtokoll = array_flip(array_column($bundle['protokolle'], 'sitzungId'));
@@ -787,11 +1169,35 @@ function sitzungMergeAnonym(array $alt, array $neu, bool $abstimmen = true, bool
   return $alt;
 }
 
-// Zusätzlicher allgemeiner Link: nur sein Dokument dieser Sitzung – mit «Alles» ganz, mit «Individuell» nach
+// Einzelrechte einer Link-Stufe: alles = alle, eigene = Traktanden ändern und verschieben (Vorprotokoll), individuell = gewählte
+function linkStufenRechte($stufe, array $rechte, $dokument) {
+  if ($stufe === 'alles') return EINZELRECHTE[$dokument];
+  if ($stufe === 'eigene') return $dokument === 'vorprotokoll' ? ['traktandenAendern'] : [];
+  if ($stufe === 'individuell') return array_values(array_intersect($rechte, EINZELRECHTE[$dokument]));
+  return [];
+}
+
+// Allgemeiner Freigabe-Link des Vorprotokolls als Link (Stufe wie bei weiteren Links; Standard «eigene»)
+function freigabeLinkObjekt(array $vp) {
+  return ['id' => 'freigabe', 'name' => 'Allgemeiner Link', 'dokument' => 'vorprotokoll', 'stufe' => $vp['freigabeLinkStufe'] ?? 'eigene',
+          'rechte' => $vp['freigabeLinkRechte'] ?? [], 'zuschnitt' => $vp['freigabeLinkZuschnitt'] ?? null, 'ablauf' => $vp['freigabeLinkAblauf'] ?? ''];
+}
+
+// Link hinter einem Link-Zugriff (zusätzlicher Link der Sitzung oder Freigabe-Link)
+function linkVonZugriff(array $bundle, array $sitzung, array $zugriff) {
+  if (($zugriff['linkId'] ?? '') === 'freigabe') {
+    $vp = vorprotokollVon($bundle, $sitzung['id']);
+    return $vp ? freigabeLinkObjekt($vp) : null;
+  }
+  foreach ($sitzung['links'] ?? [] as $l) if ($l['id'] === ($zugriff['linkId'] ?? '')) return $l;
+  return null;
+}
+
+// Zusätzlicher allgemeiner Link: nur sein Dokument dieser Sitzung – mit «Alles» ganz, mit «Eigene» / «Individuell» nach
 // Einzelrechten, mit «Lesen» gar nicht
 function linkRechteAnwenden(array $bundle, array $aenderungen, array $zugriff) {
   $dokument = $zugriff['dokument'];
-  $rechte = $zugriff['stufe'] === 'alles' ? EINZELRECHTE[$dokument] : ($zugriff['stufe'] === 'individuell' ? $zugriff['rechte'] : []);
+  $rechte = linkStufenRechte($zugriff['stufe'], $zugriff['rechte'] ?? [], $dokument);
   $ergebnis = ['sitzungen' => [], 'vorprotokolle' => [], 'protokolle' => []];
   $alt = indexById($bundle['sitzungen'])[$zugriff['sitzungId']] ?? null;
   if (!$alt || !$rechte) return $ergebnis;
@@ -806,7 +1212,11 @@ function linkRechteAnwenden(array $bundle, array $aenderungen, array $zugriff) {
   foreach ($aenderungen[$typ] ?? [] as $neu) {
     $altDok = $altDokumente[$neu['id']] ?? null;
     if (!$altDok || $altDok['sitzungId'] !== $alt['id']) continue;
+    $link = linkVonZugriff($bundle, $alt, $zugriff);
+    $z = $zugriff['stufe'] === 'individuell' && $link ? zuschnittVon($bundle, $alt, null, $link) : null;
     if ($zugriff['stufe'] === 'alles') $dok = $neu;
+    elseif ($z && $typ === 'vorprotokolle') $dok = zuschnittVorprotokoll($altDok, $neu, zuschnittSicht($bundle, $altDok, protokollVon($bundle, $alt['id']), $z, null), $rechte, 'link:' . $zugriff['linkId']);
+    elseif ($z && ($vp = vorprotokollVon($bundle, $alt['id']))) $dok = zuschnittProtokoll($altDok, $neu, zuschnittSicht($bundle, $vp, $altDok, $z, null, $rechte));
     elseif ($typ === 'vorprotokolle') $dok = vorprotokollEinzelrechte($altDok, $neu, $rechte, 'link:' . $zugriff['linkId']);
     else $dok = protokollEinzelrechte($altDok, $neu, $rechte);
     $ergebnis[$typ][] = schluesselBewahren($altDok, $dok);
@@ -835,7 +1245,7 @@ function gremiumRechteAnwenden(array $bundle, array $aenderungen, array $rechte)
 
 // Schlüssel bleiben serverseitig erhalten (Zugänge ohne Admin-Rechte erhalten sie nicht und würden sie sonst löschen)
 function schluesselBewahren(array $alt, array $neu) {
-  foreach (['freigabeLinkKey', 'freigabeLinkAblauf', 'personenKeys', 'aliasKeys', 'verfolgerKey'] as $feld) {
+  foreach (['freigabeLinkKey', 'freigabeLinkAblauf', 'freigabeLinkStufe', 'freigabeLinkRechte', 'freigabeLinkZuschnitt', 'personenKeys', 'aliasKeys', 'verfolgerKey'] as $feld) {
     if (array_key_exists($feld, $alt)) $neu[$feld] = $alt[$feld];
     else unset($neu[$feld]);
   }
@@ -855,11 +1265,46 @@ function gastFelderBewahren(array $bundle, array $aenderungen) {
       }
     }
   }
+  return gastEmailsBewahren($bundle, $aenderungen);
+}
+
+// E-Mails von Gästen und weiteren Personen sehen nur Verwaltende (Sitzungen bearbeiten) und die Leitung der
+// Sitzung, sonst jede Person nur ihre eigene. Verborgene Adressen sind leer und mit emailVerborgen markiert.
+function gastEmailsVerbergen(array $bundle, $personId) {
+  $leitung = [];
+  foreach ($bundle['sitzungen'] as $s) if ($personId !== null && istLeitung($s, $personId)) $leitung[$s['id']] = true;
+  foreach (['vorprotokolle', 'protokolle'] as $typ) {
+    foreach ($bundle[$typ] as $k => $dok) {
+      if (isset($leitung[$dok['sitzungId']])) continue;
+      foreach ($dok['gaeste'] ?? [] as $i => $g) {
+        if (($g['email'] ?? '') === '' || ($g['id'] ?? null) === $personId) continue;
+        $bundle[$typ][$k]['gaeste'][$i]['email'] = '';
+        $bundle[$typ][$k]['gaeste'][$i]['emailVerborgen'] = true;
+      }
+    }
+  }
+  return $bundle;
+}
+
+// Beim Speichern: verborgene (leer zurückgeschickte) E-Mails bleiben erhalten; die Markierung wird nie gespeichert
+function gastEmailsBewahren(array $bundle, array $aenderungen) {
+  $vpEmails = []; // Rückfall für neue Protokolle: Gäste stammen aus dem Vorprotokoll
+  foreach ($bundle['vorprotokolle'] as $vp) foreach ($vp['gaeste'] as $g) $vpEmails[$g['id']] = $g['email'] ?? '';
+  foreach (['vorprotokolle', 'protokolle'] as $typ) {
+    $alt = indexById($bundle[$typ]);
+    foreach ($aenderungen[$typ] ?? [] as $k => $dok) {
+      $altGaeste = indexById($alt[$dok['id'] ?? '']['gaeste'] ?? []);
+      foreach ($dok['gaeste'] ?? [] as $i => $g) {
+        if (!empty($g['emailVerborgen']) && ($g['email'] ?? '') === '') $aenderungen[$typ][$k]['gaeste'][$i]['email'] = $altGaeste[$g['id'] ?? '']['email'] ?? $vpEmails[$g['id'] ?? ''] ?? '';
+        unset($aenderungen[$typ][$k]['gaeste'][$i]['emailVerborgen']);
+      }
+    }
+  }
   return $aenderungen;
 }
 
 // Persönliche Zugänge (Mitglied / Gast): Dokumente je nach Berechtigung mergen. Das Gremium ändert sich nur, wenn
-// Präsidium / Aktuariat mit Konto das Recht «Sitzungen eintragen» an andere Mitglieder vergeben.
+// Mitglieder, deren Rolle Sitzungen eintragen darf, das Recht «Sitzungen eintragen» an andere Mitglieder vergeben.
 function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff) {
   $person = personDaten($bundle, $zugriff['personId']);
   $nurVorprotokollId = $zugriff['vorprotokollId'] ?? null; // Gast-Link: nur dieses Vorprotokoll
@@ -869,10 +1314,11 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   unset($aenderungen['gremium'], $aenderungen['geloescht']);
   $sitzungen = indexById($bundle['sitzungen']);
 
-  // Konto mit Recht «Sitzungen eintragen»: Präsidium / Aktuariat immer, andere nur mit zugeteiltem Recht
-  $kontoMitglied = kontoMitglied($bundle, $zugriff);
-  $festeRolle = $kontoMitglied && hatFesteRolle($bundle['gremium'], $kontoMitglied);
-  $darfEintragen = $festeRolle || !empty($kontoMitglied['darfSitzungenEintragen']);
+  // Recht «Sitzungen eintragen»: über die Rolle oder einzeln zugeteilt (persönlicher Link wie Konto)
+  $mitglied = null;
+  foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === ($zugriff['personId'] ?? null) && !$nurVorprotokollId) $mitglied = $m;
+  $festeRolle = $mitglied && hatFesteRolle($bundle['gremium'], $mitglied);
+  $darfEintragen = $festeRolle || !empty($mitglied['darfSitzungenEintragen']);
   if ($festeRolle && $gremiumNeu) {
     $neuMitglieder = indexById($gremiumNeu['mitglieder'] ?? []);
     $gremium = $bundle['gremium'];
@@ -945,7 +1391,14 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
     if ($sitzung && fuerSitzungGesperrt($sitzung, $person['id'])) continue;
     $stufe = $sitzung ? freigabeStufe($sitzung, 'vorprotokoll', $person['id']) : 'eigene';
     if ($stufe === 'lesen') { $vorprotokolle[] = $alt; continue; }
-    if ($stufe === 'individuell') { $vorprotokolle[] = schluesselBewahren($alt, vorprotokollEinzelrechte($alt, $neu, einzelrechte($sitzung, 'vorprotokoll', $person['id']), $person['id'])); continue; }
+    if ($stufe === 'individuell') {
+      $rechte = einzelrechte($sitzung, 'vorprotokoll', $person['id']);
+      $z = zuschnittVon($bundle, $sitzung, $person['id']);
+      $dok = $z ? zuschnittVorprotokoll($alt, $neu, zuschnittSicht($bundle, $alt, protokollVon($bundle, $alt['sitzungId']), $z, $person), $rechte, $person['id'])
+                : vorprotokollEinzelrechte($alt, $neu, $rechte, $person['id']);
+      $vorprotokolle[] = schluesselBewahren($alt, $dok);
+      continue;
+    }
     $dok = $stufe === 'alles' ? $neu : vorprotokollMerge($alt, $neu, $person);
     // Links der eigenen Sitzung (allgemein, Gäste) verwalten Sitzungsleitung und Protokollführung
     $vorprotokolle[] = $sitzung && istLeitung($sitzung, $person['id']) && $stufe === 'alles' ? $dok : schluesselBewahren($alt, $dok);
@@ -964,7 +1417,14 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
     $sitzung = $sitzungen[$alt['sitzungId']] ?? null;
     if ($sitzung && fuerSitzungGesperrt($sitzung, $person['id'])) continue;
     $stufe = $sitzung ? freigabeStufe($sitzung, 'protokoll', $person['id']) : 'eigene';
-    if ($stufe === 'individuell') { $protokolle[] = schluesselBewahren($alt, protokollEinzelrechte($alt, $neu, einzelrechte($sitzung, 'protokoll', $person['id']))); continue; }
+    if ($stufe === 'individuell') {
+      $rechte = einzelrechte($sitzung, 'protokoll', $person['id']);
+      $z = zuschnittVon($bundle, $sitzung, $person['id']);
+      $vp = vorprotokollVon($bundle, $alt['sitzungId']);
+      $dok = $z && $vp ? zuschnittProtokoll($alt, $neu, zuschnittSicht($bundle, $vp, $alt, $z, $person, $rechte)) : protokollEinzelrechte($alt, $neu, $rechte);
+      $protokolle[] = schluesselBewahren($alt, $dok);
+      continue;
+    }
     $dok = $stufe === 'alles' ? $neu : protokollMerge($alt, $neu, $person, $bundle);
     $protokolle[] = $sitzung && istLeitung($sitzung, $person['id']) && $stufe === 'alles' ? $dok : schluesselBewahren($alt, $dok);
   }
@@ -988,6 +1448,7 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
 // darf die Protokollführung bzw. wer das Gremium verwaltet; die Sitzungsleitung sieht sie nur.
 function darfAenderungStellen(array $bundle, array $sitzung, array $protokoll, $personId) {
   if (!$personId || !empty($sitzung['kurz']) || !empty($sitzung['genehmigt']) || ($sitzung['status'] ?? '') !== 'abgeschlossen') return false;
+  if (in_array($personId, array_column($protokoll['gaeste'] ?? [], 'id'), true)) return true; // anwesender Gast oder weitere Person
   foreach ($bundle['gremium']['mitglieder'] as $m) {
     if ($m['id'] !== $personId) continue;
     if (empty($m['benutzerId'])) return false;
@@ -1046,11 +1507,26 @@ function aenderungsantraegeBerechnen(array $bundle, array $aenderungen, array $z
 // Gremium-Zugang: Links nur zu Bereichen, die er bearbeiten darf – Verfolger- und Übersichts-Links (nur lesen) schon ab «lesen»
 // Passwörter allgemeiner Links (linkSchutz) gehen nie hinaus – nur, welche Links eines haben (geschuetzt).
 // Sitzungsleitung / Protokollführung sehen die Links ihrer Sitzungen; wer für eine Sitzung gesperrt ist, sieht sie nicht.
+// Einladungen mit Antworten und Absagegründen sowie Abbestellungen sehen nur, wer die jeweilige Sitzung verwaltet
+function einladungenFiltern(array $bundle, array $zugriff) {
+  $behalten = [];
+  foreach ($bundle['einladungen'] ?? [] as $sitzungId => $liste) {
+    $s = sitzungVon($bundle, $sitzungId);
+    if ($s && verwaltetSitzung($zugriff, $s, $bundle['gremium'])) $behalten[$sitzungId] = $liste;
+  }
+  $bundle['einladungen'] = $behalten ?: new stdClass();
+  $verwaltet = $behalten || verwaltetSitzung($zugriff, null, $bundle['gremium']);
+  if (!$verwaltet) foreach ($bundle['sitzungen'] as $s) $verwaltet = $verwaltet || verwaltetSitzung($zugriff, $s, $bundle['gremium']);
+  $bundle['einladungenAus'] = $verwaltet ? ($bundle['einladungenAus'] ?? []) : [];
+  return $bundle;
+}
+
 function bereinigen(array $bundle, array $zugriff) {
   $bundle['geschuetzt'] = array_keys($bundle['linkSchutz'] ?? []);
-  unset($bundle['linkSchutz']);
+  unset($bundle['linkSchutz'], $bundle['ansichten'], $bundle['linkZugesandt']); // Passwörter, Ansicht-Schlüssel und Versandsperren gehen nie hinaus
   $rolle = $zugriff['rolle'];
   if ($rolle === 'admin') return $bundle;
+  $bundle = einladungenFiltern($bundle, $zugriff);
   $original = $bundle;
   $bundle['gremium']['zugaenge'] = [];
   $rechte = $rolle === 'gremium' ? $zugriff['rechte'] : [];
@@ -1065,6 +1541,9 @@ function bereinigen(array $bundle, array $zugriff) {
   if ($rolle === 'person') $bundle = personSicht($bundle, $original, $zugriff['personId']);
   elseif ($sitzungen !== 'bearbeiten') unset($bundle['nutzung']);
   if ($sitzungen === 'bearbeiten') return $bundle;
+  $bundle = gastEmailsVerbergen($bundle, $zugriff['personId'] ?? null);
+  // Individuelle Rechte mit Regeln: nur die abgedeckten Traktanden und Einträge
+  if (in_array($rolle, ['person', 'freigabe', 'link'], true)) $bundle = zuschnittAnwenden($bundle, $zugriff);
   // Verdeckte Terminfindung: nur die eigene Stimme sichtbar
   foreach ($bundle['sitzungen'] as &$s) {
     if (!empty($s['terminfindung']['verdeckt'])) {
@@ -1080,8 +1559,9 @@ function bereinigen(array $bundle, array $zugriff) {
 function personSicht(array $bundle, array $original, $personId) {
   $geleitet = [];
   $weg = [];
+  $alleVerwalten = !empty(rolleRechte($bundle['gremium'], $personId)['zugriffe']);
   foreach ($bundle['sitzungen'] as $i => $s) {
-    if (istLeitung($s, $personId)) {
+    if (istLeitung($s, $personId) || $alleVerwalten) {
       $geleitet[$s['id']] = true;
       $bundle['sitzungen'][$i]['links'] = $original['sitzungen'][$i]['links'] ?? [];
     } elseif (fuerSitzungGesperrt($s, $personId)) $weg[$s['id']] = true;
@@ -1159,6 +1639,16 @@ function linkSchutz(array $bundle, array $zugriff, $token, $ref, $ablauf, $sitzu
   return $zugriff + ['ref' => $ref];
 }
 
+function vorprotokollVon(array $bundle, $sitzungId) {
+  foreach ($bundle['vorprotokolle'] as $vp) if ($vp['sitzungId'] === $sitzungId) return $vp;
+  return null;
+}
+
+function protokollVon(array $bundle, $sitzungId) {
+  foreach ($bundle['protokolle'] as $p) if ($p['sitzungId'] === $sitzungId) return $p;
+  return null;
+}
+
 function sitzungVon(array $bundle, $sitzungId) {
   foreach ($bundle['sitzungen'] as $s) if ($s['id'] === $sitzungId) return $s;
   return null;
@@ -1168,9 +1658,7 @@ function sitzungVon(array $bundle, $sitzungId) {
 // Ablauf ihres Links. Gelöschter Link: nur noch lesen (mit Konto) bzw. kein Zugriff mehr (Link).
 function herkunftsLink(array $bundle, array $vp, array $gast) {
   $sitzung = sitzungVon($bundle, $vp['sitzungId']);
-  if ($gast['ueberLink'] === 'freigabe') {
-    return ['dokument' => 'vorprotokoll', 'stufe' => 'alles', 'rechte' => [], 'ablauf' => $vp['freigabeLinkAblauf'] ?? '', 'sitzung' => $sitzung, 'terminfindung' => true, 'gibt' => true];
-  }
+  if ($gast['ueberLink'] === 'freigabe') return freigabeLinkObjekt($vp) + ['sitzung' => $sitzung, 'terminfindung' => true, 'gibt' => true];
   foreach ($sitzung['links'] ?? [] as $l) {
     if ($l['id'] === $gast['ueberLink']) return ['dokument' => $l['dokument'], 'stufe' => $l['stufe'], 'rechte' => $l['rechte'] ?? [], 'ablauf' => $l['ablauf'] ?? '', 'sitzung' => $sitzung, 'gibt' => true];
   }
@@ -1180,17 +1668,14 @@ function herkunftsLink(array $bundle, array $vp, array $gast) {
 // Freigabe einer solchen Person auf ein Dokument: auf dem Dokument ihres Links dessen Rechte («Alles» = alle
 // Einzelrechte – Sitzung starten oder abschliessen kann ein Link nie), auf allen anderen nur lesen
 function linkGastFreigabe(array $info, $dokument) {
-  if ($dokument === $info['dokument']) {
-    if ($info['stufe'] === 'alles') return EINZELRECHTE[$dokument];
-    if ($info['stufe'] === 'individuell') return array_values(array_intersect($info['rechte'], EINZELRECHTE[$dokument]));
-    return 'lesen';
-  }
+  if ($dokument === $info['dokument']) return $info['stufe'] === 'lesen' ? 'lesen' : linkStufenRechte($info['stufe'], $info['rechte'] ?? [], $dokument);
   if ($dokument === 'terminfindung' && !empty($info['terminfindung'])) return EINZELRECHTE['terminfindung'];
   return 'lesen';
 }
 
 // Alle über Links eingetragenen Personen eines Gremiums: { gastId: herkunftsLink } (für freigabeStufe)
 function linkGaesteMerken(array $bundle) {
+  $GLOBALS['ormeetGremium'] = $bundle['gremium']; // für die Standardrechte der Rollen (freigabeRoh)
   $GLOBALS['linkGaeste'] = [];
   foreach ($bundle['vorprotokolle'] as $vp) {
     foreach ($vp['gaeste'] as $g) if (!empty($g['ueberLink'])) $GLOBALS['linkGaeste'][$g['id']] = herkunftsLink($bundle, $vp, $g);
@@ -1216,6 +1701,15 @@ function gastZugriff(array $bundle, array $vp, array $gast, $ref) {
           'personId' => $gast['id'], 'personName' => $gast['name'], 'weiterePerson' => !empty($gast['weiterePerson']), 'ref' => $ref];
 }
 
+// Persönlicher Link einer Person mit verknüpftem Konto (Mitglied oder Gast): öffnet nur noch über die Anmeldung mit dem
+// Konto. Ausnahme: das Kalender-Abo, das den persönlichen Link als Schlüssel nutzt.
+function kontoPflicht(array $person) {
+  if (empty($person['benutzerId']) || ($GLOBALS['aktion'] ?? '') === 'ical') return null;
+  $benutzer = benutzerLesen();
+  $i = benutzerById($benutzer, $person['benutzerId']);
+  return $i === null ? null : gesperrt('konto', ['name' => $benutzer[$i]['name']]);
+}
+
 function mitgliedZugriff(array $bundle, array $m, $ref) {
   if (!empty($m['gesperrt'])) return gesperrt('gesperrt');
   return ['rolle' => 'person', 'gremiumId' => $bundle['gremium']['id'], 'personId' => $m['id'], 'personName' => $m['name'], 'personEmail' => $m['email'] ?? '', 'benutzerId' => $m['benutzerId'] ?? null, 'ref' => $ref];
@@ -1226,6 +1720,16 @@ function mitgliedZugriff(array $bundle, array $m, $ref) {
 function linkZugriff($token) {
   foreach (alleBundles() as $bundle) {
     $gremiumId = $bundle['gremium']['id'];
+    // «Ansehen als …»: befristete Ansicht aus Sicht einer Person, nur lesen
+    foreach ($bundle['ansichten'] ?? [] as $a) {
+      if (!hash_equals($a['token'], $token) || $a['bis'] < time()) continue;
+      $z = null;
+      foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === $a['personId']) $z = mitgliedZugriff($bundle, $m, '');
+      foreach ($bundle['vorprotokolle'] as $vp) foreach ($vp['gaeste'] as $g) if ($g['id'] === $a['personId']) $z = gastZugriff($bundle, $vp, $g, '');
+      if (!$z || $z['rolle'] === 'gesperrt') return $z;
+      unset($z['ref']);
+      return $z + ['ansicht' => true, 'nurSitzung' => $a['sitzungId'], 'ansichtName' => personDaten($bundle, $a['personId'])['name']];
+    }
     foreach ($bundle['gremium']['zugaenge'] ?? [] as $zugang) {
       if (hash_equals($zugang['key'], $token)) {
         return linkSchutz($bundle, ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'rechte' => $zugang['rechte'], 'zugangName' => $zugang['name']], $token, 'zugang:' . $zugang['id'], $zugang['ablauf'] ?? '', null, $zugang['name']);
@@ -1235,7 +1739,7 @@ function linkZugriff($token) {
       return ['rolle' => 'gremium', 'gremiumId' => $gremiumId, 'zugangName' => 'Vollzugriff', 'rechte' => VOLLE_RECHTE];
     }
     foreach ($bundle['gremium']['mitglieder'] as $m) {
-      if (hash_equals($m['zugangsKey'] ?? '', $token)) return mitgliedZugriff($bundle, $m, 'person:' . $m['id']);
+      if (hash_equals($m['zugangsKey'] ?? '', $token)) return kontoPflicht($m) ?? mitgliedZugriff($bundle, $m, 'person:' . $m['id']);
     }
     foreach ($bundle['gremium']['themenbereiche'] as $tb) {
       if (hash_equals($tb['freigabeKey'] ?? '', $token)) return ['rolle' => 'themenbereich', 'gremiumId' => $gremiumId, 'themenbereichId' => $tb['id'], 'ref' => 'themenbereich:' . $tb['id']];
@@ -1254,18 +1758,20 @@ function linkZugriff($token) {
     }
     foreach ($bundle['vorprotokolle'] as $vorprotokoll) {
       if (hash_equals($vorprotokoll['freigabeLinkKey'], $token)) {
-        $zugriff = ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id'], 'sitzungId' => $vorprotokoll['sitzungId']];
+        $link = freigabeLinkObjekt($vorprotokoll);
+        $zugriff = ['rolle' => 'freigabe', 'gremiumId' => $gremiumId, 'vorprotokollId' => $vorprotokoll['id'], 'sitzungId' => $vorprotokoll['sitzungId'],
+                    'linkId' => 'freigabe', 'dokument' => 'vorprotokoll', 'stufe' => $link['stufe'], 'rechte' => $link['rechte']];
         return linkSchutz($bundle, $zugriff, $token, 'freigabe:' . $vorprotokoll['id'], $vorprotokoll['freigabeLinkAblauf'] ?? '', sitzungVon($bundle, $vorprotokoll['sitzungId']), 'Allgemeiner Link');
       }
       $gaeste = indexById($vorprotokoll['gaeste']);
       foreach ($vorprotokoll['personenKeys'] ?? [] as $personId => $key) {
-        if (hash_equals($key, $token)) return gastZugriff($bundle, $vorprotokoll, $gaeste[$personId] ?? personDaten($bundle, $personId), 'person:' . $personId);
+        if (hash_equals($key, $token)) return kontoPflicht($gaeste[$personId] ?? []) ?? gastZugriff($bundle, $vorprotokoll, $gaeste[$personId] ?? personDaten($bundle, $personId), 'person:' . $personId);
       }
       // Frühere Adresse einer zusammengeführten Person: öffnet als die Person, mit der sie zusammengeführt wurde
       foreach ($vorprotokoll['aliasKeys'] ?? [] as $key => $personId) {
         if (!hash_equals((string) $key, $token)) continue;
-        if (isset($gaeste[$personId])) return gastZugriff($bundle, $vorprotokoll, $gaeste[$personId], 'person:' . $personId);
-        foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === $personId) return mitgliedZugriff($bundle, $m, 'person:' . $personId);
+        if (isset($gaeste[$personId])) return kontoPflicht($gaeste[$personId]) ?? gastZugriff($bundle, $vorprotokoll, $gaeste[$personId], 'person:' . $personId);
+        foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === $personId) return kontoPflicht($m) ?? mitgliedZugriff($bundle, $m, 'person:' . $personId);
       }
     }
   }
@@ -1289,15 +1795,19 @@ function kontoZugriff($token, array $benutzer) {
 $zugriff = null;
 if ($token !== '') $zugriff = superadminZugriff($token) ?? kontoZugriff($token, benutzerLesen()) ?? linkZugriff($token);
 
+// Ansicht als eine Person: nur laden
+if ($zugriff && !empty($zugriff['ansicht']) && $aktion !== 'laden') antwort(['fehler' => 'In der Ansicht als andere Person lässt sich nichts ändern'], 403);
+
 // Gesperrter Link (Passwort fehlt, abgelaufen, Zugang gesperrt): nur das Passwort eingeben; Anmelden bleibt möglich
-if ($zugriff && $zugriff['rolle'] === 'gesperrt' && !in_array($aktion, ['sso_anbieter', 'anmelden', 'sso_start', 'sso_callback', 'passwort_vergessen', 'passwort_zuruecksetzen', 'cron', 'abbestellen'], true)) {
+if ($zugriff && $zugriff['rolle'] === 'gesperrt' && !in_array($aktion, ['sso_anbieter', 'anmelden', 'sso_start', 'sso_callback', 'passwort_vergessen', 'passwort_zuruecksetzen', 'cron', 'abbestellen', 'einladung_info', 'einladung_antworten', 'einladung_abbestellen'], true)) {
   if ($aktion === 'link_entsperren' && $zugriff['grund'] === 'passwort') {
     anmeldeSperrePruefen();
     $hash = lesen(dateiVon($zugriff['gremiumId']))['linkSchutz'][$zugriff['ref']] ?? '';
     if ($hash === '' || !password_verify((string) ($eingabe['passwort'] ?? ''), $hash)) fehlversuch('Das Passwort stimmt nicht');
     antwort(['freischaltung' => freischaltung($token, $hash)]);
   }
-  $texte = ['passwort' => 'Dieser Link ist mit einem Passwort geschützt', 'abgelaufen' => 'Dieser Link ist abgelaufen', 'gesperrt' => 'Dieser Zugang ist gesperrt'];
+  $texte = ['passwort' => 'Dieser Link ist mit einem Passwort geschützt', 'abgelaufen' => 'Dieser Link ist abgelaufen', 'gesperrt' => 'Dieser Zugang ist gesperrt',
+            'konto' => 'Dieser Link gehört zu einem Konto – bitte anmelden'];
   antwort(['fehler' => $texte[$zugriff['grund']], 'gesperrt' => $zugriff['grund'], 'name' => $zugriff['name'] ?? ''], 403);
 }
 
@@ -1530,7 +2040,7 @@ function kontoMitteilungen(array $bundle, array $g) {
   $personId = $g['personId'] ?? null;
   $person = $personId ? personDaten($bundle, $personId) : null;
   $erwartet = $person && $g['rolle'] === 'mitglied' && istErwartet($gremium, $personId);
-  $festeRolle = $person && $g['rolle'] === 'mitglied' && hatFesteRolle($gremium, $person);
+  $festeRolle = $person && $g['rolle'] === 'mitglied' && (hatFesteRolle($gremium, $person) || !empty(rolleRechte($gremium, $personId)['zugriffe']));
   $tage = max(0, (int) ($gremium['erinnerungTage'] ?? 3));
   $vorprotokolle = [];
   foreach ($bundle['vorprotokolle'] as $vp) $vorprotokolle[$vp['sitzungId']] = $vp;
@@ -1642,14 +2152,16 @@ function cronLauf() {
       linkGaesteMerken($bundle);
       foreach (kontoMitteilungen($bundle, $g) as $id => $m) $neu[$g['gremiumId'] . '|' . $id] = [$g['name'], $m[0], $m[1]];
     }
-    if ($stand === null) { // erster Lauf: bisheriger Stand gilt als bekannt
-      $mails[$b['id']] = ['gesendet' => array_keys($neu), 'tag' => ''];
-      continue;
+    $erster = $stand === null;
+    if ($erster) { // erster Lauf (auch für neue Konten): nur Wichtiges gleich verschicken, Älteres gilt als bekannt
+      $wichtig = fn($k) => preg_match('/\|(bald|abstimmen|pendenz|traktandum):/', $k);
+      $stand = ['gesendet' => array_values(array_filter(array_keys($neu), fn($k) => !$wichtig($k))), 'tag' => ''];
+      $mails[$b['id']] = $stand;
     }
     $bekannt = array_flip($stand['gesendet']);
     $offen = array_diff_key($neu, $bekannt);
     if (!$offen) continue;
-    $text = "Hallo {$b['name']}\n\nDas ist neu in Ormeet:\n";
+    $text = "Hallo {$b['name']}\n\n" . ($erster ? 'Das steht in Ormeet für dich an:' : 'Das ist neu in Ormeet:') . "\n";
     $gruppe = null;
     foreach ($offen as [$gremiumName, $mitteilung, $pfad]) {
       if ($gremiumName !== $gruppe) $text .= "\n" . ($gruppe = $gremiumName) . "\n";
@@ -1729,6 +2241,91 @@ if ($aktion === 'abbestellen') {
            : '<h1>Link ungültig</h1><p>Dieser Link zum Abbestellen stimmt nicht. Unter «Mein Konto» kannst du die E-Mails ausschalten.</p>')
     . '</body>';
   exit;
+}
+
+// --- Einladungen per E-Mail ----------------------------------------
+// bundle.einladungen[sitzungId][personId] = { gesendet: [{ art, am }], antwort: '' | zugesagt | abgesagt, grund, antwortAm }
+// bundle.einladungenAus = [E-Mail-Adressen, klein], die keine Einladungen dieses Gremiums mehr wollen.
+// Beides setzt nur der Server; ausgeliefert wird es nur an Verwaltende (bereinigen). Ohne Antwort gilt eine Einladung
+// als angenommen; eine Absage (nur mit Grund) trägt ein Mitglied aus der Anwesenheit aus – bis die Sitzung beginnt.
+// Höchstens $n Zeichen (UTF-8, ohne mbstring – fehlt auf manchen Hostings)
+function textKuerzen($text, $n) {
+  return preg_match('/^.{0,' . (int) $n . '}/su', $text, $treffer) ? $treffer[0] : substr($text, 0, $n);
+}
+
+function einladungCode($gremiumId, $sitzungId, $personId) {
+  $signatur = substr(hash_hmac('sha256', "einladung|$gremiumId|$sitzungId|$personId", schluessel()), 0, 32);
+  return "$gremiumId.$sitzungId.$personId.$signatur";
+}
+
+// Code aus der Mail prüfen -> [gremiumId, sitzungId, personId] oder Abbruch
+function einladungAusCode($code) {
+  $teile = explode('.', (string) $code);
+  if (count($teile) !== 4 || !preg_match('/^[0-9a-f-]{36}$/', $teile[0]) || !hash_equals(einladungCode($teile[0], $teile[1], $teile[2]), (string) $code)) {
+    antwort(['fehler' => 'Dieser Link ist ungültig.'], 404);
+  }
+  return array_slice($teile, 0, 3);
+}
+
+function einladungTermin(array $s) {
+  $tage = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+  return $tage[(int) date('w', strtotime($s['datum']))] . ', ' . datumText($s['datum']) . (!empty($s['zeit']) ? ', ' . $s['zeit'] . ' Uhr' : '');
+}
+
+// Persönlicher Link: Mitglied über seinen zentralen Link, Gast über seinen Gast-Link
+function einladungLink(array $bundle, array $vp, $personId, $basis) {
+  foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === $personId) return !empty($m['zugangsKey']) ? $basis . '#/zugang/' . $m['zugangsKey'] : '';
+  $key = ((array) ($vp['personenKeys'] ?? []))[$personId] ?? '';
+  return $key !== '' ? $basis . '#/freigabe/' . $key : '';
+}
+
+if ($aktion === 'einladung_info') {
+  [$gid, $sid, $pid] = einladungAusCode($eingabe['code'] ?? $_GET['code'] ?? '');
+  $bundle = lesen(dateiVon($gid));
+  $s = $bundle ? sitzungVon($bundle, $sid) : null;
+  $person = $bundle ? personDaten($bundle, $pid) : ['name' => ''];
+  if (!$s || $person['name'] === '') antwort(['fehler' => 'Diese Sitzung gibt es nicht mehr.'], 404);
+  $e = $bundle['einladungen'][$sid][$pid] ?? [];
+  antwort([
+    'gremium' => $bundle['gremium']['name'], 'titel' => $s['titel'] ?: 'Sitzung', 'termin' => $s['datum'] ? einladungTermin($s) : '', 'ort' => $s['ort'] ?? '',
+    'name' => $person['name'], 'antwort' => $e['antwort'] ?? '', 'grund' => $e['grund'] ?? '',
+    'offen' => !protokollVon($bundle, $sid), 'abgemeldet' => in_array(strtolower($person['email'] ?? ''), $bundle['einladungenAus'] ?? [], true),
+  ]);
+}
+
+if ($aktion === 'einladung_antworten') {
+  [$gid, $sid, $pid] = einladungAusCode($eingabe['code'] ?? '');
+  $neu = (string) ($eingabe['antwort'] ?? '');
+  $grund = trim((string) ($eingabe['grund'] ?? ''));
+  if (!in_array($neu, ['zugesagt', 'abgesagt'], true)) antwort(['fehler' => 'Ungültige Antwort'], 400);
+  if ($neu === 'abgesagt' && $grund === '') antwort(['fehler' => 'Bitte gib einen Grund für die Absage an.'], 400);
+  $fehler = bundleAendern($gid, function (array &$bundle) use ($sid, $pid, $neu, $grund) {
+    if (!sitzungVon($bundle, $sid) || personDaten($bundle, $pid)['name'] === '') return 'Diese Sitzung gibt es nicht mehr.';
+    if (protokollVon($bundle, $sid)) return 'Die Sitzung hat schon begonnen – die Antwort lässt sich nicht mehr ändern.';
+    $vorher = $bundle['einladungen'][$sid][$pid]['antwort'] ?? '';
+    $bundle['einladungen'][$sid][$pid] = array_merge($bundle['einladungen'][$sid][$pid] ?? ['gesendet' => []],
+      ['antwort' => $neu, 'grund' => $neu === 'abgesagt' ? textKuerzen($grund, 500) : '', 'antwortAm' => date('c')]);
+    foreach ($bundle['vorprotokolle'] as &$vp) {
+      if ($vp['sitzungId'] !== $sid) continue;
+      $ids = array_values(array_diff($vp['anwesendeMitgliederIds'], [$pid]));
+      // Absage trägt aus; eine zurückgenommene Absage trägt ein erwartetes Mitglied wieder ein
+      if ($neu === 'zugesagt' && (in_array($pid, $vp['anwesendeMitgliederIds'], true) || ($vorher === 'abgesagt' && istErwartet($bundle['gremium'], $pid)))) $ids[] = $pid;
+      $vp['anwesendeMitgliederIds'] = $ids;
+    }
+    unset($vp);
+    return null;
+  });
+  if ($fehler) antwort(['fehler' => $fehler], 409);
+  antwort(['ok' => true]);
+}
+
+if ($aktion === 'einladung_abbestellen') {
+  [$gid, , $pid] = einladungAusCode($eingabe['code'] ?? '');
+  bundleAendern($gid, function (array &$bundle) use ($pid) {
+    $email = strtolower(trim(personDaten($bundle, $pid)['email'] ?? ''));
+    if ($email !== '') $bundle['einladungenAus'] = array_values(array_unique(array_merge($bundle['einladungenAus'] ?? [], [$email])));
+  });
+  antwort(['ok' => true]);
 }
 
 // SSO: Weiterleitung zum Anbieter; Zustand signiert im state-Parameter (kein Sitzungsspeicher nötig)
@@ -1920,7 +2517,10 @@ if ($aktion === 'laden') {
       if ($g['rolle'] === 'gast') $bundle = protokolleFuerUebertrag($bundle, $g['sitzungId']);
       $bundles[] = $bundle;
     }
-    antwort(['zugriff' => $konto, 'gremien' => $bundles]);
+    $antwort = ['zugriff' => $konto, 'gremien' => $bundles];
+    $auswahl = eigentuemerKonten($konto);
+    if ($auswahl) $antwort['konten'] = $auswahl;
+    antwort($antwort);
   }
   if ($istAdmin) $bundles = array_map(fn($b) => bereinigen($b, $zugriff), alleBundles());
   else {
@@ -1935,15 +2535,24 @@ if ($aktion === 'laden') {
   }
   if ($rolle === 'freigabe') {
     // Vorprotokoll-Link: aus den Protokollen nur Pendenzen und vertagte / neu behandelte Anträge mitgeben (für den Übertrag) –
-    // ausser dem Protokoll der eigenen Kurzsitzung, das der Gast ganz sieht
+    // ausser dem Protokoll der eigenen Kurzsitzung, das der Gast ganz sieht, und dem abgeschlossenen Protokoll der eigenen
+    // Sitzung für anwesende Gäste bis zur Genehmigung (Änderungsanträge)
     $eigeneSitzungId = null;
     foreach ($bundles[0]['vorprotokolle'] as $vp) if ($vp['id'] === $zugriff['vorprotokollId']) $eigeneSitzungId = $vp['sitzungId'];
     $kurz = [];
     foreach ($bundles[0]['sitzungen'] as $s) if (!empty($s['kurz'])) $kurz[$s['id']] = true;
     foreach ($bundles[0]['protokolle'] as &$protokoll) {
       if ($protokoll['sitzungId'] === $eigeneSitzungId && (isset($kurz[$eigeneSitzungId]) || ($zugriff['dokument'] ?? '') === 'protokoll')) continue;
+      $eigeneSitzung = $protokoll['sitzungId'] === $eigeneSitzungId ? sitzungVon($bundles[0], $eigeneSitzungId) : null;
+      if ($eigeneSitzung && darfAenderungStellen($bundles[0], $eigeneSitzung, $protokoll, $zugriff['personId'] ?? null)) continue;
       $protokoll['eintraege'] = array_values(array_filter($protokoll['eintraege'], fn($e) => $e['typ'] === 'pendenz' || ($e['typ'] === 'antrag' && (($e['antragStatus'] ?? '') === 'vertagt' || !empty($e['vorherigerAntragId'])))));
     }
+  }
+  if (!empty($zugriff['nurSitzung'])) {
+    // Ansicht durch die Leitung einer Sitzung: nur diese Sitzung
+    $nur = $zugriff['nurSitzung'];
+    $bundles[0]['sitzungen'] = array_values(array_filter($bundles[0]['sitzungen'], fn($x) => $x['id'] === $nur));
+    foreach (['vorprotokolle', 'protokolle'] as $typ) $bundles[0][$typ] = array_values(array_filter($bundles[0][$typ], fn($x) => $x['sitzungId'] === $nur));
   }
   if ($rolle === 'link') {
     // Zusätzlicher allgemeiner Link: aus Protokollen anderer Sitzungen nur Pendenzen und vertagte Anträge (für den Übertrag)
@@ -1984,6 +2593,7 @@ if ($aktion === 'speichern') {
   flock($handle, LOCK_EX);
   $bundle = $neu ? null : json_decode(entschluesseln(stream_get_contents($handle)), true);
   $bundle = $bundle ?: ['gremium' => null, 'sitzungen' => [], 'vorprotokolle' => [], 'protokolle' => []];
+  $gleichzeitig = gleichzeitigeAenderungen($bundle, $aenderungen); // Änderungen anderer seit dem geladenen Stand bleiben erhalten
 
   if (isset($aenderungen['gremium'])) {
     // Eigentümer und Konto-Verknüpfungen setzt nur der Superadmin; ein Eigentümer behält sein eigenes Gremium
@@ -1992,9 +2602,23 @@ if ($aktion === 'speichern') {
     elseif (!$istSuperadmin) {
       $aenderungen['gremium']['eigentuemerId'] = $bundle['gremium']['eigentuemerId'] ?? null;
       $alteKonten = array_column($bundle['gremium']['mitglieder'], 'benutzerId', 'id');
-      foreach ($aenderungen['gremium']['mitglieder'] as &$m) $m['benutzerId'] = $alteKonten[$m['id']] ?? null;
+      // Eigentümer: Konto lösen oder eines aus seinen Gremien verknüpfen; alle anderen ändern keine Verknüpfung
+      $erlaubt = !empty($zugriff['eigentuemer']) ? array_column(eigentuemerKonten($konto), 'id', 'id') : [];
+      foreach ($aenderungen['gremium']['mitglieder'] as &$m) {
+        $gewuenscht = $m['benutzerId'] ?? null;
+        $m['benutzerId'] = $alteKonten[$m['id']] ?? null;
+        if ($erlaubt && ($gewuenscht === null || isset($erlaubt[$gewuenscht]))) $m['benutzerId'] = $gewuenscht;
+      }
       unset($m);
     }
+    // Neu verknüpft: Name und E-Mail kommen vom Konto
+    $alteKonten = array_column($bundle['gremium']['mitglieder'] ?? [], 'benutzerId', 'id');
+    $kontenById = indexById(benutzerLesen());
+    if (isset($aenderungen['gremium']['mitglieder'])) foreach ($aenderungen['gremium']['mitglieder'] as &$m) {
+      $k = $kontenById[$m['benutzerId'] ?? ''] ?? null;
+      if ($k && ($alteKonten[$m['id']] ?? null) !== $k['id']) { $m['name'] = $k['name']; $m['email'] = $k['email']; }
+    }
+    unset($m);
     // Ob ein Gremium eine Kurzsitzung ohne Gremium ist, steht beim Anlegen fest
     $aenderungen['gremium']['kurz'] = $neu ? $neueKurzsitzung : !empty($bundle['gremium']['kurz']);
   }
@@ -2004,12 +2628,8 @@ if ($aktion === 'speichern') {
   if ($rolle === 'gremium') $aenderungen = gremiumRechteAnwenden($bundle, $aenderungen, $zugriff['rechte']);
   if ($rolle === 'person' || ($rolle === 'freigabe' && isset($zugriff['personId']))) $aenderungen = personRechteAnwenden($bundle, $aenderungen, $zugriff);
   if ($rolle === 'freigabe' && !isset($zugriff['personId'])) {
-    // Allgemeiner Freigabe-Link: nur dieses Vorprotokoll
-    $erlaubt = [];
-    foreach ($aenderungen['vorprotokolle'] ?? [] as $neuVp) {
-      if ($neuVp['id'] !== $zugriff['vorprotokollId']) continue;
-      foreach ($bundle['vorprotokolle'] as $altVp) if ($altVp['id'] === $neuVp['id']) $erlaubt[] = schluesselBewahren($altVp, $neuVp);
-    }
+    // Allgemeiner Freigabe-Link: nur dieses Vorprotokoll, nach der Stufe des Links (wie weitere Links)
+    $erlaubt = linkRechteAnwenden($bundle, $aenderungen, $zugriff)['vorprotokolle'];
     $sitzungen = [];
     foreach ($aenderungen['sitzungen'] ?? [] as $neuS) {
       foreach ($bundle['sitzungen'] as $altS) {
@@ -2025,6 +2645,7 @@ if ($aktion === 'speichern') {
   if ($rolle === 'link') $aenderungen = linkRechteAnwenden($bundle, $aenderungen, $zugriff);
   $aenderungen = gastFelderBewahren($bundle, $aenderungen);
   $aenderungen = abmeldungenUebertragen($bundle, $aenderungen);
+  $aenderungen = absagenDurchsetzen($bundle, $aenderungen);
 
   foreach ($aenderungen['protokolle'] ?? [] as $k => $p) {
     if (isset($antraege[$p['id']])) $aenderungen['protokolle'][$k]['aenderungsantraege'] = $antraege[$p['id']];
@@ -2036,7 +2657,7 @@ if ($aktion === 'speichern') {
   fwrite($handle, verschluesseln(json_encode($bundle, JSON_UNESCAPED_UNICODE)));
   flock($handle, LOCK_UN);
   fclose($handle);
-  antwort(['ok' => true]);
+  antwort(['ok' => true, 'gleichzeitig' => $gleichzeitig, 'zusammengefuehrt' => !empty($GLOBALS['zusammengefuehrt'])]);
 }
 
 // --- Updates (nur Superadmin) -----------------------------------
@@ -2197,6 +2818,7 @@ if ($aktion === 'link_eintragen') {
   $namen = array_map('strval', (array) ($eingabe['namen'] ?? []));
   $key = bundleAendern($zugriff['gremiumId'], function (array &$bundle) use ($zugriff, $rolle, $vorname, $nachname, $email, $namen) {
     $vpIndex = vorprotokollFuer($bundle, $zugriff['sitzungId']);
+    if (personMitEmail($bundle, $bundle['vorprotokolle'][$vpIndex], $email)) return null; // schon erfasst: keine doppelte Person
     $vp = &$bundle['vorprotokolle'][$vpIndex];
     $gastId = uuid();
     $name = "$vorname $nachname";
@@ -2212,14 +2834,130 @@ if ($aktion === 'link_eintragen') {
     namenUebertragen($bundle, $zugriff['sitzungId'], $gastId, $name, $namen);
     return $key;
   });
+  if (!$key) antwort(['fehler' => 'Mit dieser E-Mail-Adresse bist du schon erfasst. Deinen persönlichen Link kannst du dir per E-Mail schicken lassen.', 'schonErfasst' => true], 409);
   antwort(['key' => $key]);
 }
 
+// Mitglied des Gremiums oder Gast dieser Sitzung mit dieser E-Mail-Adresse (Gross-/Kleinschreibung egal)
+function personMitEmail(array $bundle, array $vp, $email) {
+  foreach (array_merge($bundle['gremium']['mitglieder'], $vp['gaeste']) as $p) {
+    if ($email !== '' && strcasecmp(trim($p['email'] ?? ''), trim($email)) === 0) return $p;
+  }
+  return null;
+}
+
+// Schon erfasst (allgemeiner Link): den persönlichen Link an die hinterlegte Adresse schicken. Die Antwort ist immer
+// gleich (verrät nicht, ob es die Adresse gibt); höchstens eine Mail pro Adresse und Viertelstunde.
+if ($aktion === 'link_zusenden') {
+  if ($rolle !== 'link' && !($rolle === 'freigabe' && !isset($zugriff['personId']))) antwort(['fehler' => 'Nur über einen allgemeinen Link'], 403);
+  $email = strtolower(trim((string) ($eingabe['email'] ?? '')));
+  $basis = basisUrl();
+  $mail = bundleAendern($zugriff['gremiumId'], function (array &$bundle) use ($zugriff, $email, $basis) {
+    $vp = $bundle['vorprotokolle'][vorprotokollFuer($bundle, $zugriff['sitzungId'])];
+    $p = personMitEmail($bundle, $vp, $email);
+    if (!$p || !empty($p['gesperrt']) || fuerSitzungGesperrt(sitzungVon($bundle, $zugriff['sitzungId']) ?? [], $p['id'])) return null;
+    if (($bundle['linkZugesandt'][$email] ?? 0) > time() - 900) return null;
+    $link = einladungLink($bundle, $vp, $p['id'], $basis);
+    if ($link === '') return null;
+    $bundle['linkZugesandt'] = array_filter($bundle['linkZugesandt'] ?? [], fn($zeit) => $zeit > time() - 900);
+    $bundle['linkZugesandt'][$email] = time();
+    $s = sitzungVon($bundle, $zugriff['sitzungId']);
+    return [$p['email'], "Hallo {$p['name']}\n\nHier ist dein persönlicher Link für «{$bundle['gremium']['name']}»:\n$link\n\n"
+      . 'Du hast ihn über den allgemeinen Link der Sitzung «' . ($s['titel'] ?? '' ?: 'Sitzung') . "» angefordert. Warst du das nicht, kannst du diese E-Mail ignorieren.\n"];
+  });
+  if ($mail) mailSenden($mail[0], 'Ormeet: dein persönlicher Link', $mail[1]);
+  antwort(['ok' => true]);
+}
+
 // Wer eine Sitzung verwaltet: Superadmin / Eigentümer, Gremium-Zugang mit Bearbeitungsrecht, Sitzungsleitung und Protokollführung
-function verwaltetSitzung(array $zugriff, $sitzung) {
+// … sowie Mitglieder, deren Rolle «Zugriffe verwalten» hat (alle Sitzungen des Gremiums)
+function verwaltetSitzung(array $zugriff, $sitzung, $gremium = null) {
   if ($zugriff['rolle'] === 'admin') return true;
   if ($zugriff['rolle'] === 'gremium') return ($zugriff['rechte']['sitzungen'] ?? '') === 'bearbeiten';
-  return $zugriff['rolle'] === 'person' && $sitzung && istLeitung($sitzung, $zugriff['personId'] ?? '');
+  if ($zugriff['rolle'] !== 'person') return false;
+  if ($gremium && !empty(rolleRechte($gremium, $zugriff['personId'] ?? '')['zugriffe'])) return true;
+  return $sitzung && istLeitung($sitzung, $zugriff['personId'] ?? '');
+}
+
+// «Ansehen als …»: befristete Ansicht (zwei Stunden, nur lesen) aus Sicht einer Person. Wer das ganze Gremium verwaltet
+// (Superadmin, Eigentümer, Gremium-Zugang mit Bearbeitungsrecht, Rolle «Zugriffe verwalten»), sieht alles, was die Person
+// sieht; wer nur eine Sitzung verwaltet (Leitung, Protokollführung), nur diese Sitzung.
+if ($aktion === 'ansicht_starten') {
+  if (!$eigenes) antwort(['fehler' => 'Kein Zugriff auf dieses Gremium'], 403);
+  $personId = (string) ($eingabe['personId'] ?? '');
+  $sitzungId = (string) ($eingabe['sitzungId'] ?? '');
+  $ergebnis = bundleAendern($gremiumId, function (array &$bundle) use ($zugriff, $personId, $sitzungId) {
+    $gremiumweit = verwaltetSitzung($zugriff, null, $bundle['gremium']);
+    $sitzung = $sitzungId !== '' ? sitzungVon($bundle, $sitzungId) : null;
+    if (!$gremiumweit && !($sitzung && verwaltetSitzung($zugriff, $sitzung, $bundle['gremium']))) return ['fehler' => 'Ansehen als … dürfen nur, wer die Zugriffe verwaltet'];
+    if (personDaten($bundle, $personId)['name'] === '') return ['fehler' => 'Person nicht gefunden'];
+    $token = 'ansicht' . bin2hex(random_bytes(20));
+    $bundle['ansichten'] = array_values(array_filter($bundle['ansichten'] ?? [], fn($a) => $a['bis'] >= time()));
+    $bundle['ansichten'][] = ['token' => $token, 'personId' => $personId, 'sitzungId' => $gremiumweit ? null : $sitzungId, 'bis' => time() + 7200];
+    return ['token' => $token];
+  });
+  if (!empty($ergebnis['fehler'])) antwort($ergebnis, 403);
+  antwort($ergebnis);
+}
+
+// Einladung oder Vorprotokoll per E-Mail an ausgewählte Mitglieder und Gäste (wer die Sitzung verwaltet). Jede Person
+// erhält ihren persönlichen Link, Zusagen / Absagen, einen Kalendereintrag und den Link zum Abbestellen.
+if ($aktion === 'einladung_senden') {
+  if (!$eigenes) antwort(['fehler' => 'Kein Zugriff auf dieses Gremium'], 403);
+  $sitzungId = (string) ($eingabe['sitzungId'] ?? '');
+  $art = ($eingabe['art'] ?? '') === 'vorprotokoll' ? 'vorprotokoll' : 'einladung';
+  $nachricht = trim(textKuerzen((string) ($eingabe['nachricht'] ?? ''), 4000));
+  $personIds = array_values(array_unique(array_map('strval', (array) ($eingabe['personIds'] ?? []))));
+  $bundle = lesen(dateiVon($gremiumId));
+  $s = $bundle ? sitzungVon($bundle, $sitzungId) : null;
+  $vp = $bundle ? vorprotokollVon($bundle, $sitzungId) : null;
+  if (!$s || !$vp) antwort(['fehler' => 'Sitzung nicht gefunden'], 404);
+  if (!verwaltetSitzung($zugriff, $s, $bundle['gremium'])) antwort(['fehler' => 'Einladungen senden nur, wer die Sitzung verwaltet'], 403);
+  if (empty($s['datum'])) antwort(['fehler' => 'Die Sitzung hat noch keinen Termin.'], 400);
+  if (protokollVon($bundle, $sitzungId)) antwort(['fehler' => 'Die Sitzung hat schon begonnen.'], 409);
+
+  $basis = basisUrl();
+  $gremiumName = $bundle['gremium']['name'];
+  $titel = $s['titel'] ?: 'Sitzung';
+  $aus = $bundle['einladungenAus'] ?? [];
+  $traktanden = '';
+  foreach (array_values($vp['traktanden']) as $i => $t) $traktanden .= ($i + 1) . '. ' . ($t['titel'] ?: 'Ohne Titel') . "\n";
+  $ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ormeet//Sitzungsprotokolle//DE\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+    . icalEvent('sitzung-' . $s['id'], $s['datum'], ($s['zeit'] ?? '') ?: null, null, "$titel – $gremiumName", '', $s['ort'] ?? '', 'CONFIRMED') . "END:VCALENDAR\r\n";
+
+  $gesendet = [];
+  $fehler = [];
+  foreach ($personIds as $pid) {
+    $p = personDaten($bundle, $pid);
+    $email = trim($p['email'] ?? '');
+    if ($p['name'] === '') continue;
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $fehler[] = ['name' => $p['name'], 'grund' => 'keine E-Mail-Adresse']; continue; }
+    if (in_array(strtolower($email), $aus, true)) { $fehler[] = ['name' => $p['name'], 'grund' => 'hat Einladungen abbestellt']; continue; }
+    $link = einladungLink($bundle, $vp, $pid, $basis);
+    if ($link === '') { $fehler[] = ['name' => $p['name'], 'grund' => 'kein persönlicher Link']; continue; }
+    $antwortLink = $basis . '#/einladung/' . einladungCode($gremiumId, $sitzungId, $pid);
+    $text = "Hallo {$p['name']}\n\n"
+      . ($art === 'vorprotokoll' ? "Hier ist das Vorprotokoll der Sitzung «{$titel}» ({$gremiumName}).\n\n" : "Du bist zur Sitzung «{$titel}» ({$gremiumName}) eingeladen.\n\n")
+      . 'Termin: ' . einladungTermin($s) . "\n" . (!empty($s['ort']) ? "Ort: {$s['ort']}\n" : '')
+      . ($nachricht !== '' ? "\n$nachricht\n" : '')
+      . ($art === 'vorprotokoll' && $traktanden !== '' ? "\nTraktanden:\n$traktanden" : '')
+      . "\nZur Sitzung (dein persönlicher Link):\n$link\n"
+      . "\nZusagen: $antwortLink?antwort=zusagen\nAbsagen: $antwortLink?antwort=absagen\n"
+      . "Ohne Antwort gilt die Einladung als angenommen.\n"
+      . "\nKeine Einladungen von «{$gremiumName}» mehr erhalten: $antwortLink?abbestellen=1\n";
+    $betreff = ($art === 'vorprotokoll' ? 'Vorprotokoll' : 'Einladung') . ": $titel – " . datumText($s['datum']);
+    $mailFehler = mailSenden($email, $betreff, $text, ['name' => 'sitzung.ics', 'typ' => 'text/calendar', 'inhalt' => $ics]);
+    if ($mailFehler) { $fehler[] = ['name' => $p['name'], 'grund' => $mailFehler]; continue; }
+    $gesendet[] = $pid;
+  }
+  $einladungen = bundleAendern($gremiumId, function (array &$bundle) use ($sitzungId, $gesendet, $art) {
+    foreach ($gesendet as $pid) {
+      $bundle['einladungen'][$sitzungId][$pid] ??= ['gesendet' => [], 'antwort' => '', 'grund' => ''];
+      $bundle['einladungen'][$sitzungId][$pid]['gesendet'][] = ['art' => $art, 'am' => date('c')];
+    }
+    return $bundle['einladungen'][$sitzungId] ?? [];
+  });
+  antwort(['gesendet' => count($gesendet), 'fehler' => $fehler, 'einladungen' => $einladungen ?: new stdClass()]);
 }
 
 // Passwort eines allgemeinen Links setzen oder entfernen (ref: link:<id> | freigabe:<vorprotokollId> | zugang:<id>)
@@ -2238,7 +2976,7 @@ if ($aktion === 'link_passwort') {
       foreach ($bundle['sitzungen'] as $s) foreach ($s['links'] ?? [] as $l) if ($art === 'link' && $l['id'] === $id) $sitzung = $s;
       foreach ($bundle['vorprotokolle'] as $vp) if ($art === 'freigabe' && $vp['id'] === $id) $sitzung = sitzungVon($bundle, $vp['sitzungId']);
       if (!$sitzung) return 'Link nicht gefunden';
-      if (!verwaltetSitzung($zugriff, $sitzung)) return 'Links schützen nur Sitzungsleitung, Protokollführung, Eigentümer und Superadmin';
+      if (!verwaltetSitzung($zugriff, $sitzung, $bundle['gremium'])) return 'Links schützen nur Sitzungsleitung, Protokollführung, Eigentümer und Superadmin';
     }
     if ($passwort === '') unset($bundle['linkSchutz'][$ref]);
     else $bundle['linkSchutz'][$ref] = password_hash($passwort, PASSWORD_DEFAULT);
@@ -2253,10 +2991,13 @@ if ($aktion === 'link_passwort') {
 // übernommen, sofern das Ziel noch keines hat, und ihr bisheriger Link öffnet künftig als das Ziel (aliasKeys).
 // vorschlag_ablehnen: Vorschlag zum Zusammenführen verwerfen. Dürfen: Superadmin / Eigentümer, Gremium-Zugang mit
 // Bearbeitungsrecht auf Sitzungen, Sitzungsleitung und Protokollführung der Sitzung sowie Präsidium / Aktuariat.
-if ($aktion === 'weitere_person_verknuepfen' || $aktion === 'vorschlag_ablehnen') {
+// weitere_person_aufnehmen: die weitere Person wird Mitglied des Gremiums (Rolle frei wählbar) und mit dem neuen Mitglied
+// zusammengeführt – nur wer die Mitglieder verwaltet (Superadmin, Eigentümer, Gremium-Zugang «Mitglieder bearbeiten»).
+if ($aktion === 'weitere_person_verknuepfen' || $aktion === 'vorschlag_ablehnen' || $aktion === 'weitere_person_aufnehmen') {
   $gastId = (string) ($eingabe['gastId'] ?? '');
   $zielId = (string) ($eingabe['zielId'] ?? $eingabe['mitgliedId'] ?? '');
-  $fehler = bundleAendern($gremiumId, function (array &$bundle) use ($zugriff, $rolle, $aktion, $gastId, $zielId) {
+  $rolleId = (string) ($eingabe['rolleId'] ?? '');
+  $fehler = bundleAendern($gremiumId, function (array &$bundle) use ($zugriff, $rolle, $aktion, $gastId, &$zielId, $rolleId) {
     $vpIndex = null;
     $gast = null;
     foreach ($bundle['vorprotokolle'] as $i => $vp) foreach ($vp['gaeste'] as $g) if ($g['id'] === $gastId && !empty($g['weiterePerson'])) { $vpIndex = $i; $gast = $g; }
@@ -2267,7 +3008,15 @@ if ($aktion === 'weitere_person_verknuepfen' || $aktion === 'vorschlag_ablehnen'
     foreach ($bundle['sitzungen'] as $i => $s) if ($s['id'] === $sitzungId) $sitzungIndex = $i;
     $ich = personDaten($bundle, $zugriff['personId'] ?? '');
     $darf = $rolle === 'admin' || ($rolle === 'gremium' && ($zugriff['rechte']['sitzungen'] ?? '') === 'bearbeiten')
-      || ($rolle === 'person' && (($sitzungIndex !== null && istLeitung($bundle['sitzungen'][$sitzungIndex], $ich['id'])) || hatFesteRolle($bundle['gremium'], $ich)));
+      || ($rolle === 'person' && (($sitzungIndex !== null && istLeitung($bundle['sitzungen'][$sitzungIndex], $ich['id'])) || hatFesteRolle($bundle['gremium'], $ich) || !empty(rolleRechte($bundle['gremium'], $ich['id'])['zugriffe'])));
+    if ($aktion === 'weitere_person_aufnehmen') {
+      if ($rolle !== 'admin' && !($rolle === 'gremium' && ($zugriff['rechte']['mitglieder'] ?? '') === 'bearbeiten')) return 'Mitglieder aufnehmen darf nur, wer die Mitglieder verwaltet';
+      if (!in_array($rolleId, array_column($bundle['gremium']['rollen'], 'id'), true)) return 'Bitte eine Rolle wählen';
+      $zielId = uuid();
+      $bundle['gremium']['mitglieder'][] = ['id' => $zielId, 'name' => $gast['name'], 'email' => $gast['email'] ?? '', 'rolleId' => $rolleId, 'hatStimmrecht' => true,
+                                            'zugangsKey' => bin2hex(random_bytes(8)), 'benutzerId' => null];
+      $darf = true;
+    }
     if (!$darf) return 'Zusammenführen dürfen nur Sitzungsleitung, Aktuariat, Eigentümer und Superadmin';
 
     if ($aktion === 'vorschlag_ablehnen') {
@@ -2311,6 +3060,7 @@ if ($aktion === 'weitere_person_verknuepfen' || $aktion === 'vorschlag_ablehnen'
       }
       foreach ($s['freigaben'] ?? [] as $dokument => $liste) if (is_array($liste)) unset($s['freigaben'][$dokument][$gastId]);
       $s['gesperrt'] = array_values(array_diff($s['gesperrt'] ?? [], [$gastId]));
+      $s['nurLesen'] = array_values(array_diff($s['nurLesen'] ?? [], [$gastId]));
       $bundle['sitzungen'][$sitzungIndex] = $s;
     }
 

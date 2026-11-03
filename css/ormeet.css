@@ -45,8 +45,8 @@
   --brand: #b4c410; /* Ormeet-Limette */
   --brand-hell: #dfe6a3;
   --brand-hell2: #edf2c2;
-  --brand-dunkel: #5f6a07; /* für Text und Links auf Weiss (Kontrast mind. 4.5:1) */
-  --brand-tief: #566006;
+  --brand-dunkel: #8a980c; /* für Text und Links auf Weiss */
+  --brand-tief: #6d780a;
   --auf-brand: #1c3326; /* Text auf Limette */
   --wald: #1c3326; /* dunkles Waldgrün, Primärbuttons */
   --wald-2: #27452f;
@@ -2824,6 +2824,9 @@ select.btn-pille {
 .modal:has(.cron) {
   max-width: 760px;
 }
+.modal:has(.rechte-fenster) {
+  max-width: 680px;
+}
 
 .cron {
   code {
@@ -2873,4 +2876,120 @@ select.btn-pille {
 /* Zugriffsübersicht: Abschnitte mit Personen und Links */
 .zugriffe .label {
   margin-bottom: 0.25rem;
+}
+
+/* Individuelle Rechte: Knopf hinten in der Anwesenheit bzw. am Gast, Regeln im Fenster */
+.rechte-knopf {
+  margin-left: auto;
+  color: var(--text-leise);
+  svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+  &.gesetzt {
+    color: var(--brand-dunkel);
+  }
+  &:hover {
+    color: var(--wald);
+  }
+}
+.chip .rechte-knopf {
+  margin-left: 0.15rem;
+  svg {
+    width: 0.9rem;
+    height: 0.9rem;
+  }
+  &:hover {
+    color: var(--wald);
+  }
+}
+.rechte-fenster .regel {
+  display: grid;
+  grid-template-columns: 8rem 9rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+@media (max-width: 700px) {
+  .rechte-fenster .regel {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    select:nth-child(3) {
+      grid-column: 1 / 3;
+    }
+  }
+}
+.rechte-knopf + .rechte-knopf {
+  margin-left: 0;
+}
+
+/* Zugriffsübersicht: Pillen-Schalter pro Dokument wie früher in der Teilen-Karte */
+.zugriffe .teilen-zeile {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+.zugriff-stufen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem 1rem;
+}
+.zugriff-stufe {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+}
+.rolle-recht {
+  align-items: center;
+}
+@media (max-width: 700px) {
+  .zugriffe .teilen-zeile {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    .zugriff-stufen {
+      grid-column: 2 / 4;
+      grid-row: 2;
+      justify-content: flex-start;
+    }
+  }
+  .zugriff-stufe {
+    align-items: flex-start;
+  }
+}
+
+/* Einladung per E-Mail: Symbol nach dem Namen (Anwesenheit, Gäste) – eingeladen, zugesagt, abgesagt (Grund im Titel) */
+.einladung-symbol {
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  margin-left: 0.4rem;
+  border-radius: 50%;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: help;
+  &.eingeladen {
+    background: var(--tint-10);
+    color: var(--text-muted);
+    &::before {
+      content: "✉";
+    }
+  }
+  &.zugesagt {
+    background: color-mix(in srgb, var(--ok) 15%, transparent);
+    color: var(--ok);
+    &::before {
+      content: "✓";
+    }
+  }
+  &.abgesagt {
+    background: color-mix(in srgb, var(--err) 15%, transparent);
+    color: var(--err);
+    &::before {
+      content: "✕";
+    }
+  }
 }

@@ -111,10 +111,10 @@ export default {
         <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
       </section>
 
-      <!-- Präsidium / Aktuariat mit Konto: Recht «Sitzungen eintragen» an andere Konten vergeben -->
+      <!-- Rolle mit Recht «Sitzungen eintragen»: das Recht an weitere Mitglieder vergeben -->
       <section v-if="darfVergeben" class="card">
         <h2 class="card-title">Sitzungen eintragen dürfen</h2>
-        <p class="hint">Präsidium und Aktuariat dürfen immer. Weitere Mitglieder mit Konto kannst du hier berechtigen.</p>
+        <p class="hint">Mitglieder, deren Rolle es erlaubt, dürfen immer. Weitere Mitglieder kannst du hier berechtigen.</p>
         <MehrfachAuswahl :model-value="eintragende" :optionen="eintragendeOptionen" placeholder="+ Person berechtigen …" @update:model-value="eintragendeSetzen" />
       </section>
 
@@ -203,9 +203,9 @@ export default {
     darfVergeben() {
       return darfEintragenVergeben(this.gremium.id)
     },
-    // Mitglieder mit Konto ohne feste Rolle, denen das Recht «Sitzungen eintragen» zugeteilt werden kann
+    // Mitglieder, deren Rolle das Recht «Sitzungen eintragen» nicht schon hat
     eintragendeOptionen() {
-      return this.gremium.mitglieder.filter((m) => m.benutzerId && !gremienStore.hatFesteRolle(this.gremium.id, m)).map((m) => ({ wert: m.id, label: m.name }))
+      return this.gremium.mitglieder.filter((m) => !gremienStore.hatFesteRolle(this.gremium.id, m)).map((m) => ({ wert: m.id, label: m.name }))
     },
     eintragende() {
       return this.gremium.mitglieder.filter((m) => m.darfSitzungenEintragen && this.eintragendeOptionen.some((o) => o.wert === m.id)).map((m) => m.id)

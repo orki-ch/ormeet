@@ -29,17 +29,22 @@ export default {
         </div>
         <div><span class="label">E-Mail</span><input v-model.trim="form.email" class="input" type="email" required autocomplete="email" /></div>
         <p class="small muted">Name und E-Mail werden bei dieser Sitzung gespeichert und sind für die Personen sichtbar, die sie verwalten. Mehr dazu im <a href="#/datenschutz" target="_blank" rel="noopener">Datenschutz</a>.</p>
-        <p v-if="fehler" class="small text-err">{{ fehler }}</p>
+        <p v-if="fehler" class="small" :class="schonErfasst ? 'muted' : 'text-err'">{{ fehler }}</p>
+        <p v-if="zugesandt" class="small text-ok">Ist diese Adresse bei uns erfasst, ist dein persönlicher Link unterwegs. Schau in dein Postfach (auch im Spam-Ordner).</p>
       </form>
       <template #fuss>
-        <div class="row">
+        <div v-if="schonErfasst" class="row">
+          <button type="button" class="btn" @click="schonErfasst = false">Zurück</button>
+          <button type="button" class="btn btn-primary ml-auto" :disabled="laeuft || zugesandt" @click="linkZusenden">Link per E-Mail senden</button>
+        </div>
+        <div v-else class="row">
           <button form="formular-eintrag" class="btn btn-primary" :disabled="laeuft">Weiter</button>
         </div>
       </template>
     </Modal>
   `,
   data() {
-    return { bereit: false, form: { vorname: '', nachname: '', email: '' }, fehler: '', laeuft: false }
+    return { bereit: false, form: { vorname: '', nachname: '', email: '' }, fehler: '', laeuft: false, schonErfasst: false, zugesandt: false }
   },
   async mounted() {
     // In diesem Browser schon eingetragen: direkt mit dem eigenen Link weiter, sofern er noch gilt
@@ -57,6 +62,19 @@ export default {
         localStorage.setItem(EINGETRAGEN_KEY, JSON.stringify({ ...eingetragen(), [api.token]: key }))
         namenVergessen()
         this.weiter(key)
+      } catch (fehler) {
+        this.fehler = fehler.message
+        this.schonErfasst = fehler.status === 409 // schon als Mitglied oder Gast erfasst: Link per E-Mail statt doppelt eintragen
+        this.zugesandt = false
+      }
+      this.laeuft = false
+    },
+    async linkZusenden() {
+      this.laeuft = true
+      try {
+        await api.anfrage('link_zusenden', sync.zugriff.gremiumId, { email: this.form.email })
+        this.fehler = ''
+        this.zugesandt = true
       } catch (fehler) {
         this.fehler = fehler.message
       }

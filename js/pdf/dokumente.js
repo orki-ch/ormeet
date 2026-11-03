@@ -102,7 +102,7 @@ function unterpunktText(nummer, elternTyp, u) {
 // uebertragen(punkt): Block einer übernommenen Pendenz (Protokoll), sonst null.
 function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, uebertragen = () => null) {
   return liste.flatMap((u, j) => {
-    const nr = `${nummer}.${j + 1}`
+    const nr = u._nr || `${nummer}.${j + 1}` // _nr: Originalnummer, wenn Punkte ausgeblendet sind (individuelle Rechte)
     const einzug = 10 * tiefe
     const typ = elternTyp || u.typ
     const notiz = u.notiz && !(eintraege && istAntragPunkt(u, elternTyp))
@@ -161,12 +161,12 @@ export function vorprotokollDokument({ gremium, sitzung, vorprotokoll, erwartete
 
   const mitDauer = vorprotokoll.traktanden.some((t) => t.dauer)
   const traktandenZeilen = vorprotokoll.traktanden.map((t, i) => [
-    `${i + 1}`,
+    `${t._nr || i + 1}`,
     {
       stack: [
         { text: [{ text: t.titel, bold: true }, ...(t.typ ? [{ text: `   ${PUNKT_TYP[t.typ]}`, style: 'klein' }] : [])] },
         ...(t.notiz ? [{ text: t.notiz, style: 'klein' }] : []),
-        ...unterpunktBloecke(t.untertraktanden, `${i + 1}`, kindTyp(t.typ), 1),
+        ...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1),
       ],
     },
     themenbereichName(t.themenbereichId),
@@ -204,7 +204,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
 
   const dauern = protokoll.dauern || {}
   const traktandenBloecke = vorprotokoll.traktanden.flatMap((t, i) => {
-    const bloecke = [{ text: traktandumTitel(`${i + 1}.`, t, themenbereichName, dauern[t.id]), style: 'h3' }]
+    const bloecke = [{ text: traktandumTitel(`${t._nr || i + 1}.`, t, themenbereichName, dauern[t.id]), style: 'h3' }]
     if (t.notiz && !istAntragPunkt(t)) bloecke.push({ text: t.notiz, style: 'notiz' })
     // Übernommene Pendenz bzw. vertagter Antrag aus einer früheren Sitzung
     const uebertragen = (punkt) => {
@@ -216,7 +216,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
     const pendenz = uebertragen(t)
     if (pendenz) bloecke.push(pendenz)
     bloecke.push(...eintraegeVon(t.id))
-    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen))
+    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen))
     bloecke.push(...zusatzBloecke(t.id))
     return bloecke
   })

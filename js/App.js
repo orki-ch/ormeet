@@ -1,11 +1,15 @@
 import { sync, abmelden } from './stores/sync.js'
-import { appStand } from './api.js'
+import { api, appStand } from './api.js'
+import { bestaetigen } from './utils/dialog.js'
 import { updateStand, updatePruefen } from './stores/updates.js'
 import { startPfad } from './router.js'
 import Benachrichtigungen from './components/Benachrichtigungen.js'
 import KontoKarte from './components/KontoKarte.js'
 import EintragDialog from './components/EintragDialog.js'
 import { sitzungenStore } from './stores/sitzungen.js'
+
+// Adresse, unter der ein Link-Zugang wieder geöffnet wird (Konto und Superadmin melden sich neu an)
+const LINK_PFADE = { gremium: 'zugang', person: 'zugang', freigabe: 'freigabe', link: 'link', verfolger: 'verfolgen', themenbereich: 'themenbereich' }
 
 const ROLLEN = { admin: 'Superadmin', gremium: 'Gremium-Zugang', person: 'Persönlicher Zugang', benutzer: 'Konto', freigabe: 'Freigabe-Link', link: 'Allgemeiner Link', verfolger: 'Live-Ansicht', themenbereich: 'Übersicht' }
 
@@ -44,13 +48,18 @@ export default {
                 <router-link v-if="sync.zugriff.rolle === 'benutzer'" to="/konto" class="menu-item">Mein Konto</router-link>
                 <router-link v-if="istAdmin" to="/benutzer" class="menu-item">Benutzer & Links</router-link>
                 <router-link v-if="istAdmin" to="/einstellungen" class="menu-item">Einstellungen <span v-if="updateStand.verfuegbar" class="badge gelb">Update verfügbar</span></router-link>
-                <button type="button" class="menu-item" @click="abmelden">Abmelden</button>
+                <button type="button" class="menu-item" @click="abmeldenFragen">Abmelden</button>
               </div>
             </div>
           </nav>
         </div>
       </header>
       <main class="page">
+        <!-- «Ansehen als …»: dieser Tab zeigt die App aus Sicht einer anderen Person -->
+        <div v-if="sync.zugriff?.ansicht" class="banner mb-2">
+          <div class="grow"><strong>Ansicht als {{ sync.zugriff.ansichtName }}</strong> – nur lesen; Änderungen werden nicht gespeichert.</div>
+          <button class="btn" @click="ansichtSchliessen">Ansicht schliessen</button>
+        </div>
         <!-- Nach einem Update läuft dieser Tab noch mit alten Dateien – Neuladen holt die neue Version -->
         <div v-if="appStand.neueVersion" class="banner mb-2">
           <div class="grow"><strong>Ormeet wurde auf Version {{ appStand.neueVersion }} aktualisiert.</strong> Bitte die Seite neu laden, damit alles zusammenpasst.</div>
@@ -131,12 +140,30 @@ export default {
     },
   },
   methods: {
-    abmelden,
+    // Über einen Link angemeldet: zurück geht es nur mit dem Link – vorher fragen und Kopieren anbieten
+    async abmeldenFragen() {
+      this.menuOffen = false
+      if (sync.zugriff?.ansicht) return this.ansichtSchliessen() // «Ansehen als …»: nur die Ansicht beenden, nicht abmelden
+      const pfad = LINK_PFADE[sync.zugriff?.rolle]
+      if (pfad) {
+        const link = location.href.split('#')[0] + '#/' + pfad + '/' + api.token
+        const text = 'Du verlässt diesen Link. Wieder hinein kommst du nur mit dem Link, zum Beispiel aus deiner E-Mail.'
+        const kopieren = { text: 'Link kopieren', fertigText: 'Kopiert ✓', aktion: () => navigator.clipboard.writeText(link) }
+        if (!(await bestaetigen(text, { titel: 'Abmelden', ja: 'Abmelden', extra: kopieren }))) return
+      }
+      abmelden()
+    },
     menuSchliessen(event) {
       if (!this.$refs.menu?.contains(event.target)) this.menuOffen = false
     },
     // index.php ist nicht gecacht und verweist auf die versionierten Dateien
     neuLaden() {
+      location.reload()
+    },
+    ansichtSchliessen() {
+      api.ansichtBeenden()
+      window.close()
+      location.hash = '#/'
       location.reload()
     },
   },

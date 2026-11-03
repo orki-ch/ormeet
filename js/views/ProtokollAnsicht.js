@@ -37,7 +37,7 @@ export default {
       <template v-for="(t, i) in traktanden" :key="t.id">
         <section class="card">
           <div class="traktandum-kopf">
-            <span class="nr">{{ i + 1 }}.</span>
+            <span class="nr">{{ t._nr || i + 1 }}.</span>
             <h2>{{ t.titel }}</h2>
             <span v-if="t.typ" class="badge" :class="TYP_BADGE[t.typ]">{{ PUNKT_TYP[t.typ] }}</span>
             <span v-if="t.verantwortliche.length" class="muted small">{{ personenText(t.verantwortliche) }}</span>
@@ -59,7 +59,7 @@ export default {
               <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
               <p v-if="e.typ === 'antrag' && e.notiz" class="notiz pre"><span class="leise">Notiz:</span> {{ e.notiz }}</p>
             </div>
-            <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
+            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
               <template #default="{ u, typ }">
                 <div v-if="uebertragene[u.pendenzId]" class="pendenz-uebertragen mt-1">
                   <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>

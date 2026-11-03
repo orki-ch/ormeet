@@ -1,5 +1,23 @@
 # Änderungsverlauf
 
+## 1.5.04
+- Neu: «Einladung senden» im Vorprotokoll. Jede Person erhält per E-Mail ihren Link, einen Kalendereintrag und kann zu- oder absagen. Wer absagt, gibt einen Grund an und wird aus der Anwesenheit ausgetragen; den Grund sehen nur Sitzungsleitung und Protokollführung.
+- Das Protokoll entsteht erst mit «Sitzung starten», nicht mehr schon beim Öffnen. Bis dahin zeigt die Seite eine Vorschau.
+- Rechte lassen sich pro Rolle festlegen: was sie im Vorprotokoll und Protokoll darf, ob sie Sitzungen führt, eintragen darf und Zugriffe verwaltet. Präsidium und Aktuariat bleiben die Vorlagen.
+- Links und Rechte verwaltest du an einem Ort: in der Zugriffsübersicht mit Schaltern «Lesen, Eigene, Alles». In der Anwesenheit gibt es bei jeder Person einen Knopf zum Kopieren des Links und einen für ihre Rechte.
+- Individuelle Rechte können genauer sein: nur lesen oder bearbeiten für einen Themenbereich, wo eine bestimmte Person hinterlegt ist, oder für einzelne Traktanden und Unterpunkte. Ein Knopf setzt alles auf den Standard der Rolle zurück.
+- Der allgemeine Freigabe-Link erlaubt neu standardmässig, Traktanden zu ändern und zu verschieben sowie Unterpunkte hinzuzufügen und zu löschen. Seine Rechte stellst du ein wie bei anderen Links.
+- «Ansehen als …» zeigt die App so, wie eine Person sie sieht – nur lesen, in einem neuen Tab.
+- Personen lassen sich für eine Sitzung auf «nur lesen» setzen oder ganz sperren.
+- Eine weitere Person kann als Mitglied ins Gremium aufgenommen werden; Konto, Stimmen und Link gehen mit.
+- Ist eine E-Mail schon erfasst, entsteht über einen allgemeinen Link keine doppelte Person – Ormeet schickt stattdessen den bestehenden Link.
+- Ein persönlicher Link, der mit einem Konto verknüpft ist, öffnet nur noch nach der Anmeldung. Das Kalender-Abo funktioniert weiter.
+- Anwesende Gäste können nach der Sitzung ebenfalls Änderungen am Protokoll beantragen.
+- Arbeiten zwei Personen gleichzeitig, bleiben die Änderungen beider erhalten. Nur wenn beide dieselbe Stelle ändern, gilt die neuere, und ein Hinweis zeigt sie.
+- E-Mail-Adressen von Gästen sehen nur noch, wer die Sitzung verwaltet.
+- Eigentümer können Konten mit Mitgliedern verknüpfen oder lösen. Beim Abmelden auf einem Link bietet Ormeet an, den Link zu kopieren.
+- Die erste Sammelmail enthält gleich das Wichtige.
+
 ## 1.5.03
 - Wer einen allgemeinen Link öffnet, gibt zuerst Vor- und Nachnamen und E-Mail an und erhält einen eigenen Link. Er öffnet die Sitzung auch auf einem anderen Gerät mit diesen Angaben, und danach genügt ein Klick zum eigenen Konto.
 - Trägt sich jemand mit gleichem Namen oder gleicher E-Mail ein wie eine bereits erfasste Person, schlägt Ormeet vor, die beiden zusammenzuführen.

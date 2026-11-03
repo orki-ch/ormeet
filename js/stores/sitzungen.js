@@ -153,6 +153,7 @@ export const sitzungenStore = {
       erstelltVon, // Person, die die Sitzung eingetragen hat (bearbeitet die Terminfindung); leer: Sitzungsleitung
       links: [], // zusätzliche allgemeine Links pro Dokument: [{ id, key, name, dokument, stufe, rechte, ablauf }]
       gesperrt: [], // für diese Sitzung gesperrte Personen
+      nurLesen: [], // für diese Sitzung auf «nur lesen» gesetzte Personen
     }
     state.sitzungen.push(sitzung)
     return sitzung
@@ -219,6 +220,9 @@ export const sitzungenStore = {
       sitzungId,
       freigabeLinkKey: neuerKey(),
       freigabeLinkAblauf: '',
+      freigabeLinkStufe: 'eigene', // alle Traktanden ändern und verschieben, Unterpunkte hinzufügen und löschen
+      freigabeLinkRechte: [],
+      freigabeLinkZuschnitt: null,
       personenKeys: {}, // persönliche Freigabe-Links für Gäste: { [gastId]: key }
       aliasKeys: {}, // frühere Links zusammengeführter Personen: { [key]: personId }
       gaeste: [],

@@ -41,17 +41,34 @@ export const gremienStore = {
     return gremium?.mitglieder.find((m) => m.id === personId) || gaeste.find((g) => g.id === personId) || null
   },
 
-  // Mitglieder mit einer festen Rolle (praesidium / aktuariat) als Personenliste
-  mitgliederMitRollentyp(gremiumId, typ) {
+  // Rechte einer Rolle (rolle.rechte, siehe api.php rolleRechte): Standardstufe pro Dokument, Sitzungsführung (Vorschlag
+  // als Sitzungsleitung / Protokollführung), Sitzungen eintragen, Zugriffe verwalten. Vorlage: Präsidium / Aktuariat
+  rolleRechte(rolle) {
+    const standard = { vorprotokoll: 'eigene', protokoll: 'eigene', fuehrung: '', eintragen: false, zugriffe: false }
+    const vorlage = rolle?.typ === 'praesidium' ? { fuehrung: 'sitzungsleitung', eintragen: true } : rolle?.typ === 'aktuariat' ? { fuehrung: 'protokollfuehrung', eintragen: true } : {}
+    const gesetzt = Object.fromEntries(Object.entries(rolle?.rechte || {}).filter(([, wert]) => wert !== null && wert !== undefined))
+    return { ...standard, ...vorlage, ...gesetzt }
+  },
+
+  // Rechte der Rolle eines Mitglieds (Gäste: Standard)
+  rechteVon(gremiumId, personId) {
     const gremium = gremienStore.byId(gremiumId)
-    const rolleIds = gremium.rollen.filter((r) => r.typ === typ).map((r) => r.id)
+    const mitglied = gremium?.mitglieder.find((m) => m.id === personId)
+    return gremienStore.rolleRechte(mitglied && gremium.rollen.find((r) => r.id === mitglied.rolleId))
+  },
+
+  // Mitglieder, deren Rolle die Sitzung führt (sitzungsleitung / protokollfuehrung; frühere Namen praesidium / aktuariat),
+  // als Personenliste – Vorschlag für neue Sitzungen
+  mitgliederMitRollentyp(gremiumId, typ) {
+    const fuehrung = { praesidium: 'sitzungsleitung', aktuariat: 'protokollfuehrung' }[typ] || typ
+    const gremium = gremienStore.byId(gremiumId)
+    const rolleIds = gremium.rollen.filter((r) => gremienStore.rolleRechte(r).fuehrung === fuehrung).map((r) => r.id)
     return gremium.mitglieder.filter((m) => rolleIds.includes(m.rolleId)).map(({ id, name }) => ({ id, name }))
   },
 
-  // Hat das Mitglied eine feste Rolle (Präsidium / Aktuariat)?
+  // Darf die Rolle des Mitglieds Sitzungen eintragen (und das Recht anderen geben)?
   hatFesteRolle(gremiumId, mitglied) {
-    const typ = gremienStore.byId(gremiumId)?.rollen.find((r) => r.id === mitglied?.rolleId)?.typ
-    return typ === 'praesidium' || typ === 'aktuariat'
+    return !!mitglied && gremienStore.rechteVon(gremiumId, mitglied.id).eintragen
   },
 
   // Mitglieder, deren Rolle an Sitzungen erwartet wird (Grundlage für Anwesenheit / Entschuldigte)
@@ -78,9 +95,9 @@ export const gremienStore = {
       themenbereiche: [],
       erinnerungTage: 3, // Erinnerung «Sitzung steht bevor» (Glocke, E-Mail)
       rollen: [
-        { id: crypto.randomUUID(), name: 'Präsidium', typ: 'praesidium', sollAnwesend: true },
-        { id: crypto.randomUUID(), name: 'Aktuariat', typ: 'aktuariat', sollAnwesend: true },
-        { id: crypto.randomUUID(), name: 'Mitglied', typ: null, sollAnwesend: true },
+        { id: crypto.randomUUID(), name: 'Präsidium', typ: 'praesidium', sollAnwesend: true, rechte: {} },
+        { id: crypto.randomUUID(), name: 'Aktuariat', typ: 'aktuariat', sollAnwesend: true, rechte: {} },
+        { id: crypto.randomUUID(), name: 'Mitglied', typ: null, sollAnwesend: true, rechte: {} },
       ],
       mitglieder: [],
       vorlagen: [],

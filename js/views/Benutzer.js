@@ -141,7 +141,7 @@ export default {
         { wert: 'superadmin', label: 'Das bin ich (Superadmin)' },
       ]
       for (const z of this.zuordnungen(k.id)) {
-        if (z.mitglied && !z.gremium.kurz && !gremienStore.hatFesteRolle(z.gremium.id, z.mitglied)) {
+        if (z.mitglied && !z.gremium.kurz && !gremienStore.hatFesteRolle(z.gremium.id, z.mitglied)) { // sonst schon über die Rolle
           optionen.push({ wert: 'sitzungen:' + z.gremium.id, label: 'Sitzungen eintragen · ' + z.gremium.name })
         }
       }

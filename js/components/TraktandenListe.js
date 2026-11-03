@@ -29,6 +29,8 @@ export default {
     // neuVon markiert neue Traktanden als selbst hinzugefügt (bleiben dann bearbeitbar)
     ohneHinzufuegen: { type: Boolean, default: false },
     darfPunkt: { type: Function, default: null },
+    darfUnterpunkt: { type: Function, default: null }, // Regeln (individuelle Rechte): Unterpunkt einzeln bearbeitbar
+    ohneLoeschen: { type: Boolean, default: false }, // Einzelrecht «Traktanden ändern und verschieben»: Haupttraktanden nicht löschen
     neuVon: { type: String, default: '' },
   },
   template: `
@@ -36,7 +38,7 @@ export default {
       <!-- Klick öffnet die Bearbeitung (Capture-Phase, damit «Fertig» im Innern die Karte nicht gleich wieder öffnet) -->
       <section v-for="(t, i) in traktanden" :id="t.id" :key="t.id" class="card" :class="{ editierbar: hauptEditierbar(t) && aktiv !== t.id, editing: aktiv === t.id }" @click.capture="hauptEditierbar(t) && aktiv !== t.id && (aktiv = t.id)">
         <div class="traktandum-kopf">
-          <span class="nr">{{ i + 1 }}.</span>
+          <span class="nr">{{ t._nr || i + 1 }}.</span>
           <!-- Bearbeitung: Titel direkt im Element, Bedienelemente daneben -->
           <template v-if="aktiv === t.id">
             <input v-model.trim="t.titel" class="nahtlos h2 grow" placeholder="Traktandum" />
@@ -58,7 +60,7 @@ export default {
               <MenuDropdown v-if="!nurPerson" icon="⋮">
                 <button class="menu-item" :disabled="i === 0" @click="verschieben(traktanden, i, -1)">↑ Nach oben</button>
                 <button class="menu-item" :disabled="i === traktanden.length - 1" @click="verschieben(traktanden, i, 1)">↓ Nach unten</button>
-                <button class="menu-item menu-item-danger" @click="traktanden.splice(i, 1); nummerieren(); aktiv = null">Traktandum löschen</button>
+                <button v-if="!ohneLoeschen" class="menu-item menu-item-danger" @click="traktanden.splice(i, 1); nummerieren(); aktiv = null">Traktandum löschen</button>
               </MenuDropdown>
             </span>
           </template>
@@ -74,7 +76,7 @@ export default {
         <div v-if="aktiv === t.id" class="eingerueckt"><textarea v-model.trim="t.notiz" v-wachsen class="nahtlos notiz" rows="1" :placeholder="istAntragPunkt(t) ? 'Antragstext …' : 'Notiz …'"></textarea></div>
         <p v-else-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
         <div v-if="t.untertraktanden.length" class="eingerueckt">
-          <Unterpunkte :liste="t.untertraktanden" :nummer="String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" :bearbeiten="aktiv === t.id" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" @klick="(u, darf) => subKlick(t, u, darf)" @fertig="aktiv = null" />
+          <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" :bearbeiten="aktiv === t.id" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" @klick="(u, darf) => subKlick(t, u, darf)" @fertig="aktiv = null" />
         </div>
         <div v-if="aktiv === t.id" class="eingerueckt row mt-2">
           <button v-if="!istAntragPunkt(t)" class="btn btn-ghost" @click="t.untertraktanden.push(neuesUntertraktandum(''))">+ Unterpunkt</button>
@@ -111,6 +113,7 @@ export default {
     },
     // Unterpunkt allein bearbeitbar (Person mit Rechten darauf), wenn das Element darüber gesperrt ist
     pruefen(u) {
+      if (this.darfUnterpunkt) return !this.nurLesen && this.darfUnterpunkt(u)
       return !this.nurLesen && !!this.nurPerson && istBerechtigt(u, this.nurPerson)
     },
     subKlick(t, u, darf) {

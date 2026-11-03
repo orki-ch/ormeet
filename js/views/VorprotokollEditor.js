@@ -1,21 +1,23 @@
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht } from '../stores/sync.js'
-import { EINZELRECHTE, aktuellePerson, darfEigene, eigeneKennung, einzelrecht, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu } from '../utils/rechte.js'
+import { EINZELRECHTE, aktuellePerson, darfAenderungStellen, darfEigene, eigeneKennung, einzelrecht, istIndividuell, linksSichtbar, verwaltetSitzung, vollzugriff, rolleIm, zurueckZu, zuschnittSicht } from '../utils/rechte.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
 import { springeZu } from '../utils/springen.js'
 import GaesteListe from '../components/GaesteListe.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import PdfExportButton from '../components/PdfExportButton.js'
+import RechteFenster from '../components/RechteFenster.js'
+import EinladungFenster from '../components/EinladungFenster.js'
+import { einladungSymbol, hatAbgesagt } from '../utils/einladungen.js'
 import SitzungKopfdaten from '../components/SitzungKopfdaten.js'
-import TeilenKarte from '../components/TeilenKarte.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 import { bestaetigen } from '../utils/dialog.js'
 
 export default {
   name: 'VorprotokollEditor',
-  components: { GaesteListe, MenuDropdown, PdfExportButton, SitzungKopfdaten, TeilenKarte, TraktandenListe },
+  components: { EinladungFenster, GaesteListe, MenuDropdown, PdfExportButton, RechteFenster, SitzungKopfdaten, TraktandenListe },
   props: {
     sitzungId: { type: String, default: '' },
     freigabeLinkKey: { type: String, default: '' },
@@ -37,9 +39,11 @@ export default {
             <p v-else-if="person && voll" class="muted small mt-1">Als Sitzungsleitung / Protokollführung hast du vollen Zugriff auf dieses Vorprotokoll.</p>
           </div>
           <div class="actions">
+            <button v-if="einladenMoeglich" type="button" class="btn" @click="einladungOffen = true">Einladung senden</button>
             <router-link v-if="darfProtokoll && sitzung.datum" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">
               {{ sitzung.status === 'vorprotokoll' ? 'Sitzung starten →' : 'Zum Protokoll →' }}
             </router-link>
+            <router-link v-else-if="aenderungMoeglich" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll →</router-link>
             <MenuDropdown>
               <PdfExportButton typ="vorprotokoll" :sitzung-id="sitzung.id" class="menu-item" />
               <button v-if="linksSichtbar" class="menu-item" @click="kopieren(vorprotokoll.freigabeLinkKey)">Allgemeinen Freigabe-Link kopieren</button>
@@ -49,6 +53,8 @@ export default {
           </div>
         </div>
       </header>
+
+      <EinladungFenster v-if="einladungOffen" :sitzung-id="sitzung.id" @schliessen="einladungOffen = false" />
 
       <div v-if="sitzung.terminfindung?.status === 'offen'" class="banner">
         <div class="grow"><strong>Der Termin wird noch gefunden.</strong> <span class="muted small">Das Vorprotokoll kann bereits vorbereitet werden; das Protokoll erst, wenn der Termin feststeht.</span></div>
@@ -63,35 +69,38 @@ export default {
           <p v-if="!gremium.mitglieder.length" class="muted small">Keine Mitglieder erfasst.</p>
           <div class="stack-sm">
             <label v-for="m in gremium.mitglieder" :key="m.id" class="check" :class="{ aus: !darfAnwesenheit(m) }">
-              <input v-model="vorprotokoll.anwesendeMitgliederIds" type="checkbox" :value="m.id" :disabled="!darfAnwesenheit(m)" />
-              <span class="grow">{{ m.name }}</span>
+              <input v-model="vorprotokoll.anwesendeMitgliederIds" type="checkbox" :value="m.id" :disabled="!darfAnwesenheit(m) || hatAbgesagt(gremium.id, sitzung.id, m.id)" />
+              <span class="grow">{{ m.name }}<span v-if="einladungSymbol(gremium.id, sitzung.id, m.id)" class="einladung-symbol" :class="einladungSymbol(gremium.id, sitzung.id, m.id).klasse" :title="einladungSymbol(gremium.id, sitzung.id, m.id).titel" :aria-label="einladungSymbol(gremium.id, sitzung.id, m.id).titel" role="img"></span></span>
               <span class="leise small">{{ rolleName(m.rolleId) }}{{ m.hatStimmrecht ? '' : ' · ohne Stimmrecht' }}</span>
+              <button v-if="personenLink(m.id)" type="button" class="btn btn-ghost btn-icon rechte-knopf" :title="kopiert === m.id ? 'Kopiert ✓' : 'Link von ' + m.name + ' kopieren'" @click.prevent="linkKopieren(m.id)"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg></button>
+              <button v-if="rechteSetzen" type="button" class="btn btn-ghost btn-icon rechte-knopf" :class="{ gesetzt: hatIndividuell(m.id) }" :title="'Individuelle Rechte von ' + m.name" @click.prevent="rechteFuer = m.id"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h4"/><path d="M12 17h8"/><circle cx="10" cy="17" r="2"/></svg></button>
             </label>
           </div>
         </section>
 
         <section class="card">
           <h2 class="card-title">Gäste</h2>
-          <GaesteListe :gaeste="vorprotokoll.gaeste" :nur-lesen="!voll && !darfEinzeln('gaeste')" />
+          <GaesteListe :gaeste="vorprotokoll.gaeste" :nur-lesen="!voll && !darfEinzeln('gaeste')" :rechte="rechteSetzen ? (gast) => (rechteFuer = gast.id) : null" :individuell="hatIndividuell" :link-kopieren="(gast) => personenLink(gast.id) && linkKopieren(gast.id)" :hat-link="(gast) => !!personenLink(gast.id)" :status="(gast) => einladungSymbol(gremium.id, sitzung.id, gast.id)" />
         </section>
       </div>
 
       <div>
         <p v-if="!nurLesen && eigene" class="muted small mb-2">Traktanden mit farbigem Rahmen kannst du anklicken und bearbeiten.</p>
         <TraktandenListe v-if="individuell" :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl"
-          :nur-lesen="!darfEinzeln('traktandenBearbeiten') && !darfEinzeln('traktandenHinzufuegen')" :ohne-hinzufuegen="!darfEinzeln('traktandenHinzufuegen')"
-          :darf-punkt="darfEinzeln('traktandenBearbeiten') ? null : selbstHinzugefuegt" :neu-von="kennung" />
+          :nur-lesen="!zuschnitt && !darfEinzeln('traktandenBearbeiten') && !darfEinzeln('traktandenAendern') && !darfEinzeln('traktandenHinzufuegen')" :ohne-hinzufuegen="!darfEinzeln('traktandenHinzufuegen')"
+          :ohne-loeschen="!zuschnitt && darfEinzeln('traktandenAendern') && !darfEinzeln('traktandenBearbeiten')"
+          :darf-punkt="zuschnitt ? (t) => zuschnitt.punkt(t) || selbstHinzugefuegt(t) : darfEinzeln('traktandenBearbeiten') || darfEinzeln('traktandenAendern') ? null : selbstHinzugefuegt" :darf-unterpunkt="zuschnitt ? zuschnitt.punkt : null" :neu-von="kennung" />
         <TraktandenListe v-else :traktanden="vorprotokoll.traktanden" :themenbereiche="gremium.themenbereiche" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="voll ? null : person" :nur-lesen="nurLesen || !eigene" />
       </div>
 
-      <TeilenKarte :sitzung="sitzung" dokument="vorprotokoll" :vorprotokoll="vorprotokoll" :darf-setzen="voll && !nurLesen && !istLink" :links-sichtbar="linksSichtbar" />
 
+      <RechteFenster v-if="rechteFuer" :sitzung="sitzung" :person-id="rechteFuer" @schliessen="rechteFuer = ''" />
     </div>
 
     <p v-else class="muted">Zu diesem Link wurde kein Vorprotokoll gefunden.</p>
   `,
   data() {
-    return { kopiert: '' }
+    return { kopiert: '', rechteFuer: '', einladungOffen: false }
   },
   computed: {
     vorprotokoll() {
@@ -139,6 +148,11 @@ export default {
     darfProtokoll() {
       return vollzugriff(this.sitzung, 'protokoll')
     },
+    // Abgeschlossenes Protokoll, zu dem die Person Änderungen beantragen darf (z. B. anwesender Gast)
+    aenderungMoeglich() {
+      const protokoll = sitzungenStore.protokollVonSitzung(this.sitzung.id)
+      return !!protokoll && darfAenderungStellen(this.sitzung, protokoll)
+    },
     // Gremium-Zugang mit Leserecht auf Sitzungen
     nurLesen() {
       return rolleIm(this.gremium.id) === 'gremium' && recht('sitzungen', this.gremium.id) !== 'bearbeiten'
@@ -147,8 +161,20 @@ export default {
     linksSichtbar() {
       return linksSichtbar(this.sitzung) && !this.nurLesen
     },
+    // Einladung per E-Mail: wer die Sitzung verwaltet, sobald der Termin feststeht und bis die Sitzung beginnt
+    einladenMoeglich() {
+      return this.zugriffeVerwalten && !!this.sitzung.datum && !this.gesperrt && !this.sitzung.kurz && !sync.zugriff?.ansicht
+    },
     zugriffeVerwalten() {
       return verwaltetSitzung(this.sitzung)
+    },
+    // Individuelle Rechte setzen darf, wer die Freigaben des Vorprotokolls setzt (Zugriffsübersicht, Rechte-Fenster)
+    rechteSetzen() {
+      return this.voll && !this.nurLesen && !this.istLink
+    },
+    // Eigene Regeln (individuelle Rechte): welche Traktanden bearbeitbar sind
+    zuschnitt() {
+      return this.gesperrt ? null : zuschnittSicht(this.sitzung)
     },
     zurueck() {
       return zurueckZu(this.gremium.id).pfad
@@ -187,11 +213,27 @@ export default {
   },
   methods: {
     formatDatum,
+    einladungSymbol,
+    hatAbgesagt,
     sitzungenStoreDarfAnlegen() {
       return vollzugriff(sitzungenStore.sitzungById(this.sitzungId), 'vorprotokoll')
     },
     darfAnwesenheit(m) {
       return this.voll || this.darfEinzeln('anwesenheit') || (this.eigene && this.person && m.id === this.person.id)
+    },
+    // Persönlicher Link einer Person (Mitglied: zentraler Link, Gast: Gast-Link), sofern der eigene Zugang ihn sieht
+    personenLink(personId) {
+      const m = this.gremium.mitglieder.find((x) => x.id === personId)
+      const key = m ? m.zugangsKey : this.vorprotokoll.personenKeys?.[personId]
+      return key ? location.href.split('#')[0] + (m ? '#/zugang/' : '#/freigabe/') + key : ''
+    },
+    linkKopieren(personId) {
+      navigator.clipboard.writeText(this.personenLink(personId))
+      this.kopiert = personId
+      setTimeout(() => (this.kopiert = ''), 2000)
+    },
+    hatIndividuell(personId) {
+      return Array.isArray(this.sitzung.freigaben?.vorprotokoll?.[personId]) || !!this.sitzung.zuschnitt?.[personId]
     },
     darfEinzeln(recht) {
       return !this.gesperrt && einzelrecht(this.sitzung, 'vorprotokoll', recht)

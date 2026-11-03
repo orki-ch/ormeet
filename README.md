@@ -58,9 +58,9 @@ installierte Version die Release-Beschreibung (`update_pruefen` liefert sie als 
 | Superadmin      | Passwort auf der Login-Seite                     | alles, inkl. Gremien anlegen/löschen und teilen, Konten & Links verwalten (`/benutzer`), SSO-Einstellungen. Mit einem Konto verknüpft (`superadmin.json` → `benutzerId`, Aktion `superadmin_konto`): `zugriff.konto` und persönliche Übersicht `/uebersicht` dieses Kontos |
 | Konto           | E-Mail/Passwort oder SSO (Sublevia, Orki); entsteht über einen persönlichen Link | pro Gremium: Eigentümer (selbst angelegt, wie Superadmin nur dort) oder verknüpftes Mitglied (wie persönlicher Link); Gremium-Wechsel im Dashboard, Kalender-Link pro Gremium |
 | Gremium-Link    | Tab «Teilen» im Gremium, beliebig viele Links    | pro Link einstellbar: Sitzungen / Mitglieder & Rollen / Protokoll-Einstellungen je nicht sichtbar, nur lesen oder bearbeiten |
-| Freigabe-Link   | Allgemeiner Link im Vorprotokoll                 | Anwesenheit, Gäste und Traktanden dieses Vorprotokolls. Wer ihn öffnet, trägt sich zuerst ein (siehe *Allgemeine Links*) |
+| Freigabe-Link   | Allgemeiner Link im Vorprotokoll                 | Nur dieses Vorprotokoll, Stufe `vorprotokoll.freigabeLinkStufe` (Standard `eigene` = alle Traktanden ändern und verschieben, Unterpunkte hinzufügen und löschen; Einzelrecht `traktandenAendern`), einstellbar wie andere Links. Wer ihn öffnet, trägt sich zuerst ein (siehe *Allgemeine Links*) |
 | Zusätzlicher Link | `sitzung.links[]` (`#/link/<key>`, Rolle `link`), beliebig viele pro Dokument `terminfindung` / `vorprotokoll` / `protokoll` | `stufe` `lesen` / `alles` / `individuell` mit `rechte` (siehe `EINZELRECHTE` in `api.php` und `js/utils/rechte.js`). Nur sein Dokument; Sitzung starten, abschliessen oder Kopfdaten ändern nie (`linkRechteAnwenden`). Schlüssel sehen Admin, Gremium-Zugänge mit Bearbeitungsrecht und die Leitung der Sitzung |
-| Persönlicher Link | Link pro Mitglied / Gast im Vorprotokoll       | Traktanden / Unterpunkte, bei denen die Person verantwortlich oder als Bearbeiter eingetragen ist, plus eigene Anwesenheit. Pro Dokument überschreibbar durch `sitzung.freigaben[vorprotokoll\|protokoll][personId]` = `lesen` / `eigene` / `alles` oder eine Liste von Einzelrechten («Individuell», `vorprotokollEinzelrechte` / `protokollEinzelrechte`) (Teilen-Karte). Sitzungsleitung und Protokollführung (Standard `alles`) dürfen zudem Vorprotokoll und Protokoll neu anlegen (Sitzung starten) und das Protokoll entfernen (`personRechteAnwenden`) |
+| Persönlicher Link | Link pro Mitglied / Gast im Vorprotokoll       | Traktanden / Unterpunkte, bei denen die Person verantwortlich oder als Bearbeiter eingetragen ist, plus eigene Anwesenheit. Pro Dokument überschreibbar durch `sitzung.freigaben[vorprotokoll\|protokoll][personId]` = `lesen` / `eigene` / `alles` oder eine Liste von Einzelrechten («Individuell», `vorprotokollEinzelrechte` / `protokollEinzelrechte`), eingestellt in der Zugriffsübersicht bzw. im `RechteFenster`; ohne Eintrag gilt der Standard der Rolle (`rolle.rechte`). Sitzungsleitung und Protokollführung (Standard `alles`) dürfen zudem Vorprotokoll und Protokoll neu anlegen (Sitzung starten) und das Protokoll entfernen (`personRechteAnwenden`) |
 | Verfolger-Link  | «⋯» im Protokoll                                 | Live-Ansicht des Protokolls, nur lesen (aktualisiert alle 5 s) |
 
 Jeder Link kann jederzeit erneuert werden (alter Link wird ungültig). Ein früherer Einzel-Zugangslink wird
@@ -79,11 +79,28 @@ SSO ist ein generischer OpenID-Connect-Client (Authorization Code). Anbieter: Su
 Orki (`/_/call/oidc/...`, siehe orki-Repo). Konfiguration in `data/einstellungen.json`, gepflegt unter
 Einstellungen; Rückruf-Adresse `api.php?aktion=sso_callback`. Der `state` ist HMAC-signiert (kein Sitzungsspeicher).
 
+### Rechte der Rollen
+
+`rolle.rechte` (leer = Vorlage, `rolleRechte` in `api.php` bzw. `gremienStore.rolleRechte`): `vorprotokoll` / `protokoll` =
+Standardstufe (`lesen` / `eigene` / `alles` oder Liste von Einzelrechten), `fuehrung` = `sitzungsleitung` / `protokollfuehrung`
+(Vorschlag bei neuen Sitzungen; die Rechte gelten, wo jemand eingetragen ist), `eintragen` (Sitzungen eintragen, das Recht
+weitergeben), `zugriffe` (Zugriffsübersicht aller Sitzungen, sieht deren Links). Vorlagen: Präsidium und Aktuariat führen und
+tragen ein. Gilt über den persönlichen Link wie mit Konto. Ohne gesetzte Freigabe gilt für eine Person die Standardstufe ihrer
+Rolle (`freigabeRoh`), für die Leitung der Sitzung «alles».
+
+**Allgemeiner Freigabe-Link:** `vorprotokoll.freigabeLinkStufe` / `freigabeLinkRechte` / `freigabeLinkZuschnitt` wie bei weiteren
+Links (`freigabeLinkObjekt`), Standard `eigene` = Einzelrecht `traktandenAendern` (alle Traktanden ändern und verschieben,
+Unterpunkte hinzufügen und löschen, keine Haupttraktanden löschen oder ohne Recht hinzufügen; `vorprotokollEinzelrechte`).
+
+**Ansehen als …:** `ansicht_starten` legt eine Ansicht (zwei Stunden, `bundle.ansichten`, nie ausgeliefert) an; der Schlüssel
+liegt nur im Tab (`sessionStorage`), jede Aktion ausser `laden` wird abgewiesen. Wer nur eine Sitzung verwaltet, erhält nur
+diese Sitzung (`nurSitzung`).
+
 ### Sitzungen eintragen
 
-Präsidium und Aktuariat mit verknüpftem Konto (`zugriff.konto`, nicht über den persönlichen Link) dürfen in ihrem Gremium
-Sitzungen und Kurzsitzungen eintragen, andere Konten mit `mitglied.darfSitzungenEintragen` (vergeben durch Superadmin unter
-Benutzer & Links, Eigentümer im Mitglieder-Dialog oder Präsidium / Aktuariat in der persönlichen Übersicht). Neue Sitzungen
+Mitglieder, deren Rolle `eintragen` hat (Vorlage: Präsidium und Aktuariat), dürfen in ihrem Gremium Sitzungen und
+Kurzsitzungen eintragen – über den persönlichen Link wie mit Konto –, weitere mit `mitglied.darfSitzungenEintragen` (vergeben
+durch Superadmin unter Benutzer & Links, Eigentümer im Mitglieder-Dialog oder wer es über die Rolle hat, in der Übersicht). Neue Sitzungen
 tragen `erstelltVon`; ihre Ersteller dürfen sie ohne Protokoll wieder löschen (`personRechteAnwenden`).
 
 ### Terminfindung
@@ -108,7 +125,8 @@ Sitzung mit späterem Datum; `fristDatum` / `fristText` in `js/stores/sitzungen.
 
 Nach Abschluss einer Sitzung (bis zur Genehmigung, nie bei Kurzsitzungen) stehen sie in `protokoll.aenderungsantraege`
 (`zielId` = Traktandum, Unterpunkt oder Eintrag). Stellen dürfen Mitglieder mit verknüpftem Konto, die erwartet oder
-anwesend waren; entscheiden die Protokollführung, Admin und Gremium-Zugänge mit Bearbeitungsrecht. Der Server führt die
+anwesend waren, sowie anwesende Gäste und weitere Personen über ihren Link (`darfAenderungStellen`; `laden` liefert ihnen
+das Protokoll bis zur Genehmigung); entscheiden die Protokollführung, Admin und Gremium-Zugänge mit Bearbeitungsrecht. Der Server führt die
 Liste bei jedem Speichern zusammen (`aenderungsantraegeMerge`): fremde Anträge gehen nie verloren, Text und Zurückziehen
 nur durch die antragstellende Person, Entscheide nur durch Berechtigte. Im Editor werden sie direkt im Store bearbeitet,
 nicht in der Arbeitskopie des Protokolls.
@@ -135,12 +153,26 @@ gelesene IDs liegen in `localStorage`. Für die Sammelmails leitet `kontoMitteil
   `linkGastFreigabe`, Server über `linkGaesteMerken`); sein Link läuft mit dem allgemeinen ab (`gastZugriff`).
 - **Doppelt:** gleicher Name oder gleiche E-Mail wie ein Mitglied oder Gast der Sitzung -> `gast.vorschlag`
   (`doppelteSuchen`). Annehmen über `weitere_person_verknuepfen` (Ziel Mitglied oder Gast; der bisherige Schlüssel öffnet
-  danach als Ziel: `vorprotokoll.aliasKeys`), ablehnen über `vorschlag_ablehnen`.
+  danach als Ziel: `vorprotokoll.aliasKeys`), ablehnen über `vorschlag_ablehnen`. Ist die E-Mail schon erfasst, legt
+  `link_eintragen` niemanden an; `link_zusenden` schickt den bestehenden Link (höchstens eine Mail pro Viertelstunde,
+  `bundle.linkZugesandt`, verrät nicht, ob die Adresse existiert).
 - **Schutz:** Passwort-Hashes in `bundle.linkSchutz[ref]` (`link:<id>`, `freigabe:<vpId>`, `zugang:<id>`; Aktion
   `link_passwort`), nie zum Client (nur `geschuetzt`). Freischaltung pro Gerät: `link_entsperren` liefert eine HMAC, die
   der Client als `X-Freischaltung` mitsendet. Ablauf im Link (`ablauf`, `freigabeLinkAblauf`): Datum oder `genehmigt`.
   Gesperrte Zugänge antworten mit `gesperrt` = `passwort` / `abgelaufen` / `gesperrt` (Seite `#/gesperrt`).
-- **Sperren:** `mitglied.gesperrt` (ganzes Gremium, auch Konto), `sitzung.gesperrt[]` (nur diese Sitzung; die Leitung nie).
+- **Sperren:** `mitglied.gesperrt` (ganzes Gremium, auch Konto), `sitzung.gesperrt[]` (diese Sitzung ganz, sieht sie nicht)
+  und `sitzung.nurLesen[]` (diese Sitzung nur lesen, `freigabeRoh` liefert `lesen`); die Leitung nie.
+- **Link mit Konto:** Ein persönlicher Link (Mitglied oder Gast) mit `benutzerId` öffnet nur noch angemeldet mit diesem
+  Konto (`kontoPflicht`, Grund `konto` auf `#/gesperrt`); das Kalender-Abo bleibt.
+- **Als Mitglied aufnehmen:** `weitere_person_aufnehmen` macht aus einer weiteren Person ein Mitglied mit Rolle (Konto,
+  Stimmen und Link gehen mit) – für Superadmin, Eigentümer und Gremium-Zugänge mit «Mitglieder bearbeiten».
+- **E-Mails von Gästen:** nur für Verwaltende der Sitzung, jede Person sieht ihre eigene (`gastEmailsVerbergen` /
+  `gastEmailsBewahren`).
+- **Individuelle Rechte mit Regeln:** `sitzung.zuschnitt[personId]` bzw. `link.zuschnitt` = `{ regeln: [{ modus: lesen|bearbeiten,
+  art: themenbereich|person|traktandum, id }], eigene }` (Fenster `RechteFenster`), wirksam bei «Individuell» auf Vor- oder
+  Protokoll. Der Server kürzt die ausgelieferten Dokumente (`zuschnittAnwenden`: nicht abgedeckte Punkte und Einträge fallen
+  weg, Pfade darüber bleiben als Kopf, Originalnummer in `_nr`) und übernimmt beim Speichern nur Bearbeitbares
+  (`zuschnittSicht`, `zuschnittVorprotokoll`, `zuschnittProtokoll`); der Client spiegelt das in `zuschnittSicht` (`rechte.js`).
 - **Zuletzt genutzt:** `bundle.nutzung[ref]` = Datum (höchstens ein Schreibvorgang pro Zugang und Tag, `nutzungMerken`).
 - **Übersicht:** `ZugriffeListe` pro Sitzung (`#/sitzung/<id>/zugriffe`), pro Gremium (Reiter *Zugriffe*) und gesamt
   (Benutzer & Links). Sitzungsleitung / Protokollführung sehen die Links ihrer Sitzungen (`personSicht`).
@@ -152,7 +184,18 @@ gelesene IDs liegen in `localStorage`. Für die Sammelmails leitet `kontoMitteil
 gespeichert nur als Hash. `cron.php` (stündlich) verschickt ab `mailStunde` einmal am Tag pro Konto eine Sammelmail mit
 den noch nicht gemeldeten Mitteilungen (`data/mails.json`, erster Lauf merkt sich nur den Stand; Status in
 `data/cron.json`). Abbestellen: signierter Link (`abbestellen`) oder *Mein Konto* (`mailsAus`). Erinnerung «Sitzung steht
-bevor»: `gremium.erinnerungTage` (Standard 3).
+bevor»: `gremium.erinnerungTage` (Standard 3). Die erste Sammelmail an ein Konto enthält gleich das Wichtige (bevorstehende
+Sitzungen, fehlende Stimmen, Pendenzen, zugewiesene Traktanden); Älteres gilt als gemeldet.
+
+### Einladungen
+
+`einladung_senden` (Vorprotokoll, Knopf «Einladung senden», `EinladungFenster`): Art `einladung` (Termin + Link) oder
+`vorprotokoll` (mit Traktanden), Empfänger mit E-Mail, eigene Nachricht. Jede Mail enthält den persönlichen Link, einen
+Kalendereintrag (`.ics` als Anhang, `mailSenden($anhang)`), «Zusagen» / «Absagen» (`#/einladung/<code>`,
+`EinladungAntwort`, Aktionen `einladung_info` / `einladung_antworten`) und Abbestellen pro Gremium
+(`einladung_abbestellen`, `bundle.einladungenAus`). Antworten in `bundle.einladungen` (nur Server; für Verwaltende über
+`einladungenFiltern`). Ohne Antwort gilt zugesagt; eine Absage braucht einen Grund und trägt die Person aus der Anwesenheit
+aus (`absagenDurchsetzen` beim Speichern). Änderbar bis zum Sitzungsstart; abgesagte Gäste kommen nicht ins Protokoll.
 
 Dialoge (`js/utils/dialog.js`): `$.confirm` / `$.alert` aus jquery-confirm (wie in Orki; jQuery und Plugin in `lib/`).
 
@@ -181,7 +224,8 @@ js/
     Benutzer.js               Superadmin: Konten (Gremien-Zuordnung, Rechte) und alle Zugriffe
     ZugriffeSeite.js          Zugriffsübersicht einer Sitzung
     FreigabeSeite.js          Freigabe-Link: Vorprotokoll, Terminfindung oder Protokoll (Link bleibt in der Adresse)
-    LinkGesperrt.js           Link mit Passwort, abgelaufen oder gesperrt
+    LinkGesperrt.js           Link mit Passwort, abgelaufen, gesperrt oder nur mit Konto
+    EinladungAntwort.js       Zusagen / Absagen auf eine Einladung per E-Mail (ohne Anmeldung)
     PasswortNeu.js            Neues Passwort über den Link aus der E-Mail
     GremiumListe.js           Dashboard aller Gremien
     GremiumDetail.js          Gremium pflegen: Suche, Sitzungen, Themenbereiche, Mitglieder, Rollen, Vorlagen
@@ -198,7 +242,6 @@ js/
     TraktandenListe.js        Traktanden mit Unterpunkten (bis drei Ebenen), Person, Notiz, Typ, geplante Dauer
     Unterpunkte.js            Unterpunkt-Baum (rekursiv): Anzeige und Inline-Bearbeitung im selben Layout, Slot für Einträge
     EintragListe.js           Einträge (Information / Antrag / Pendenz) pro Traktandum, Typ ggf. vorgegeben
-    TeilenKarte.js            Wer hat welchen Zugriff auf Vorprotokoll / Protokoll, Freigabestufen, Links
     GremiumSuche.js           Suche über Sitzungen, Traktanden und Einträge eines Gremiums
     ThemenbereichLinks.js     Schnellzugriff auf die Themenbereich-Übersichten inkl. «Ohne Themenbereich»
     SitzungKopfdaten.js       Titel, Datum, Zeit, Ort, Leitung, Protokollführung, Bemerkungen
@@ -218,11 +261,12 @@ js/
     InfoKnopf.js              Hinweis als (i)-Knopf oder graue Pille, Text als Tooltip
     MehrfachAuswahl.js        Mehrfachauswahl als Pillen mit ✕ (Rückfrage), z. B. Konto-Rechte, Freigabe der Terminfindung
     RechteSchalter.js         Stufen-Schalter mit Einzelrechten im ⋯-Menü (Pille «Individuell»)
-    LinkZeilen.js             Zusätzliche allgemeine Links eines Dokuments (sitzung.links)
+    RechteFenster.js          Rechte einer Person oder eines Links: Lesen / Eigene / Individuell (Regeln, Einzelrechte) / Alles
     KontoKarte.js             Konto anlegen / anmelden für eingetragene Personen (weitere Person)
     EintragDialog.js          Allgemeiner Link: Vor-, Nachname und E-Mail (nicht schliessbar), danach eigener Link
     ZugriffeListe.js          Wer hat Zugriff und worüber, zuletzt genutzt; sperren, entfernen, zusammenführen, Links
     LinkSchutzDialog.js       Passwort und Ablauf eines allgemeinen Links
+    EinladungFenster.js       Einladung senden: Art, Empfänger, eigene Nachricht
     SitzungDialog.js          Neue Sitzung (Gremium-Seite und persönliche Übersicht), setzt erstelltVon
     FristFeld.js              Frist einer Pendenz: Datum oder «bis zur nächsten Sitzung»
     Aenderungsantraege.js     Liste der Änderungsanträge eines Protokolls (entscheiden, ändern, zurückziehen)
@@ -262,7 +306,7 @@ changelog.md                  Änderungsverlauf für die Einstellungen (pro Vers
    nicht mehr separat gezeigt. Im Protokoll gibt es für Anträge nur Beschluss und Stimmen – kein Hinzufügen, Ändern
    oder Löschen (`EintragListe`, Typwahl `EINTRAG_TYP_WAHL`). Ältere Antrag-Punkte mit Unterpunkten werden beim Laden
    zu `antraege` (`migration.js`).
-5. «Sitzung starten» → Live-Protokoll. Sobald ein Protokoll existiert, ist das Vorprotokoll gesperrt (Client:
+5. «Sitzung starten» (Knopf mit Rückfrage; bis dahin zeigt die Protokoll-Seite eine Vorschau, Kurzsitzungen starten sofort) → Live-Protokoll. Sobald ein Protokoll existiert, ist das Vorprotokoll gesperrt (Client:
    `gesperrt` im VorprotokollEditor, `uebernimmPendenzen` zieht nichts mehr nach) und im Protokoll gibt es keine neuen
    Traktanden – die Traktandenliste steht fest. `loescheProtokoll` («Protokoll entfernen», nur Admin / Gremium-Zugang)
    setzt die Sitzung auf `vorprotokoll` zurück. Pro Traktandum oder Unterpunkt Einträge erfassen; tatsächliche Dauer in
@@ -288,8 +332,9 @@ Oben rechts «Hilfe», im Footer «Datenschutz».
 ## Hinweise
 
 - Gleichzeitiges Bearbeiten: Änderungen werden pro Datensatz (Gremium, Sitzung, Vorprotokoll,
-  Protokoll) übertragen. Zwei Personen können parallel an verschiedenen Dingen arbeiten; bearbeiten
-  beide denselben Datensatz, gewinnt die zuletzt gespeicherte Version.
+  Protokoll) übertragen und auf dem Server dreiseitig zusammengeführt (`zusammenfuehren` /
+  `gleichzeitigeAenderungen` in `api.php`, Client `js/utils/zusammenfuehren.js`): pro Feld, Traktandum, Eintrag und
+  Anwesenheit bleiben die Änderungen beider erhalten. Bei derselben Stelle gilt die neuere, und ein Hinweis nennt sie.
 - `data/` wird per `.htaccess` gegen direkten Zugriff geschützt (Apache). Bei nginx muss der Ordner
   separat gesperrt werden. Die Dateien sind zusätzlich verschlüsselt (siehe Sicherheit).
 - `data/` enthält neben den Gremien: `benutzer.json`, `superadmin.json`, `einstellungen.json`, `anmeldeversuche.json`.

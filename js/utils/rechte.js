@@ -1,6 +1,7 @@
 import { sync, recht } from '../stores/sync.js'
 import { gremienStore } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
+import { istBerechtigt } from './traktanden.js'
 
 // Wirksame Rolle im Gremium: ein Konto ist dort Eigentümer (-> 'admin') oder verknüpftes Mitglied (-> 'person')
 export function rolleIm(gremiumId) {
@@ -55,13 +56,16 @@ export const FREIGABE_STUFEN = { lesen: 'Lesen', eigene: 'Eigene', alles: 'Alles
 // Einzelrechte («Individuell») pro Dokument – für Personen in der Teilen-Karte und zusätzliche allgemeine Links
 export const EINZELRECHTE = {
   terminfindung: { abstimmen: 'Abstimmen', kommentieren: 'Kommentieren' },
-  vorprotokoll: { traktandenBearbeiten: 'Traktanden bearbeiten', traktandenHinzufuegen: 'Traktanden hinzufügen', anwesenheit: 'Anwesenheit', gaeste: 'Gäste' },
+  vorprotokoll: { traktandenBearbeiten: 'Traktanden bearbeiten', traktandenAendern: 'Traktanden ändern und verschieben', traktandenHinzufuegen: 'Traktanden hinzufügen', anwesenheit: 'Anwesenheit', gaeste: 'Gäste' },
   protokoll: { information: 'Informationen', pendenz: 'Pendenzen', antrag: 'Antragsbeschlüsse' },
 }
 
 // Standard ohne gesetzte Freigabe: Leitung alles, alle anderen ihre eigenen Traktanden
-export function standardStufe(sitzung, personId) {
-  return istLeitung(sitzung, personId) ? 'alles' : 'eigene'
+// Standard ohne gesetzte Freigabe: Leitung der Sitzung alles, sonst die Standardstufe der Rolle (Gäste: eigene)
+export function standardStufe(sitzung, personId, dokument = 'vorprotokoll') {
+  if (istLeitung(sitzung, personId)) return 'alles'
+  const stufe = gremienStore.rechteVon(sitzung.gremiumId, personId)[sitzung.kurz ? 'protokoll' : dokument]
+  return Array.isArray(stufe) ? 'individuell' : stufe || 'eigene'
 }
 
 // Über einen allgemeinen Link eingetragene Person (Gast mit ueberLink): ihr Link – ein zusätzlicher Link der Sitzung
@@ -69,27 +73,30 @@ export function standardStufe(sitzung, personId) {
 function herkunftsLink(sitzung, personId) {
   const gast = sitzungenStore.vorprotokollVonSitzung(sitzung.id)?.gaeste.find((g) => g.id === personId)
   if (!gast?.ueberLink) return null
-  if (gast.ueberLink === 'freigabe') return { dokument: 'vorprotokoll', stufe: 'alles', rechte: [], terminfindung: true }
+  if (gast.ueberLink === 'freigabe') return { ...freigabeLinkObjekt(sitzungenStore.vorprotokollVonSitzung(sitzung.id)), terminfindung: true }
   return (sitzung.links || []).find((l) => l.id === gast.ueberLink) || { dokument: '', stufe: 'lesen', rechte: [] }
 }
 
 // Rechte daraus: auf dem Dokument des Links dessen Rechte («Alles» = alle Einzelrechte), sonst nur lesen
 function linkGastFreigabe(info, dokument) {
-  if (dokument === info.dokument) {
-    if (info.stufe === 'alles') return Object.keys(EINZELRECHTE[dokument])
-    if (info.stufe === 'individuell') return info.rechte.filter((r) => EINZELRECHTE[dokument][r])
-    return 'lesen'
-  }
+  if (dokument === info.dokument) return info.stufe === 'lesen' ? 'lesen' : linkStufenRechte(info.stufe, info.rechte, dokument)
   if (dokument === 'terminfindung' && info.terminfindung) return Object.keys(EINZELRECHTE.terminfindung)
   return 'lesen'
 }
 
 // Gesetzte Freigabe (Stufe oder Liste von Einzelrechten); ohne: die Rechte des Links, über den die Person kam
 export function freigabeRoh(sitzung, dokument, personId) {
+  if (personId && sitzung.nurLesen?.includes(personId)) return 'lesen' // für diese Sitzung auf «nur lesen» gesperrt
   const stufe = sitzung.freigaben?.[dokument]?.[personId]
   if (stufe !== undefined) return stufe
   const info = herkunftsLink(sitzung, personId)
-  return info ? linkGastFreigabe(info, dokument) : undefined
+  if (info) return linkGastFreigabe(info, dokument)
+  // Standardstufe der Rolle (nicht für die Leitung der Sitzung)
+  if (['vorprotokoll', 'protokoll'].includes(dokument) && !istLeitung(sitzung, personId)) {
+    const standard = gremienStore.rechteVon(sitzung.gremiumId, personId)[dokument]
+    if (standard !== 'eigene') return standard
+  }
+  return undefined
 }
 
 // Wirksame Stufe: in der Sitzung gesetzte Freigabe überschreibt den Standard
@@ -97,7 +104,7 @@ export function freigabeStufe(sitzung, dokument, personId) {
   if (sitzung.kurz) dokument = 'protokoll' // Kurzsitzung: nur ein Dokument, Traktanden liegen im versteckten Vorprotokoll
   const stufe = freigabeRoh(sitzung, dokument, personId)
   if (Array.isArray(stufe)) return 'individuell' // Liste von Einzelrechten
-  return FREIGABE_STUFEN[stufe] ? stufe : standardStufe(sitzung, personId)
+  return FREIGABE_STUFEN[stufe] ? stufe : standardStufe(sitzung, personId, dokument)
 }
 
 // Terminfindung: abstimmen / kommentieren – über einen Link eingetragene Personen nur, wenn ihr Link es erlaubt
@@ -108,8 +115,21 @@ export function tfRecht(sitzung, name) {
 }
 
 // Kennung für selbst hinzugefügte Traktanden (Einzelrecht «Traktanden hinzufügen»): Person oder Link
+// Allgemeiner Link ohne Person: zusätzlicher Link oder der allgemeine Freigabe-Link (linkId «freigabe»)
+function istLinkZugriff(zugriff = sync.zugriff) {
+  return zugriff?.rolle === 'link' || (zugriff?.rolle === 'freigabe' && !zugriff.personId && !!zugriff.linkId)
+}
+
+// Einzelrechte einer Link-Stufe: alles = alle, eigene = Traktanden ändern und verschieben (Vorprotokoll), individuell = gewählte
+export function linkStufenRechte(stufe, rechte, dokument) {
+  if (stufe === 'alles') return Object.keys(EINZELRECHTE[dokument])
+  if (stufe === 'eigene') return dokument === 'vorprotokoll' ? ['traktandenAendern'] : []
+  if (stufe === 'individuell') return (rechte || []).filter((r) => EINZELRECHTE[dokument][r])
+  return []
+}
+
 export function eigeneKennung(gremiumId) {
-  return sync.zugriff?.rolle === 'link' ? 'link:' + sync.zugriff.linkId : personIdIm(gremiumId)
+  return istLinkZugriff() ? 'link:' + sync.zugriff.linkId : personIdIm(gremiumId)
 }
 
 // Gilt für den eigenen Zugang auf diesem Dokument «Individuell» (Einzelrechte)?
@@ -117,7 +137,7 @@ export function istIndividuell(sitzung, dokument) {
   const zugriff = sync.zugriff
   // Zusätzlicher allgemeiner Link: auch «Alles» läuft über die Einzelrechte (alle) – Sitzung starten, abschliessen oder
   // Kopfdaten ändern kann ein Link nie
-  if (zugriff?.rolle === 'link') return zugriff.sitzungId === sitzung.id && zugriff.dokument === dokument && zugriff.stufe !== 'lesen'
+  if (istLinkZugriff(zugriff)) return zugriff.sitzungId === sitzung.id && zugriff.dokument === dokument && zugriff.stufe !== 'lesen'
   const personId = personIdIm(sitzung.gremiumId)
   return !!personId && dokument !== 'terminfindung' && freigabeStufe(sitzung, dokument, personId) === 'individuell'
 }
@@ -126,9 +146,9 @@ export function istIndividuell(sitzung, dokument) {
 export function einzelrecht(sitzung, dokument, name) {
   if (istGenehmigt(sitzung)) return false
   const zugriff = sync.zugriff
-  if (zugriff?.rolle === 'link') {
+  if (istLinkZugriff(zugriff)) {
     if (zugriff.sitzungId !== sitzung.id || zugriff.dokument !== dokument) return false
-    return zugriff.stufe === 'alles' || (zugriff.stufe === 'individuell' && zugriff.rechte.includes(name))
+    return linkStufenRechte(zugriff.stufe, zugriff.rechte, dokument).includes(name)
   }
   if (!istIndividuell(sitzung, dokument)) return false
   const personId = personIdIm(sitzung.gremiumId)
@@ -143,19 +163,22 @@ export function istGenehmigt(sitzung) {
 
 // Darf die eigene Person (Mitglied / Gast) ihre zugewiesenen Traktanden in diesem Dokument bearbeiten? (false bei Freigabe «Lesen»)
 export function darfEigene(sitzung, dokument) {
-  if (istGenehmigt(sitzung) || sync.zugriff?.rolle === 'link' || istIndividuell(sitzung, dokument)) return false
+  if (istGenehmigt(sitzung) || istLinkZugriff() || istIndividuell(sitzung, dokument)) return false
   const personId = personIdIm(sitzung.gremiumId)
   return !personId || freigabeStufe(sitzung, dokument, personId) !== 'lesen'
 }
 
 // Änderungsanträge nach Abschluss einer Sitzung (bis zur Genehmigung, nie bei Kurzsitzungen). Stellen darf ein Mitglied
-// mit verknüpftem Konto, das an der Sitzung erwartet oder anwesend war – sofern es das Protokoll nicht selbst ganz bearbeitet.
+// mit verknüpftem Konto, das an der Sitzung erwartet oder anwesend war, sowie ein anwesender Gast (Gast-Link oder Konto) –
+// sofern es das Protokoll nicht selbst ganz bearbeitet.
 export function aenderungenOffen(sitzung) {
   return !sitzung.kurz && sitzung.status === 'abgeschlossen' && !istGenehmigt(sitzung)
 }
 
 export function darfAenderungStellen(sitzung, protokoll) {
-  const person = gremienStore.byId(sitzung.gremiumId)?.mitglieder.find((m) => m.id === personIdIm(sitzung.gremiumId))
+  const personId = personIdIm(sitzung.gremiumId)
+  if (aenderungenOffen(sitzung) && personId && protokoll.gaeste?.some((g) => g.id === personId) && !vollzugriff(sitzung, 'protokoll')) return true
+  const person = gremienStore.byId(sitzung.gremiumId)?.mitglieder.find((m) => m.id === personId)
   if (!aenderungenOffen(sitzung) || !person?.benutzerId || vollzugriff(sitzung, 'protokoll')) return false
   return gremienStore.erwarteteMitglieder(sitzung.gremiumId).some((m) => m.id === person.id) || protokoll.anwesende.includes(person.id)
 }
@@ -177,27 +200,26 @@ export function vollzugriff(sitzung, dokument = 'protokoll') {
   if (rolle === 'gremium') return recht('sitzungen', sitzung.gremiumId) === 'bearbeiten'
   const personId = personIdIm(sitzung.gremiumId)
   if (personId) return freigabeStufe(sitzung, dokument, personId) === 'alles'
-  if (rolle === 'freigabe') return dokument === 'vorprotokoll' // allgemeiner Freigabe-Link
+  if (rolle === 'freigabe') return dokument === 'vorprotokoll' && sync.zugriff.stufe === 'alles' // allgemeiner Freigabe-Link mit «Alles»
   return false
 }
 
-// Mitglied hinter dem angemeldeten Konto (nicht über den persönlichen Link)
-function kontoMitglied(gremiumId) {
-  if (sync.zugriff?.rolle !== 'benutzer') return null
-  return gremienStore.byId(gremiumId)?.mitglieder.find((m) => m.id === personIdIm(gremiumId) && m.benutzerId) || null
+// Eigenes Mitglied (persönlicher Link oder Konto)
+function eigenesMitglied(gremiumId) {
+  if (!['person', 'benutzer'].includes(sync.zugriff?.rolle)) return null
+  return gremienStore.byId(gremiumId)?.mitglieder.find((m) => m.id === personIdIm(gremiumId)) || null
 }
 
-// Neue Sitzungen eintragen: wer Sitzungen verwaltet, Präsidium / Aktuariat mit Konto und Konten mit zugeteiltem Recht
+// Neue Sitzungen eintragen: wer Sitzungen verwaltet, Rollen mit diesem Recht und Mitglieder mit zugeteiltem Recht
 export function darfSitzungenEintragen(gremiumId) {
   if (recht('sitzungen', gremiumId) === 'bearbeiten') return true
-  const mitglied = kontoMitglied(gremiumId)
+  const mitglied = eigenesMitglied(gremiumId)
   return !!mitglied && (gremienStore.hatFesteRolle(gremiumId, mitglied) || !!mitglied.darfSitzungenEintragen)
 }
 
-// Das Recht «Sitzungen eintragen» an andere Konten vergeben: Präsidium / Aktuariat mit Konto (Admin im Gremium selbst)
+// Das Recht «Sitzungen eintragen» an andere vergeben: Mitglieder, deren Rolle es hat (Admin im Gremium selbst)
 export function darfEintragenVergeben(gremiumId) {
-  const mitglied = kontoMitglied(gremiumId)
-  return !!mitglied && gremienStore.hatFesteRolle(gremiumId, mitglied)
+  return gremienStore.hatFesteRolle(gremiumId, eigenesMitglied(gremiumId))
 }
 
 // Person, die die Sitzung eingetragen hat; ältere Sitzungen ohne Angabe: die Sitzungsleitung
@@ -229,10 +251,90 @@ export function verwaltetSitzung(sitzung) {
   const rolle = rolleIm(sitzung.gremiumId)
   if (rolle === 'admin') return true
   if (rolle === 'gremium') return recht('sitzungen', sitzung.gremiumId) === 'bearbeiten'
-  return rolle === 'person' && istLeitung(sitzung, personIdIm(sitzung.gremiumId))
+  const personId = personIdIm(sitzung.gremiumId)
+  return rolle === 'person' && (istLeitung(sitzung, personId) || gremienStore.rechteVon(sitzung.gremiumId, personId).zugriffe)
 }
 
 // Links einer Sitzung sehen und kopieren (Gremium-Zugänge ohne Bearbeitungsrecht erhalten leere Links)
 export function linksSichtbar(sitzung) {
   return ['admin', 'gremium'].includes(rolleIm(sitzung.gremiumId)) || verwaltetSitzung(sitzung)
+}
+
+// Individuelle Rechte mit Regeln (Zuschnitt, siehe api.php zuschnittSicht): { regeln: [{ modus, art, id }], eigene }.
+// Personen: sitzung.zuschnitt[personId], sonst der Zuschnitt des Links, über den sie kamen; Links: link.zuschnitt.
+export function zuschnittVon(sitzung, personId = null, link = null) {
+  let z = link ? link.zuschnitt : sitzung.zuschnitt?.[personId]
+  if (!z && !link && personId) {
+    const vp = sitzungenStore.vorprotokollVonSitzung(sitzung.id)
+    const gast = vp?.gaeste.find((g) => g.id === personId)
+    const herkunft = gast?.ueberLink === 'freigabe' ? freigabeLinkObjekt(vp) : (sitzung.links || []).find((l) => l.id === gast?.ueberLink)
+    if (herkunft?.stufe === 'individuell') z = herkunft.zuschnitt
+  }
+  return z?.regeln?.length ? z : null
+}
+
+// Zuschnitt des eigenen Zugangs auf dieser Sitzung (nur mit «Individuell»)
+export function eigenerZuschnitt(sitzung) {
+  const zugriff = sync.zugriff
+  if (istLinkZugriff(zugriff)) {
+    if (zugriff.sitzungId !== sitzung.id || zugriff.stufe !== 'individuell') return null
+    return zuschnittVon(sitzung, null, linkVonZugriff(sitzung))
+  }
+  const personId = personIdIm(sitzung.gremiumId)
+  if (!personId || !['vorprotokoll', 'protokoll'].some((d) => freigabeStufe(sitzung, d, personId) === 'individuell')) return null
+  return zuschnittVon(sitzung, personId)
+}
+
+// Was der eigene Zuschnitt bearbeiten lässt (die Daten kommen schon gekürzt vom Server): Punkte (alle Ebenen) und Einträge
+export function zuschnittSicht(sitzung) {
+  const z = eigenerZuschnitt(sitzung)
+  if (!z) return null
+  const vp = sitzungenStore.vorprotokollVonSitzung(sitzung.id)
+  const protokoll = sitzungenStore.protokollVonSitzung(sitzung.id)
+  const gremiumId = sitzung.gremiumId
+  const selbst = z.eigene ? aktuellePerson(gremiumId, vp?.gaeste || []) : null
+  const person = (id) => gremienStore.person(gremiumId, vp?.gaeste || [], id)
+  const passt = (r, k, tb) => (r.art === 'themenbereich' ? !!tb && tb === r.id : r.art === 'traktandum' ? k.id === r.id : !!person(r.id) && istBerechtigt(k, person(r.id)))
+  const hat = (modus, k, tb) => z.regeln.some((r) => (modus === 'lesen' || r.modus === 'bearbeiten') && passt(r, k, tb))
+  const bearbeiten = new Set()
+  const gehe = (liste, tbOben, erbt) => {
+    for (const k of liste || []) {
+      const tb = tbOben ?? k.themenbereichId ?? ''
+      const b = erbt || hat('bearbeiten', k, tb) || (!!selbst && istBerechtigt(k, selbst))
+      if (b) bearbeiten.add(k.id)
+      gehe(k.untertraktanden, tb, b)
+    }
+  }
+  gehe(vp?.traktanden, null, false)
+  gehe(protokoll?.zusatztraktanden, null, false)
+  const typRechte = (link) => link ? link.rechte || [] : sitzung.freigaben?.protokoll?.[personIdIm(gremiumId)] || []
+  const rechte = istLinkZugriff() ? typRechte(linkVonZugriff(sitzung)) : typRechte(null)
+  const darfRegel = (art, wert) => z.regeln.some((r) => r.modus === 'bearbeiten' && r.art === art && r.id === wert)
+  // Einträge: im bearbeitbaren Punkt, mit bearbeitbarem Themenbereich, Pendenz einer bearbeitbaren Person oder freigegebener Typ
+  const eintrag = (e) => bearbeiten.has(e.traktandumId) || darfRegel('themenbereich', e.themenbereichId) || (e.typ === 'pendenz' && (darfRegel('person', e.zugewiesenAn) || (!!selbst && e.zugewiesenAn === selbst.id))) || (Array.isArray(rechte) && rechte.includes(e.typ))
+  // Bearbeiten-Regeln auf Themenbereich oder Person können Einträge auch in sonst gesperrten Punkten öffnen
+  const eintragsRegeln = z.regeln.some((r) => r.modus === 'bearbeiten' && r.art !== 'traktandum')
+  return { bearbeiten, punkt: (k) => bearbeiten.has(k.id), eintrag, eintragsRegeln }
+}
+
+// Link hinter dem eigenen Link-Zugriff (zusätzlicher Link oder Freigabe-Link)
+function linkVonZugriff(sitzung) {
+  if (sync.zugriff?.linkId === 'freigabe') return freigabeLinkObjekt(sitzungenStore.vorprotokollVonSitzung(sitzung.id))
+  return (sitzung.links || []).find((l) => l.id === sync.zugriff?.linkId)
+}
+
+// Allgemeiner Freigabe-Link des Vorprotokolls als Link-Objekt (Stufe wie bei weiteren Links; Standard «eigene»).
+// Getter / Setter schreiben direkt ins Vorprotokoll – so lässt er sich wie ein Link bearbeiten (RechteFenster, Zugriffe).
+export function freigabeLinkObjekt(vp) {
+  return {
+    id: 'freigabe',
+    name: 'Allgemeiner Link',
+    dokument: 'vorprotokoll',
+    get stufe() { return vp?.freigabeLinkStufe || 'eigene' },
+    set stufe(wert) { vp.freigabeLinkStufe = wert },
+    get rechte() { return vp?.freigabeLinkRechte || [] },
+    set rechte(wert) { vp.freigabeLinkRechte = wert },
+    get zuschnitt() { return vp?.freigabeLinkZuschnitt || null },
+    set zuschnitt(wert) { vp.freigabeLinkZuschnitt = wert },
+  }
 }

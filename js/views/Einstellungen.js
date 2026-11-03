@@ -122,7 +122,7 @@ export default {
           <h2 class="card-title">Automatische E-Mails (Cronjob)</h2>
           <span class="badge" :class="ZUSTAND[cron.zustand].klasse">{{ ZUSTAND[cron.zustand].text }}</span>
         </div>
-        <p class="hint">Konten erhalten höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet – nur wenn es Neues gibt: eine Sitzung steht bevor, die eigene Stimme fehlt, Pendenzen und alles Weitere aus der Glocke. Dafür braucht es einen Cronjob beim Hoster, der Ormeet stündlich aufruft.</p>
+        <p class="hint">Konten erhalten höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet – nur wenn es Neues gibt: eine Sitzung steht bevor, die eigene Stimme fehlt, Pendenzen und alles Weitere aus der Glocke. Die erste Mail an ein Konto enthält nur Wichtiges: bevorstehende Sitzungen, fehlende Stimmen, Pendenzen und zugewiesene Traktanden. Dafür braucht es einen Cronjob beim Hoster, der Ormeet stündlich aufruft.</p>
         <div class="grid-3 small">
           <div><span class="label">Letzter Lauf</span>{{ cron.lauf?.letzterLauf ? new Date(cron.lauf.letzterLauf).toLocaleString('de-CH') : 'noch nie' }}</div>
           <div><span class="label">Verschickt</span>{{ cron.lauf ? cron.lauf.mails + ' Mails' : '–' }}<span v-if="cron.lauf?.hinweis" class="leise"> · {{ cron.lauf.hinweis }}</span></div>
@@ -188,17 +188,11 @@ export default {
           </div>
 
         </div>
-
         <template #fuss>
-
           <div class="row">
-
             <button type="button" class="btn" :disabled="pruefend" @click="cronPruefen">{{ pruefend ? 'Wird geprüft …' : 'Erneut prüfen' }}</button>
-
             <button type="button" class="btn btn-primary" @click="cronOffen = false">Schliessen</button>
-
           </div>
-
         </template>
 
       </Modal>

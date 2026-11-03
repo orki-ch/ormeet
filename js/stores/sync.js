@@ -2,6 +2,7 @@ import { api } from '../api.js'
 import { gremienStore } from './gremien.js'
 import { sitzungenStore } from './sitzungen.js'
 import { ergaenzeFelder } from './migration.js'
+import { hinweis } from '../utils/dialog.js'
 
 const { reactive, watch } = Vue
 const TYPEN = ['gremien', 'sitzungen', 'vorprotokolle', 'protokolle']
@@ -36,7 +37,14 @@ function gremiumIdVon(typ, eintrag) {
 // Server-Stand in die Stores übernehmen; lokal geänderte, noch nicht gespeicherte Datensätze haben Vorrang
 function uebernehmen(bundles) {
   const migriert = new Set(bundles.filter(ergaenzeFelder).map((b) => b.gremium.id))
-  for (const b of bundles) zugriffsDaten[b.gremium.id] = { nutzung: Array.isArray(b.nutzung) ? {} : b.nutzung || {}, geschuetzt: b.geschuetzt || [] }
+  for (const b of bundles) {
+    zugriffsDaten[b.gremium.id] = {
+      nutzung: Array.isArray(b.nutzung) ? {} : b.nutzung || {},
+      geschuetzt: b.geschuetzt || [],
+      einladungen: Array.isArray(b.einladungen) ? {} : b.einladungen || {}, // nur für Verwaltende: { sitzungId: { personId: { gesendet, antwort, grund } } }
+      einladungenAus: b.einladungenAus || [],
+    }
+  }
 
   for (const typ of TYPEN) {
     const lokal = liste(typ)
@@ -91,8 +99,8 @@ export async function laden() {
 // Lokale Änderungen ermitteln und pro Gremium an den Server schicken
 export async function speichern() {
   clearTimeout(timer)
-  // Reine Lese-Zugänge schreiben nie
-  if (['verfolger', 'themenbereich'].includes(sync.zugriff?.rolle)) {
+  // Reine Lese-Zugänge und die Ansicht als andere Person schreiben nie
+  if (['verfolger', 'themenbereich'].includes(sync.zugriff?.rolle) || sync.zugriff?.ansicht) {
     sync.ausstehend = false
     return
   }
@@ -103,7 +111,7 @@ export async function speichern() {
 
   const aenderungen = {}
   const fuer = (gremiumId) =>
-    (aenderungen[gremiumId] ??= { sitzungen: [], vorprotokolle: [], protokolle: [], geloescht: { sitzungen: [], vorprotokolle: [], protokolle: [] } })
+    (aenderungen[gremiumId] ??= { sitzungen: [], vorprotokolle: [], protokolle: [], geloescht: { sitzungen: [], vorprotokolle: [], protokolle: [] }, basis: { sitzungen: {}, vorprotokolle: {}, protokolle: {} } })
   const neuerStand = leererStand() // wird nach erfolgreichem Speichern übernommen (null = gelöscht)
 
   for (const typ of TYPEN) {
@@ -116,6 +124,10 @@ export async function speichern() {
       if (zuletzt[typ][eintrag.id]?.json === json) continue
       if (typ === 'gremien') fuer(gremiumId).gremium = eintrag
       else fuer(gremiumId)[typ].push(eintrag)
+      // Stand, auf dem die Änderung beruht: der Server führt damit Änderungen anderer zusammen, statt sie zu überschreiben
+      const basis = zuletzt[typ][eintrag.id]?.json
+      if (basis && typ === 'gremien') fuer(gremiumId).basis.gremium = JSON.parse(basis)
+      else if (basis) fuer(gremiumId).basis[typ][eintrag.id] = JSON.parse(basis)
       neuerStand[typ][eintrag.id] = { gremiumId, json }
     }
     for (const [id, { gremiumId }] of Object.entries(zuletzt[typ])) {
@@ -133,7 +145,17 @@ export async function speichern() {
   laeuft = true
   sync.status = 'speichert'
   try {
-    for (const [gremiumId, daten] of Object.entries(aenderungen)) await api.anfrage('speichern', gremiumId, daten)
+    const gleichzeitig = []
+    let zusammengefuehrt = false
+    for (const [gremiumId, daten] of Object.entries(aenderungen)) {
+      const antwort = await api.anfrage('speichern', gremiumId, daten)
+      gleichzeitig.push(...(antwort.gleichzeitig || []))
+      zusammengefuehrt ||= !!antwort.zusammengefuehrt
+    }
+    if (zusammengefuehrt) setTimeout(abgleichen, 0) // zusammengeführten Stand gleich holen
+    if (gleichzeitig.length) {
+      hinweis('Jemand hat gleichzeitig dieselben Stellen geändert. Gespeichert ist deine Änderung:\n\n' + gleichzeitig.map((h) => '– ' + h).join('\n'), 'Gleichzeitig bearbeitet')
+    }
     for (const typ of TYPEN) {
       for (const [id, stand] of Object.entries(neuerStand[typ])) {
         if (stand) zuletzt[typ][id] = stand

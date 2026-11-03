@@ -2,7 +2,7 @@ import { api } from './api.js'
 import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
 import { gremienStore } from './stores/gremien.js'
-import { rolleIm, vollzugriff } from './utils/rechte.js'
+import { darfAenderungStellen, rolleIm, vollzugriff } from './utils/rechte.js'
 import { bestaetigen } from './utils/dialog.js'
 import Login from './views/Login.js'
 import GremiumListe from './views/GremiumListe.js'
@@ -22,6 +22,7 @@ import LinkGesperrt from './views/LinkGesperrt.js'
 import FreigabeSeite from './views/FreigabeSeite.js'
 import ZugriffeSeite from './views/ZugriffeSeite.js'
 import PasswortNeu from './views/PasswortNeu.js'
+import EinladungAntwort from './views/EinladungAntwort.js'
 
 // Hash-History: läuft auf jedem Webserver ohne Rewrite-Regeln
 const router = VueRouter.createRouter({
@@ -32,8 +33,11 @@ const router = VueRouter.createRouter({
     { path: '/datenschutz', component: Datenschutz },
     // Link mit Passwort, abgelaufen oder gesperrt
     { path: '/gesperrt', component: LinkGesperrt },
+    // «Ansehen als …»: Ansicht aus Sicht einer Person in diesem Tab (nur lesen)
+    { path: '/ansicht/:ansichtToken', name: 'ansicht', component: GremiumListe },
     // Passwort vergessen: Link aus der E-Mail
     { path: '/passwort/:code', component: PasswortNeu, props: true },
+    { path: '/einladung/:code', component: EinladungAntwort, props: true }, // Antwort auf eine Einladung per E-Mail (ohne Anmeldung)
     { path: '/', component: GremiumListe },
     { path: '/meine/:gremiumId?', component: PersonSeite, props: true },
     // Persönliche Übersicht des Superadmins (über das mit ihm verknüpfte Konto)
@@ -94,7 +98,7 @@ async function mitLinkAnmelden(key, passt) {
 }
 
 router.beforeEach(async (to) => {
-  if (['/login', '/hilfe', '/datenschutz'].includes(to.path) || to.path.startsWith('/passwort/')) return true
+  if (['/login', '/hilfe', '/datenschutz'].includes(to.path) || to.path.startsWith('/passwort/') || to.path.startsWith('/einladung/')) return true
   if (to.path === '/gesperrt') return sync.gesperrt ? true : '/'
 
   if (to.name === 'zugang') {
@@ -118,6 +122,14 @@ router.beforeEach(async (to) => {
     if (!(await angemeldet())) return sync.gesperrt ? gesperrtPfad(to) : '/login'
     if (to.query.weiter?.startsWith('/')) return to.query.weiter // z. B. aus dem Kalender direkt ins Vorprotokoll
     return startPfad()
+  }
+  if (to.name === 'ansicht') {
+    api.ansichtStarten(to.params.ansichtToken)
+    sync.zugriff = null
+    if (!(await angemeldet())) return sync.gesperrt ? gesperrtPfad(to) : '/login'
+    const nur = sitzungenStore.sitzungById(sync.zugriff.nurSitzung)
+    if (sync.zugriff.rolle === 'person' && nur) return nur.kurz ? kurzPfad(nur) : `/sitzung/${nur.id}/${sitzungenStore.protokollVonSitzung(nur.id) ? 'protokoll' : 'vorprotokoll'}`
+    return sync.zugriff.rolle === 'freigabe' ? freigabePfad(freigabeSeiten()[0]) : startPfad()
   }
   if (to.name === 'freigabe') {
     const key = to.params.freigabeLinkKey
@@ -235,7 +247,11 @@ export function freigabeSeiten() {
   const dokument = sync.zugriff.dokument || 'vorprotokoll'
   if (dokument === 'terminfindung') return sitzung.terminfindung ? ['terminfindung'] : ['vorprotokoll']
   if (dokument === 'protokoll') return ['protokoll']
-  return sitzung.terminfindung ? ['vorprotokoll', 'terminfindung'] : ['vorprotokoll']
+  const seiten = sitzung.terminfindung ? ['vorprotokoll', 'terminfindung'] : ['vorprotokoll']
+  // Anwesender Gast: das abgeschlossene Protokoll bis zur Genehmigung (Änderungsanträge)
+  const protokoll = sitzungenStore.protokollVonSitzung(sitzung.id)
+  if (protokoll && darfAenderungStellen(sitzung, protokoll)) seiten.unshift('protokoll') // öffnet zuerst das Protokoll
+  return seiten
 }
 
 export function freigabePfad(seite) {

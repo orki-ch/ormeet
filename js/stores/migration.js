@@ -22,6 +22,7 @@ export function ergaenzeFelder(bundle) {
   // Feste Rollen: Präsidium (Sitzungsleitung) und Aktuariat (Protokollführung)
   gremium.rollen.forEach((r) => {
     r.sollAnwesend ??= true
+    if (!r.rechte || Array.isArray(r.rechte)) r.rechte = {} // Rechte der Rolle (leer: Vorlage, siehe gremienStore.rolleRechte)
     r.typ ??= r.name === 'Präsidium' ? 'praesidium' : r.name === 'Aktuariat' ? 'aktuariat' : null
   })
   for (const [typ, name] of [['praesidium', 'Präsidium'], ['aktuariat', 'Aktuariat']]) {
@@ -63,6 +64,8 @@ export function ergaenzeFelder(bundle) {
     s.links ??= [] // zusätzliche allgemeine Links pro Dokument mit eigenen Rechten
     s.links.forEach((l) => (l.ablauf ??= '')) // '' | JJJJ-MM-TT | genehmigt (bis das Protokoll genehmigt ist)
     s.gesperrt ??= [] // für diese Sitzung gesperrte Personen: sehen die Sitzung nicht mehr
+    s.nurLesen ??= [] // für diese Sitzung auf «nur lesen» gesetzte Personen: sehen alles, ändern nichts (seit 1.5.04)
+    if (!s.zuschnitt || Array.isArray(s.zuschnitt)) s.zuschnitt = {} // individuelle Rechte mit Regeln: { [personId]: { regeln, eigene } }
     s.terminfindung ??= null
     if (s.terminfindung) {
       s.terminfindung.optionen ??= []
@@ -77,6 +80,9 @@ export function ergaenzeFelder(bundle) {
     if (!v.personenKeys || Array.isArray(v.personenKeys)) v.personenKeys = {} // PHP liefert ein leeres Objekt als []
     if (!v.aliasKeys || Array.isArray(v.aliasKeys)) v.aliasKeys = {} // frühere Links zusammengeführter Personen: { [key]: personId }
     v.freigabeLinkAblauf ??= '' // Ablauf des allgemeinen Freigabe-Links (wie bei den zusätzlichen Links)
+    v.freigabeLinkStufe ??= 'eigene' // Rechte des Freigabe-Links wie bei weiteren Links; bestehende werden auf den Standard «eigene» umgestellt
+    v.freigabeLinkRechte ??= []
+    v.freigabeLinkZuschnitt ??= null
     v.gaeste.forEach(gast)
     v.traktanden.forEach((t) => traktandum(t, [...gremium.mitglieder, ...v.gaeste]))
   })

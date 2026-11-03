@@ -1,4 +1,5 @@
 const TOKEN_KEY = 'ormeet-token'
+const ANSICHT_KEY = 'ormeet-ansicht' // «Ansehen als …»: Ansicht-Schlüssel nur in diesem Tab (sessionStorage)
 const FREISCHALTUNG_KEY = 'ormeet-freischaltungen' // passwortgeschützte Links: { [token]: Freischaltung } für dieses Gerät
 
 function freischaltungen() {
@@ -18,11 +19,21 @@ export const appStand = Vue.reactive({
 
 export const api = {
   get token() {
-    return localStorage.getItem(TOKEN_KEY) || ''
+    return sessionStorage.getItem(ANSICHT_KEY) || localStorage.getItem(TOKEN_KEY) || ''
   },
 
+  // In der Ansicht als andere Person bleibt die eigene Anmeldung (localStorage) unberührt
   setToken(token) {
-    localStorage.setItem(TOKEN_KEY, token)
+    if (sessionStorage.getItem(ANSICHT_KEY)) sessionStorage.setItem(ANSICHT_KEY, token)
+    else localStorage.setItem(TOKEN_KEY, token)
+  },
+
+  ansichtStarten(token) {
+    sessionStorage.setItem(ANSICHT_KEY, token)
+  },
+
+  ansichtBeenden() {
+    sessionStorage.removeItem(ANSICHT_KEY)
   },
 
   // Nach richtig eingegebenem Passwort: dieser Link bleibt auf dem Gerät freigeschaltet

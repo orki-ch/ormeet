@@ -8,8 +8,8 @@ import { STIMME, formatDatum } from '../utils/labels.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import MiniKalender from '../components/MiniKalender.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
-import LinkZeilen from '../components/LinkZeilen.js'
 import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
+import EinladungFenster from '../components/EinladungFenster.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
@@ -17,12 +17,13 @@ const WERTE = ['ja', 'vielleicht', 'nein']
 // Terminfindung (Nuudel-artig): Optionen, Abstimmungsmatrix mit Summenzeile, Kommentare, Termin festlegen
 export default {
   name: 'TerminfindungSeite',
-  components: { KurzTeilnehmende, LinkZeilen, MehrfachAuswahl, MenuDropdown, MiniKalender },
+  components: { EinladungFenster, KurzTeilnehmende, MehrfachAuswahl, MenuDropdown, MiniKalender },
   props: {
     sitzungId: { type: String, required: true },
   },
   template: `
     <div v-if="tf" class="stack-lg">
+      <EinladungFenster v-if="einladungOffen" :sitzung-id="sitzungId" @schliessen="einladungOffen = false" />
       <header class="page-header" style="margin-bottom: 0">
         <router-link v-if="zurueck" :to="zurueck" class="rueck">← {{ zurueckText }}</router-link>
         <div class="kopf">
@@ -36,10 +37,6 @@ export default {
           <div class="actions">
             <router-link v-if="!sitzung.kurz && sync.zugriff?.rolle !== 'link' && !nurLinkDokument" :to="'/sitzung/' + sitzung.id + '/vorprotokoll'" class="btn">Vorprotokoll</router-link>
             <router-link v-else-if="sitzung.datum && !nurLinkDokument" :to="'/sitzung/' + sitzung.id + '/protokoll'" class="btn btn-primary">Zum Protokoll</router-link>
-            <MenuDropdown v-if="linksSichtbar" text="Links" panel>
-              <p class="hint">Weitere allgemeine Links zu dieser Terminfindung, je mit eigenen Rechten.</p>
-              <LinkZeilen :sitzung="sitzung" dokument="terminfindung" />
-            </MenuDropdown>
             <MenuDropdown v-if="voll || zugriffeVerwalten">
               <router-link v-if="zugriffeVerwalten" :to="'/sitzung/' + sitzung.id + '/zugriffe'" class="menu-item">Zugriffe verwalten</router-link>
               <button v-if="voll" class="menu-item" @click="csvExport">Ergebnis als CSV exportieren</button>
@@ -195,7 +192,7 @@ export default {
     <p v-else class="muted">Zu dieser Sitzung gibt es keine Terminfindung.</p>
   `,
   data() {
-    return { sync, neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME }
+    return { sync, neu: { datum: '', von: '19:00', bis: '' }, gewaehlt: [], neuerName: '', neuerKommentar: '', STIMME, einladungOffen: false }
   },
   computed: {
     alleGewaehlt() {
@@ -433,6 +430,11 @@ export default {
     async festlegen(option) {
       if (!(await bestaetigen(`${formatDatum(option.datum)}, ${option.von} als Sitzungstermin festlegen?`))) return
       sitzungenStore.terminFestlegen(this.sitzungId, option.id)
+      // Wer die Sitzung verwaltet, kann gleich per E-Mail einladen (Kurzsitzungen ohne Vorprotokoll nicht)
+      if (this.sitzung.kurz || !verwaltetSitzung(this.sitzung) || sync.zugriff?.ansicht) return
+      if (!(await bestaetigen('Einladung jetzt per E-Mail senden?', { titel: 'Termin festgelegt', ja: 'Einladung senden', nein: 'Später' }))) return
+      if (!sitzungenStore.vorprotokollVonSitzung(this.sitzungId)) sitzungenStore.erstelleVorprotokoll(this.sitzungId)
+      this.einladungOffen = true
     },
     // Ein bereits gestartetes, noch leeres Protokoll geht mit dem Termin weg – sonst bliebe das Vorprotokoll gesperrt
     wiederOeffnen() {

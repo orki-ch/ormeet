@@ -1,7 +1,7 @@
 import { api } from '../api.js'
 import { sync } from '../stores/sync.js'
 
-// Link mit Passwort (einmal pro Gerät eingeben), abgelaufener oder gesperrter Zugang
+// Link mit Passwort (einmal pro Gerät eingeben), abgelaufener oder gesperrter Zugang, mit einem Konto verknüpfter Link (nur mit Anmeldung)
 export default {
   name: 'LinkGesperrt',
   template: `
@@ -14,6 +14,11 @@ export default {
       <p v-if="fehler" class="small text-err">{{ fehler }}</p>
       <button class="btn btn-primary btn-block" :disabled="laeuft">Öffnen</button>
     </form>
+    <section v-else-if="sync.gesperrt?.grund === 'konto'" class="card login stack">
+      <h1>Bitte anmelden</h1>
+      <p class="muted small">Dieser Link gehört zum Konto von {{ sync.gesperrt.name }}. Er öffnet die Sitzungen nur noch nach der Anmeldung mit diesem Konto – so siehst du alle deine Gremien an einem Ort.</p>
+      <router-link to="/login" class="btn btn-primary btn-block">Anmelden</router-link>
+    </section>
     <section v-else class="card login stack">
       <h1>{{ sync.gesperrt?.grund === 'abgelaufen' ? 'Link abgelaufen' : 'Zugang gesperrt' }}</h1>
       <p class="muted small">{{ sync.gesperrt?.grund === 'abgelaufen' ? 'Dieser Link gilt nicht mehr.' : 'Dieser Zugang wurde gesperrt.' }} Wende dich an die Person, die dir den Link geschickt hat. Hast du ein Konto, kannst du dich damit anmelden.</p>
