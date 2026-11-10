@@ -93,7 +93,10 @@ Gehört das Konto im Gremium schon zu einem anderen Mitglied (oder das Mitglied 
 `rolle.rechte = { stufe, einzel }` (leer = Vorlage; `rechteAusRolle` / `rolleRechte` in `api.php` bzw.
 `gremienStore.rolleRechte`): ein Hauptschalter `lesen` / `eigene` / `individuell` / `alles`. `alles` heisst alles;
 `individuell` schaltet Einzelrechte frei: `vorprotokoll:…`, `protokoll:…` (wie `EINZELRECHTE`) und `sitzung:eintragen` |
-`starten` | `antraege` | `einladungen` | `zugriffe` (`SITZUNGSRECHTE`, `sitzungsrecht()`). Vorlagen (`typ` `praesidium` /
+`starten` | `antraege` | `einladungen` | `zugriffe` (`SITZUNGSRECHTE`, `sitzungsrecht()`) sowie `gremium:kurzsitzungen` |
+`mitglieder` | `einstellungen` | `teilen` (`GREMIUMSRECHTE`, `gremiumsrecht()`): Reiter der Gremium-Seite für Mitglieder
+(Client `recht()` / `gremiumSeiteErlaubt()` in `sync.js`, Server `personRechteAnwenden` / `bereinigen`); den Reiter *Zugriffe*
+öffnet `sitzung:zugriffe`. Vorlagen (`typ` `praesidium` /
 `aktuariat`, neu «Sitzungsleitung» / «Aktuariat»): «Alles»; sonst «Eigene». Die ältere Form (`vorprotokoll` / `protokoll` /
 `eintragen` / `zugriffe` einzeln) wird weiter gelesen. Gilt über den persönlichen Link wie mit Konto. Ohne gesetzte Freigabe gilt
 für eine Person die Stufe ihrer Rolle (`freigabeRoh`), mit einer Aufgabe «alles».
@@ -173,7 +176,9 @@ gelesene IDs liegen in `localStorage`. Für die Sammelmails leitet `kontoMitteil
   `linkGastFreigabe`, Server über `linkGaesteMerken`); sein Link läuft mit dem allgemeinen ab (`gastZugriff`).
 - **Doppelt:** gleicher Name oder gleiche E-Mail wie ein Mitglied oder Gast der Sitzung -> `gast.vorschlag`
   (`doppelteSuchen`). Annehmen über `weitere_person_verknuepfen` (Ziel Mitglied oder Gast; der bisherige Schlüssel öffnet
-  danach als Ziel: `vorprotokoll.aliasKeys`), ablehnen über `vorschlag_ablehnen`. Ist die E-Mail schon erfasst, legt
+  danach als Ziel: `vorprotokoll.aliasKeys`; Kern in `gastUeberfuehren`), ablehnen über `vorschlag_ablehnen`. Ist ein Gast mit
+  demselben Konto verknüpft wie ein Mitglied, führt der Server beide automatisch zusammen (`kontoGaesteZusammenfuehren`
+  beim Lesen und Ändern) – sonst stünde die Person doppelt in Terminfindung und Anwesenheit. Ist die E-Mail schon erfasst, legt
   `link_eintragen` niemanden an; `link_zusenden` schickt den bestehenden Link (höchstens eine Mail pro Viertelstunde,
   `bundle.linkZugesandt`, verrät nicht, ob die Adresse existiert).
 - **Schutz:** Passwort-Hashes in `bundle.linkSchutz[ref]` (`link:<id>`, `freigabe:<vpId>`, `zugang:<id>`; Aktion

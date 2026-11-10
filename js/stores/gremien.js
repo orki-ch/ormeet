@@ -13,12 +13,20 @@ export const AUFGABEN = { sitzungsleitung: 'Sitzungsleitung', protokollfuehrung:
 
 // Rollenrechte: ein Hauptschalter; «Individuell» schaltet Einzelrechte frei (bereich:recht)
 export const ROLLEN_STUFEN = { lesen: 'Lesen', eigene: 'Eigene', alles: 'Alles' }
+// Gremiumsrechte einer Rolle: Reiter der Gremium-Seite (den Reiter «Zugriffe» öffnet das Sitzungsrecht «Zugriffe verwalten»)
+export const GREMIUMSRECHTE = {
+  kurzsitzungen: 'Kurzsitzungen',
+  mitglieder: 'Mitglieder & Rollen',
+  einstellungen: 'Protokoll-Einstellungen',
+  teilen: 'Teilen',
+}
+
 export const SITZUNGSRECHTE = {
   eintragen: 'Sitzungen eintragen',
   starten: 'Sitzung starten und abschliessen',
   antraege: 'Änderungsanträge entscheiden',
   einladungen: 'Einladungen senden',
-  zugriffe: 'Zugriffe verwalten',
+  zugriffe: 'Zugriffe verwalten (alle Sitzungen, Reiter «Zugriffe»)',
 }
 
 export function neuerZugang(name) {
@@ -60,15 +68,20 @@ export const gremienStore = {
     return rolle?.rechte?.stufe || (['praesidium', 'aktuariat'].includes(rolle?.typ) ? 'alles' : 'eigene')
   },
 
-  // Rechte einer Rolle (siehe api.php rechteAusRolle): Stufe bzw. Einzelrechte pro Dokument und die Sitzungsrechte
+  // Rechte einer Rolle (siehe api.php rechteAusRolle): Stufe bzw. Einzelrechte pro Dokument, Sitzungs- und Gremiumsrechte
   rolleRechte(rolle) {
     const keine = Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, false]))
     const stufe = gremienStore.rolleStufe(rolle)
-    if (stufe === 'alles') return { vorprotokoll: 'alles', protokoll: 'alles', ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, true])) }
-    if (stufe !== 'individuell') return { vorprotokoll: stufe, protokoll: stufe, ...keine }
+    if (stufe === 'alles') return { vorprotokoll: 'alles', protokoll: 'alles', gremium: Object.keys(GREMIUMSRECHTE), ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, true])) }
+    if (stufe !== 'individuell') return { vorprotokoll: stufe, protokoll: stufe, gremium: [], ...keine }
     const einzel = rolle.rechte.einzel || []
     const teil = (bereich) => einzel.filter((e) => e.startsWith(bereich + ':')).map((e) => e.slice(bereich.length + 1))
-    return { vorprotokoll: teil('vorprotokoll'), protokoll: teil('protokoll'), ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, teil('sitzung').includes(k)])) }
+    return {
+      vorprotokoll: teil('vorprotokoll'),
+      protokoll: teil('protokoll'),
+      gremium: teil('gremium').filter((r) => GREMIUMSRECHTE[r]),
+      ...Object.fromEntries(Object.keys(SITZUNGSRECHTE).map((k) => [k, teil('sitzung').includes(k)])),
+    }
   },
 
   // Mitglieder mit einer zentral hinterlegten Aufgabe (sitzungsleitung / protokollfuehrung) als Personenliste

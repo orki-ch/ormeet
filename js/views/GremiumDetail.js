@@ -1,7 +1,7 @@
-import { AUFGABEN, BEREICHE, ROLLEN_STUFEN, ROLLEN_TYPEN, SITZUNGSRECHTE, gremienStore, neuerZugang } from '../stores/gremien.js'
+import { AUFGABEN, BEREICHE, GREMIUMSRECHTE, ROLLEN_STUFEN, ROLLEN_TYPEN, SITZUNGSRECHTE, gremienStore, neuerZugang } from '../stores/gremien.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import { sync, recht, gremiumLoeschen } from '../stores/sync.js'
-import { EINZELRECHTE, FREIGABE_STUFEN, rolleIm } from '../utils/rechte.js'
+import { EINZELRECHTE, FREIGABE_STUFEN, personIdIm, rolleIm } from '../utils/rechte.js'
 import { bearbeitenMixin } from '../utils/bearbeiten.js'
 import { neuerKey } from '../utils/keys.js'
 import { SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
@@ -25,13 +25,14 @@ const ROLLEN_EINZELRECHTE = {
   Vorprotokoll: Object.fromEntries(Object.entries(EINZELRECHTE.vorprotokoll).map(([k, v]) => ['vorprotokoll:' + k, v])),
   Protokoll: Object.fromEntries(Object.entries(EINZELRECHTE.protokoll).map(([k, v]) => ['protokoll:' + k, v])),
   Sitzung: Object.fromEntries(Object.entries(SITZUNGSRECHTE).map(([k, v]) => ['sitzung:' + k, v])),
+  Gremium: Object.fromEntries(Object.entries(GREMIUMSRECHTE).map(([k, v]) => ['gremium:' + k, v])),
 }
 
 const STUFEN_INFO = [
   { titel: 'Lesen', text: 'Nur ansehen.' },
   { titel: 'Eigene', text: 'Zugewiesene Traktanden und Einträge bearbeiten, die eigene Anwesenheit setzen.' },
-  { titel: 'Individuell', text: 'Einzelrechte über ⋯ ein- und ausschalten: Vorprotokoll, Protokoll und Sitzung (eintragen, starten und abschliessen, Anträge entscheiden, Einladungen senden, Zugriffe verwalten).' },
-  { titel: 'Alles', text: 'Wirklich alles: ganze Dokumente und alle Sitzungsrechte.' },
+  { titel: 'Individuell', text: 'Einzelrechte über ⋯ ein- und ausschalten: Vorprotokoll, Protokoll, Sitzung (eintragen, starten und abschliessen, Anträge entscheiden, Einladungen senden, Zugriffe verwalten) und Gremium (Reiter Kurzsitzungen, Mitglieder & Rollen, Protokoll-Einstellungen, Teilen).' },
+  { titel: 'Alles', text: 'Wirklich alles: ganze Dokumente, alle Sitzungsrechte und alle Reiter der Gremium-Seite.' },
   { titel: 'Gilt für', text: 'Alle Mitglieder mit dieser Rolle in allen Sitzungen des Gremiums. Wer in einer Sitzung eine Aufgabe hat, hat dort ohnehin alles.' },
 ]
 
@@ -42,7 +43,6 @@ const AUFGABEN_INFO = [
 
 // Kurzsitzungen: eigener Reiter neben den Sitzungen, mit denselben Rechten wie die Sitzungen
 const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen', zugriffe: 'Zugriffe' }
-const TAB_BEREICH = { kurzsitzungen: 'sitzungen' }
 const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearbeiten' }
 
 export default {
@@ -101,9 +101,9 @@ export default {
       <section v-if="tab === 'kurzsitzungen'" class="card">
         <div class="card-head">
           <h2 class="card-title">Kurzsitzungen</h2>
-          <button v-if="darf('sitzungen')" class="btn btn-primary" @click="kurzDialog = true">+ Kurzsitzung</button>
+          <button v-if="darf('kurzsitzungen')" class="btn btn-primary" @click="kurzDialog = true">+ Kurzsitzung</button>
         </div>
-        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="() => darf('sitzungen')" />
+        <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="(s) => darf('sitzungen') || (darf('kurzsitzungen') && s.erstelltVon === eigenePersonId)" />
       </section>
       <KurzsitzungDialog v-if="kurzDialog" :gremium-id="gremiumId" @schliessen="kurzDialog = false" />
 
@@ -250,7 +250,7 @@ export default {
         </section>
       </fieldset>
 
-      <!-- Tab: Teilen (nur Superadmin) -->
+      <!-- Tab: Teilen (Superadmin, Eigentümer, Rollen mit dem Gremiumsrecht «Teilen») -->
       <section v-if="tab === 'teilen'" class="card">
         <h2 class="card-title">Gremium teilen <InfoKnopf titel="Gremium teilen" text="Jeder Link hat eigene Rechte pro Bereich. Wer ihn öffnet, sieht nur die freigegebenen Bereiche und kann nur dort ändern, wo «Bearbeiten» gesetzt ist." /></h2>
 
@@ -281,7 +281,7 @@ export default {
         </form>
       </section>
 
-      <!-- Tab: Zugriffe (Eigentümer, Superadmin): wer Zugriff hat und worüber -->
+      <!-- Tab: Zugriffe (Eigentümer, Superadmin, Rollen mit «Zugriffe verwalten»): wer Zugriff hat und worüber -->
       <section v-if="tab === 'zugriffe'" class="card">
         <h2 class="card-title">Wer hat Zugriff? <InfoKnopf titel="Wer hat Zugriff?" text="Mitglieder mit ihren Zugängen, die Gremium-Links und pro Sitzung die Gäste und allgemeinen Links. Über ⋯ sperrst du Zugänge, erneuerst Links oder versiehst allgemeine Links mit Passwort und Ablauf." /> <router-link to="/hilfe?zu=zugaenge" class="hilfe-knopf" title="Hilfe: Zugriffe mit Ablaufgrafiken" aria-label="Hilfe zu den Zugriffen">?</router-link></h2>
         <ZugriffeListe :gremium-id="gremiumId" />
@@ -386,6 +386,10 @@ export default {
     istAdmin() {
       return rolleIm(this.gremiumId) === 'admin'
     },
+    // Eigenes Mitglied (persönlicher Link / Konto): eigene Kurzsitzungen löschen
+    eigenePersonId() {
+      return personIdIm(this.gremiumId)
+    },
     istSuperadmin() {
       return sync.zugriff?.rolle === 'admin'
     },
@@ -401,7 +405,7 @@ export default {
     sichtbareTabs() {
       const tabs = {}
       for (const [id, label] of Object.entries(TABS)) {
-        if (['teilen', 'zugriffe'].includes(id) ? this.istAdmin : recht(TAB_BEREICH[id] || id, this.gremiumId) !== 'keine') tabs[id] = label
+        if (recht(id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
     },

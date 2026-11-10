@@ -1,6 +1,6 @@
 import { gremienStore } from '../stores/gremien.js'
 import { fristText, sitzungenStore } from '../stores/sitzungen.js'
-import { sync, laden } from '../stores/sync.js'
+import { sync, laden, gremiumSeiteErlaubt } from '../stores/sync.js'
 import { api } from '../api.js'
 import { darfEintragenVergeben, darfSitzungenEintragen, istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
 import GremiumSuche from '../components/GremiumSuche.js'
@@ -33,6 +33,7 @@ export default {
             <p class="kicker">{{ gremium.name }} · {{ rolleName }}</p>
             <h1 class="title">Hallo {{ person.name }} <InfoKnopf titel="Deine Übersicht" text="Deine Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kannst du, was deine Rolle erlaubt – mit einer Aufgabe (Sitzungsleitung, Protokollführung) das ganze Dokument." /></h1>
           </div>
+          <router-link v-if="gremiumVerwalten" :to="'/gremium/' + gremium.id" class="btn">Gremium verwalten</router-link>
           <label v-if="konto && konto.gremien.length > 1" class="wechsel">
             <span class="label">Gremium</span>
             <select class="input" :value="gremium.id" @change="wechseln($event.target.value)">
@@ -208,6 +209,10 @@ export default {
     },
     rolleName() {
       return gremienStore.rolleName(this.gremium.id, this.person.rolleId)
+    },
+    // Gremiumsrechte der Rolle (Mitglieder, Einstellungen, Teilen, Kurzsitzungen, Zugriffe): Gremium-Seite öffnen
+    gremiumVerwalten() {
+      return gremiumSeiteErlaubt(this.gremium.id)
     },
     sitzungen() {
       return sitzungenStore.sitzungenVonGremium(this.gremium.id)

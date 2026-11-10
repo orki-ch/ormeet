@@ -1,5 +1,5 @@
 import { api } from './api.js'
-import { laden, sync, recht } from './stores/sync.js'
+import { laden, sync, recht, gremiumSeiteErlaubt } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
 import { gremienStore } from './stores/gremien.js'
 import { darfAenderungStellen, darfStarten, rolleIm, vollzugriff } from './utils/rechte.js'
@@ -187,6 +187,7 @@ router.beforeEach(async (to) => {
   }
   if (rolle === 'person') {
     if (to.path.includes('/themenbereich/')) return true
+    if (to.path === `/gremium/${gremiumId}`) return gremiumSeiteErlaubt(gremiumId) ? true : startPfad() // Gremiumsrechte der Rolle
     if (!sitzungsPfad) return startPfad()
     // Ein Protokoll eröffnen (Sitzung starten) darf nur, wer es ganz bearbeiten darf: Sitzungsleitung, Protokollführung, Freigabe «Alles»
     if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId) && !(sitzung && (vollzugriff(sitzung, 'protokoll') || darfStarten(sitzung)))) return `/sitzung/${to.params.sitzungId}/vorprotokoll`

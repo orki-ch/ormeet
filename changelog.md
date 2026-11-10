@@ -1,5 +1,9 @@
 # Änderungsverlauf
 
+## 1.5.11
+- Rollen können neu auch die Gremium-Seite bekommen: Unter den Einzelrechten gibt es die Gruppe «Gremium» mit den Reitern Kurzsitzungen, Mitglieder & Rollen, Protokoll-Einstellungen und Teilen. «Alles» enthält sie; «Zugriffe verwalten» öffnet den Reiter Zugriffe. Wer solche Rechte hat, findet in der eigenen Übersicht «Gremium verwalten».
+- Ist ein Gast mit demselben Konto verknüpft wie ein Mitglied, führt Ormeet beide automatisch zusammen. Niemand steht mehr doppelt in Terminfindung oder Anwesenheit.
+
 ## 1.5.10
 - Neu im Menü oben rechts: der Schalter «Superadmin-Ansicht». Er erscheint, wenn du mit dem Konto angemeldet bist, das mit dem Superadmin verknüpft ist. Ausgeschaltet arbeitest du wie ein gewöhnliches Konto; die Wahl gilt auf diesem Gerät.
 

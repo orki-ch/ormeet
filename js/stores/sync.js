@@ -77,14 +77,30 @@ function uebernehmen(bundles) {
   }
 }
 
-// Recht des angemeldeten Zugangs auf einen Bereich eines Gremiums: 'keine' | 'lesen' | 'bearbeiten'
+// Recht des angemeldeten Zugangs auf einen Bereich eines Gremiums: 'keine' | 'lesen' | 'bearbeiten'.
+// Bereiche: sitzungen, kurzsitzungen, mitglieder, einstellungen, teilen, zugriffe (Reiter der Gremium-Seite).
+// Mitglieder (persönlicher Link oder Konto) erhalten die Reiter über die Gremiumsrechte ihrer Rolle; die Sitzungen
+// sehen sie dann zum Lesen, eintragen geht wie bisher über das Recht «Sitzungen eintragen».
 export function recht(bereich, gremiumId) {
   const zugriff = sync.zugriff
   if (!zugriff) return 'keine'
   if (zugriff.rolle === 'admin') return 'bearbeiten'
-  if (zugriff.rolle === 'gremium') return zugriff.rechte?.[bereich] || 'keine'
+  if (zugriff.rolle === 'gremium') {
+    if (bereich === 'kurzsitzungen') return zugriff.rechte?.sitzungen || 'keine'
+    return ['teilen', 'zugriffe'].includes(bereich) ? 'keine' : zugriff.rechte?.[bereich] || 'keine'
+  }
   if (zugriff.rolle === 'benutzer' && zugriff.gremien.some((g) => g.gremiumId === gremiumId && g.rolle === 'eigentuemer')) return 'bearbeiten'
-  return 'keine'
+  const personId = zugriff.rolle === 'person' ? zugriff.personId : zugriff.rolle === 'benutzer' ? zugriff.gremien.find((g) => g.gremiumId === gremiumId && g.rolle === 'mitglied')?.personId : null
+  if (!personId || (zugriff.rolle === 'person' && zugriff.gremiumId !== gremiumId)) return 'keine'
+  const rechte = gremienStore.rechteVon(gremiumId, personId)
+  if (bereich === 'zugriffe') return rechte.zugriffe ? 'bearbeiten' : 'keine'
+  if (bereich === 'sitzungen') return rechte.gremium.length || rechte.zugriffe ? 'lesen' : 'keine'
+  return rechte.gremium.includes(bereich) ? 'bearbeiten' : 'keine'
+}
+
+// Darf der Zugang die Gremium-Seite öffnen (mindestens ein Reiter)?
+export function gremiumSeiteErlaubt(gremiumId) {
+  return ['sitzungen', 'kurzsitzungen', 'mitglieder', 'einstellungen', 'teilen', 'zugriffe'].some((b) => recht(b, gremiumId) !== 'keine')
 }
 
 export async function laden() {
