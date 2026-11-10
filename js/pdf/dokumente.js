@@ -91,16 +91,18 @@ function traktandumTitel(nummer, traktandum, themenbereichName, dauerIst = null)
   return teile
 }
 
-// Unterpunkt-Zeile: Nummer, Titel, optional Typ und Verantwortliche
-function unterpunktText(nummer, elternTyp, u) {
-  const zusatz = [!elternTyp && PUNKT_TYP[u.typ], personenText(u.verantwortliche)].filter(Boolean).join(' · ')
+// Unterpunkt-Zeile: Nummer, Titel, optional Typ, eigener Themenbereich (wenn anders als darüber) und Verantwortliche
+function unterpunktText(nummer, elternTyp, u, tbOben = '', tbName = () => '') {
+  const eigenerTb = u.themenbereichId && u.themenbereichId !== tbOben ? tbName(u.themenbereichId) : ''
+  const zusatz = [!elternTyp && PUNKT_TYP[u.typ], eigenerTb, personenText(u.verantwortliche)].filter(Boolean).join(' · ')
   return [`${nummer} ${u.titel}`, ...(zusatz ? [{ text: `   ${zusatz}`, style: 'klein', bold: false }] : [])]
 }
 
 // Unterpunkte über alle Ebenen: pro Unterpunkt Titelzeile, Notiz und (Protokoll) Einträge, je Ebene weiter eingerückt.
 // Im Protokoll entfällt die Notiz eines Antrag-Punkts – sie ist beim Start zum Antrag geworden.
 // uebertragen(punkt): Block einer übernommenen Pendenz (Protokoll), sonst null.
-function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, uebertragen = () => null) {
+// tb: { oben: wirksamer Themenbereich darüber, name: Name zu einer ID }
+function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, uebertragen = () => null, tb = { oben: '', name: () => '' }) {
   return liste.flatMap((u, j) => {
     const nr = u._nr || `${nummer}.${j + 1}` // _nr: Originalnummer, wenn Punkte ausgeblendet sind (individuelle Rechte)
     const einzug = 10 * tiefe
@@ -108,11 +110,11 @@ function unterpunktBloecke(liste, nummer, elternTyp, tiefe, eintraege = null, ue
     const notiz = u.notiz && !(eintraege && istAntragPunkt(u, elternTyp))
     const pendenz = uebertragen(u)
     return [
-      eintraege ? { text: unterpunktText(nr, elternTyp, u), style: 'h4', margin: [einzug, 6, 0, 2] } : { text: unterpunktText(nr, elternTyp, u), margin: [einzug, 2, 0, 0] },
+      eintraege ? { text: unterpunktText(nr, elternTyp, u, tb.oben, tb.name), style: 'h4', margin: [einzug, 6, 0, 2] } : { text: unterpunktText(nr, elternTyp, u, tb.oben, tb.name), margin: [einzug, 2, 0, 0] },
       ...(notiz ? [{ text: u.notiz, style: eintraege ? 'notiz' : 'klein', margin: [einzug + (eintraege ? 10 : 0), 0, 0, 2] }] : []),
       ...(pendenz ? [{ ...pendenz, margin: [einzug + 10, 0, 0, 6] }] : []),
       ...(eintraege ? eintraege(u.id).map((b) => ({ ...b, margin: [einzug + 10, 0, 0, 6] })) : []),
-      ...unterpunktBloecke(u.untertraktanden || [], nr, kindTyp(typ), tiefe + 1, eintraege, uebertragen),
+      ...unterpunktBloecke(u.untertraktanden || [], nr, kindTyp(typ), tiefe + 1, eintraege, uebertragen, { ...tb, oben: u.themenbereichId || tb.oben }),
     ]
   })
 }
@@ -166,7 +168,7 @@ export function vorprotokollDokument({ gremium, sitzung, vorprotokoll, erwartete
       stack: [
         { text: [{ text: t.titel, bold: true }, ...(t.typ ? [{ text: `   ${PUNKT_TYP[t.typ]}`, style: 'klein' }] : [])] },
         ...(t.notiz ? [{ text: t.notiz, style: 'klein' }] : []),
-        ...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1),
+        ...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1, null, () => null, { oben: t.themenbereichId, name: themenbereichName }),
       ],
     },
     themenbereichName(t.themenbereichId),
@@ -216,7 +218,7 @@ export function protokollDokument({ gremium, sitzung, vorprotokoll, protokoll, u
     const pendenz = uebertragen(t)
     if (pendenz) bloecke.push(pendenz)
     bloecke.push(...eintraegeVon(t.id))
-    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen))
+    bloecke.push(...unterpunktBloecke(t.untertraktanden, `${t._nr || i + 1}`, kindTyp(t.typ), 1, eintraegeVon, uebertragen, { oben: t.themenbereichId, name: themenbereichName }))
     bloecke.push(...zusatzBloecke(t.id))
     return bloecke
   })

@@ -14,7 +14,7 @@ export function neuesTraktandum(daten) {
     istAutomatischUebernommen: false,
     pendenzId: null, // übertragene Pendenz (wird am Original nachgeführt)
     antragId: null, // vertagter Antrag (wird im neuen Protokoll als neuer Antrag entschieden)
-    untertraktanden: [], // erben Themenbereich und Bearbeitungsrechte des Traktandums
+    untertraktanden: [], // erben Bearbeitungsrechte und – ohne eigenen – den Themenbereich des Elements darüber
     ...daten,
   }
 }
@@ -23,7 +23,21 @@ export function neuesTraktandum(daten) {
 export const MAX_TIEFE = 3
 
 export function neuesUntertraktandum(titel, daten = {}) {
-  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', verantwortliche: [], bearbeiter: [], istAutomatischUebernommen: false, pendenzId: null, antragId: null, untertraktanden: [], ...daten }
+  return { id: crypto.randomUUID(), titel, notiz: '', typ: '', themenbereichId: '', verantwortliche: [], bearbeiter: [], istAutomatischUebernommen: false, pendenzId: null, antragId: null, untertraktanden: [], ...daten }
+}
+
+// Wirksamer Themenbereich eines Punkts: sein eigener, sonst der des nächsten Elements darüber ('' = keiner)
+export function wirksamerThemenbereich(traktandum, punktId) {
+  const suche = (k, oben) => {
+    const tb = k.themenbereichId || oben
+    if (k.id === punktId) return tb
+    for (const u of k.untertraktanden || []) {
+      const treffer = suche(u, tb)
+      if (treffer !== null) return treffer
+    }
+    return null
+  }
+  return suche(traktandum, '') ?? traktandum.themenbereichId ?? ''
 }
 
 // Alle Unterpunkte eines Traktandums über alle Ebenen (ohne das Traktandum selbst)

@@ -59,7 +59,7 @@ export default {
               <p v-if="e.inhalt" class="notiz pre">{{ e.inhalt }}</p>
               <p v-if="e.typ === 'antrag' && e.notiz" class="notiz pre"><span class="leise">Notiz:</span> {{ e.notiz }}</p>
             </div>
-            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" im-protokoll>
+            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :themenbereiche="gremium.themenbereiche" :themenbereich-oben="t.themenbereichId" im-protokoll>
               <template #default="{ u, typ }">
                 <div v-if="uebertragene[u.pendenzId]" class="pendenz-uebertragen mt-1">
                   <span class="badge gelb" style="margin-right: 0.25rem">Übertragene Pendenz</span>

@@ -873,7 +873,7 @@ function zuschnittSicht(array $bundle, array $vp, $protokoll, array $zuschnitt, 
   $gehe = function (array $liste, $tbOben, $erbtL, $erbtB, $eltern) use (&$gehe, &$sicht, $hat, $zuschnitt, $selbst) {
     foreach ($liste as $k) {
       $id = $k['id'] ?? '';
-      $tb = $tbOben !== null ? $tbOben : (string) ($k['themenbereichId'] ?? '');
+      $tb = (string) ($k['themenbereichId'] ?? '') !== '' ? (string) $k['themenbereichId'] : (string) ($tbOben ?? ''); // eigener, sonst wie darüber
       $b = $erbtB || $hat('bearbeiten', $k, $tb) || (!empty($zuschnitt['eigene']) && $selbst && istBerechtigt($k, $selbst));
       $l = $b || $erbtL || $hat('lesen', $k, $tb);
       $sicht['eltern'][$id] = $eltern;

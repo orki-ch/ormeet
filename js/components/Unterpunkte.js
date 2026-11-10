@@ -29,6 +29,8 @@ export default {
     bearbeiterAuswahl: { type: Array, default: () => [] },
     nurPerson: { type: Object, default: null },
     imProtokoll: { type: Boolean, default: false },
+    themenbereiche: { type: Array, default: () => [] },
+    themenbereichOben: { type: String, default: '' }, // wirksamer Themenbereich des Elements darüber («wie darüber»)
   },
   emits: ['klick', 'fertig'],
   inject: { aenderung: { default: null } }, // Protokoll nach Abschluss: Klick auf den Kopf beantragt eine Änderung
@@ -44,6 +46,10 @@ export default {
               <label class="stack-xs"><span class="label">Verantwortlich</span><PersonenInput v-model="u.verantwortliche" :personen="personen" placeholder="Sonst wie darüber" :nur-eigene="nurPerson?.id" /></label>
               <label v-if="!nurPerson" class="stack-xs"><span class="label">Dürfen zusätzlich bearbeiten</span><PersonenInput v-model="u.bearbeiter" :personen="bearbeiterAuswahl" placeholder="Personen, Rollen oder Gruppen" nur-liste /></label>
             </MenuDropdown>
+            <select v-if="themenbereiche.length" v-model="u.themenbereichId" class="btn-pille" title="Themenbereich dieses Unterpunkts – ohne Auswahl wie darüber">
+              <option value="">Themenbereich: wie darüber{{ tbName(themenbereichOben) ? ' (' + tbName(themenbereichOben) + ')' : '' }}</option>
+              <option v-for="tb in themenbereiche" :key="tb.id" :value="tb.id">{{ tb.name }}</option>
+            </select>
             <!-- Nur ein Feld: direkt als Auswahl im Pillen-Look -->
             <select v-if="!elternTyp" v-model="u.typ" class="btn-pille" title="Typ der Einträge – gilt im Protokoll für alles unter diesem Unterpunkt">
               <option v-for="(label, wert) in TRAKTANDUM_TYP" :key="wert" :value="wert" :disabled="wert === 'antrag' && u.untertraktanden.length > 0">{{ label }}</option>
@@ -59,14 +65,15 @@ export default {
           <h3>{{ u.titel }}</h3>
           <span v-if="u.istAutomatischUebernommen" class="badge gelb">{{ u.antragId ? 'Vertagter Antrag' : 'Pendenz' }}</span>
           <span v-if="!elternTyp && u.typ" class="badge" :class="TYP_BADGE[u.typ]">{{ PUNKT_TYP[u.typ] }}</span>
+          <span v-if="eigenerTb(u)" class="badge" :style="tbStil(u.themenbereichId)">{{ tbName(u.themenbereichId) }}</span>
           <span v-if="aenderung?.anzahl(u.id)" class="aenderung-marke" title="Offene Änderungsanträge zu diesem Punkt">✎ {{ aenderung.anzahl(u.id) }}</span>
           <span v-if="u.verantwortliche.length" class="ml-auto leise small">{{ personenText(u.verantwortliche) }}</span>
         </template>
       </div>
       <textarea v-if="imEdit(u)" v-model.trim="u.notiz" v-wachsen class="nahtlos notiz" rows="1" :placeholder="istAntragPunkt(u, elternTyp) ? 'Antragstext …' : 'Notiz …'"></textarea>
       <p v-else-if="u.notiz && !(imProtokoll && istAntragPunkt(u, elternTyp))" class="notiz pre">{{ u.notiz }}</p>
-      <slot :u="u" :nr="nr(j)" :typ="elternTyp || u.typ" :darf="darf(u)"></slot>
-      <Unterpunkte v-if="u.untertraktanden?.length" :liste="u.untertraktanden" :nummer="nr(j)" :tiefe="tiefe + 1" :eltern-typ="kindTyp(elternTyp || u.typ)" :geerbt="darf(u)" :pruefen="pruefen" :aktiv-id="aktivId" :klasse="klasse" :bearbeiten="imEdit(u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" :im-protokoll="imProtokoll" @klick="(k, d) => $emit('klick', k, d)" @fertig="$emit('fertig')">
+      <slot :u="u" :nr="nr(j)" :typ="elternTyp || u.typ" :darf="darf(u)" :tb="wirksam(u)"></slot>
+      <Unterpunkte v-if="u.untertraktanden?.length" :liste="u.untertraktanden" :nummer="nr(j)" :tiefe="tiefe + 1" :eltern-typ="kindTyp(elternTyp || u.typ)" :geerbt="darf(u)" :pruefen="pruefen" :aktiv-id="aktivId" :klasse="klasse" :bearbeiten="imEdit(u)" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" :im-protokoll="imProtokoll" :themenbereiche="themenbereiche" :themenbereich-oben="wirksam(u)" @klick="(k, d) => $emit('klick', k, d)" @fertig="$emit('fertig')">
         <template v-for="(_, name) in $slots" #[name]="scope"><slot :name="name" v-bind="scope"></slot></template>
       </Unterpunkte>
       <!-- Weiterer Unterpunkt (1.1.1) direkt als Knopf, wie «+ Unterpunkt» beim Traktandum -->
@@ -80,6 +87,20 @@ export default {
     return { TRAKTANDUM_TYP, TYP_BADGE, PUNKT_TYP, MAX_TIEFE }
   },
   methods: {
+    // Themenbereich: eigener oder wie darüber; das Badge nur, wenn er von dem darüber abweicht
+    wirksam(u) {
+      return u.themenbereichId || this.themenbereichOben
+    },
+    eigenerTb(u) {
+      return !!u.themenbereichId && u.themenbereichId !== this.themenbereichOben && !!this.tbName(u.themenbereichId)
+    },
+    tbName(id) {
+      return this.themenbereiche.find((tb) => tb.id === id)?.name || ''
+    },
+    tbStil(id) {
+      const tb = this.themenbereiche.find((t) => t.id === id)
+      return tb ? { backgroundColor: tb.farbe + '1f', color: tb.farbe } : {}
+    },
     personenText,
     neuesUntertraktandum,
     istAntragPunkt,

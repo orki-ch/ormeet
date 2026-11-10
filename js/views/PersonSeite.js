@@ -73,7 +73,7 @@ export default {
           <div v-for="s in terminfindungen" :key="s.id" class="liste-zeile">
             <div class="grow"><strong>{{ s.titel || 'Sitzung' }}</strong><span v-if="s.ort" class="muted small"> · {{ s.ort }}</span>
               <p class="small" :class="abgestimmt(s) ? 'text-ok' : 'text-warn'">{{ abgestimmt(s) ? 'Du hast abgestimmt' : 'Deine Stimme fehlt noch' }}</p></div>
-            <router-link :to="'/sitzung/' + s.id + '/terminfindung'" class="btn btn-primary">Abstimmen</router-link>
+            <router-link :to="'/sitzung/' + s.id + '/terminfindung'" class="btn" :class="{ 'btn-primary': !abgestimmt(s) }">{{ !abgestimmt(s) ? 'Abstimmen' : s.terminfindung.verdeckt ? 'Meine Stimme ansehen' : 'Ergebnis ansehen' }}</router-link>
           </div>
         </div>
       </section>

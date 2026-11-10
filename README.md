@@ -351,7 +351,8 @@ changelog.md                  Änderungsverlauf für die Einstellungen (pro Vers
    `gesperrt` im VorprotokollEditor, `uebernimmPendenzen` zieht nichts mehr nach) und im Protokoll gibt es keine neuen
    Traktanden – die Traktandenliste steht fest. `loescheProtokoll` («Protokoll entfernen», nur Admin / Gremium-Zugang)
    setzt die Sitzung auf `vorprotokoll` zurück. Pro Traktandum oder Unterpunkt Einträge erfassen; tatsächliche Dauer in
-   `protokoll.dauern[traktandumId]`. Unterpunkte erben den Themenbereich des Traktandums. Übertragene Pendenzen
+   `protokoll.dauern[traktandumId]`. Unterpunkte haben einen eigenen `themenbereichId` oder (leer) den des Elements darüber
+   (`wirksamerThemenbereich`; gilt auch für Zuschnitt-Regeln und die Vorgabe neuer Einträge). Übertragene Pendenzen
    werden direkt am Original aktualisiert, damit sie überall denselben Stand haben. Vertagte Anträge (`antragStatus`
    `vertagt`) kommen als Traktandum (`antragId`) ins nächste Vorprotokoll und werden dort als neuer Antrag
    (`vorherigerAntragId`) entschieden; Anträge tragen `stimmen` (ja / nein / enthaltung).

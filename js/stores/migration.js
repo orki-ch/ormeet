@@ -151,6 +151,7 @@ function unterpunkte(eintrag, elternTyp = '') {
   eintrag.untertraktanden.forEach((u) => {
     u.notiz ??= ''
     u.typ ??= ''
+    u.themenbereichId ??= '' // eigener Themenbereich; leer: wie darüber
     u.verantwortliche ??= []
     u.bearbeiter ??= []
     u.istAutomatischUebernommen ??= false // übernommene Pendenzen / vertagte Anträge auch als Unterpunkt (seit 1.4.09)

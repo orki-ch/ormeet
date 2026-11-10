@@ -1,7 +1,7 @@
 import { gremienStore } from './gremien.js'
 import { neuerKey } from '../utils/keys.js'
 import { formatDatum } from '../utils/labels.js'
-import { allePunkte, istAntragPunkt, kopiereTraktandum, neuesTraktandum, neuesUntertraktandum, punkteMitElternTyp, punktMitPfad, titelPfad, unterPunktEinfuegen } from '../utils/traktanden.js'
+import { allePunkte, istAntragPunkt, kopiereTraktandum, neuesTraktandum, neuesUntertraktandum, punkteMitElternTyp, punktMitPfad, titelPfad, unterPunktEinfuegen, wirksamerThemenbereich } from '../utils/traktanden.js'
 
 const state = Vue.reactive({ sitzungen: [], vorprotokolle: [], protokolle: [] })
 
@@ -298,8 +298,8 @@ export const sitzungenStore = {
         const ziel = treffer && zielFuer(treffer.eintrag, treffer.sitzung)
         if (!ziel) return
         vorprotokoll.traktanden.splice(vorprotokoll.traktanden.indexOf(t), 1)
-        const { id, titel, notiz, typ, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId } = t
-        unterPunktEinfuegen(ziel, { id, titel, notiz, typ, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId })
+        const { id, titel, notiz, typ, themenbereichId, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId } = t
+        unterPunktEinfuegen(ziel, { id, titel, notiz, typ, themenbereichId, verantwortliche, bearbeiter, untertraktanden, istAutomatischUebernommen, pendenzId, antragId })
       })
     vorprotokoll.traktanden.forEach((t, i) => (t.reihenfolge = i + 1))
 
@@ -377,7 +377,7 @@ export const sitzungenStore = {
           protokoll.eintraege.push({
             id: crypto.randomUUID(),
             traktandumId: punkt.id,
-            themenbereichId: t.themenbereichId,
+            themenbereichId: wirksamerThemenbereich(t, punkt.id),
             typ: 'antrag',
             titel: punkt.titel,
             inhalt: punkt.notiz,

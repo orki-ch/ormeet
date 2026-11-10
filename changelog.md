@@ -1,5 +1,9 @@
 # Änderungsverlauf
 
+## 1.5.15
+- Unterpunkte können im Vorprotokoll einen eigenen Themenbereich bekommen – oder wie bisher den des Punkts darüber übernehmen («wie darüber»). Ein abweichender Themenbereich erscheint als Badge, gilt für die Rechte nach Themenbereich und ist im Protokoll die Vorgabe für neue Einträge.
+- Hast du in einer Terminfindung schon abgestimmt, heisst der Knopf in der Übersicht «Ergebnis ansehen» statt «Abstimmen».
+
 ## 1.5.14
 - Allgemeine Darstellungs-Anpassungen.
 

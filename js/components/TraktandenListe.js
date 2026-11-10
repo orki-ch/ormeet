@@ -76,7 +76,7 @@ export default {
         <div v-if="aktiv === t.id" class="eingerueckt"><textarea v-model.trim="t.notiz" v-wachsen class="nahtlos notiz" rows="1" :placeholder="istAntragPunkt(t) ? 'Antragstext …' : 'Notiz …'"></textarea></div>
         <p v-else-if="t.notiz" class="notiz pre eingerueckt">{{ t.notiz }}</p>
         <div v-if="t.untertraktanden.length" class="eingerueckt">
-          <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" :bearbeiten="aktiv === t.id" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" @klick="(u, darf) => subKlick(t, u, darf)" @fertig="aktiv = null" />
+          <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="hauptEditierbar(t)" :pruefen="pruefen" :aktiv-id="aktiv" klasse="editierbar" :bearbeiten="aktiv === t.id" :personen="personen" :bearbeiter-auswahl="bearbeiterAuswahl" :nur-person="nurPerson" :themenbereiche="themenbereiche" :themenbereich-oben="t.themenbereichId" @klick="(u, darf) => subKlick(t, u, darf)" @fertig="aktiv = null" />
         </div>
         <div v-if="aktiv === t.id" class="eingerueckt row mt-2">
           <button v-if="!istAntragPunkt(t)" class="btn btn-ghost" @click="t.untertraktanden.push(neuesUntertraktandum(''))">+ Unterpunkt</button>

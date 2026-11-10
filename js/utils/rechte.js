@@ -326,7 +326,7 @@ export function zuschnittSicht(sitzung) {
   const bearbeiten = new Set()
   const gehe = (liste, tbOben, erbt) => {
     for (const k of liste || []) {
-      const tb = tbOben ?? k.themenbereichId ?? ''
+      const tb = k.themenbereichId || tbOben || '' // eigener Themenbereich, sonst wie darüber
       const b = erbt || hat('bearbeiten', k, tb) || (!!selbst && istBerechtigt(k, selbst))
       if (b) bearbeiten.add(k.id)
       gehe(k.untertraktanden, tb, b)

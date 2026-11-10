@@ -145,8 +145,8 @@ export default {
             <!-- Eine Antragsliste hat selbst keine Einträge: die Anträge sind ihre Unterpunkte -->
             <EintragListe v-if="t.typ !== 'antraege'" :traktandum-id="t.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darfTraktandum(t)" :person-id="person?.id" :typ="wirksamerTyp(t)" :antraege-frei="kurz" :erlaubte-typen="typenFuer(t)" :darf-eintrag="zuschnitt?.eintrag" />
 
-            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" im-protokoll>
-              <template #default="{ u, typ, darf }">
+            <Unterpunkte :liste="t.untertraktanden" :nummer="t._nr || String(i + 1)" :eltern-typ="kindTyp(t.typ)" :geerbt="darfTraktandum(t)" :pruefen="darfEigenen" :themenbereiche="gremium.themenbereiche" :themenbereich-oben="t.themenbereichId" im-protokoll>
+              <template #default="{ u, typ, darf, tb }">
                 <!-- Übernommene Pendenzen und vertagte Anträge stehen seit 1.4.09 dort, wo sie zuletzt waren – auch als Unterpunkt -->
                 <PendenzUebertragen v-if="uebertragene[u.pendenzId]" class="mt-1" :eintrag="uebertragene[u.pendenzId].eintrag" :sitzung="uebertragene[u.pendenzId].sitzung" :personen="personen" :darf="darf" />
                 <p v-if="uebertrageneAntraege[u.antragId]" class="pendenz-uebertragen mt-1">
@@ -154,7 +154,7 @@ export default {
                   an der Sitzung vom {{ formatDatum(uebertrageneAntraege[u.antragId].sitzung.datum) }} – unten als neuer Antrag entscheiden.
                 </p>
                 <div v-if="typ !== 'antraege'" class="mt-1">
-                  <EintragListe :traktandum-id="u.id" :themenbereich-id="t.themenbereichId" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf && !zuschnitt" :person-id="person?.id" :typ="typ" :erlaubte-typen="typenFuer(u)" :darf-eintrag="zuschnitt?.eintrag" />
+                  <EintragListe :traktandum-id="u.id" :themenbereich-id="tb" :eintraege="protokoll.eintraege" :gremium="gremium" :personen="personen" :nur-lesen="!darf && !zuschnitt" :person-id="person?.id" :typ="typ" :erlaubte-typen="typenFuer(u)" :darf-eintrag="zuschnitt?.eintrag" />
                 </div>
               </template>
             </Unterpunkte>
