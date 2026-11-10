@@ -2971,9 +2971,9 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
       $release = ['body' => preg_match('/^## ' . preg_quote($aktuell, '/') . '\s*\n(.*?)(?=^## |\z)/ms', $changelog, $m) ? trim($m[1]) : ''];
     } else {
       $meldung = is_array($release) ? trim((string) ($release['message'] ?? '')) : '';
-      if ($releaseText === null) antwort(['fehler' => 'GitHub ist nicht erreichbar'], 502);
-      if (stripos($meldung, 'rate limit') !== false) antwort(['fehler' => 'GitHub hat das Abfragelimit für diesen Server erreicht. Bitte in einer Stunde nochmals versuchen.'], 502);
-      antwort(['fehler' => 'GitHub liefert keine gültige Version' . ($meldung !== '' ? " (Meldung von GitHub: $meldung)" : '')], 502);
+      if ($releaseText === null) antwort(['fehler' => 'Der Update-Server ist nicht erreichbar'], 502);
+      if (stripos($meldung, 'rate limit') !== false) antwort(['fehler' => 'Der Update-Server nimmt von diesem Server gerade keine Abfragen an. Bitte in einer Stunde nochmals versuchen.'], 502);
+      antwort(['fehler' => 'Der Update-Server liefert keine gültige Version' . ($meldung !== '' ? " (Meldung: $meldung)" : '')], 502);
     }
   }
   $verfuegbar = version_compare($aktuell, $lokal, '>');
@@ -3028,7 +3028,7 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   if (!$zipFertig) {
     // Variante 2: Einzeldateien über die GitHub-API (ohne zip-Erweiterung oder wenn das ZIP nicht geladen werden konnte)
     $baum = json_decode(holen('https://api.github.com/repos/' . GITHUB_REPO . '/git/trees/' . rawurlencode($tag) . '?recursive=1') ?? '', true);
-    if (!is_array($baum['tree'] ?? null)) antwort(['fehler' => 'Dateiliste konnte nicht von GitHub geladen werden'], 502);
+    if (!is_array($baum['tree'] ?? null)) antwort(['fehler' => 'Die Dateiliste des Updates konnte nicht geladen werden'], 502);
     foreach ($baum['tree'] as $eintrag) {
       if (($eintrag['type'] ?? '') !== 'blob') continue;
       $name = $eintrag['path'];

@@ -1,10 +1,13 @@
 # Änderungsverlauf
 
+## 1.5.14
+- Allgemeine Darstellungs-Anpassungen.
+
 ## 1.5.13
 - Entfernen aus einer Sitzung: «Entschuldigt» gibt es nur noch für Mitglieder, die an der Sitzung erwartet werden – bei ihnen fragt das ✕, ob entschuldigen oder ganz entfernen. Alle anderen entfernt das ✕ ganz: Stimmen, Kommentare, Einladung, selbst hinzugefügte Traktanden und Zuweisungen werden gelöscht, bei Gästen auch Name, E-Mail und Link. Mitglieder sind danach für die Sitzung gesperrt; beim Entsperren unter «Zugriffe» öffnet sich gleich die Einladung an sie.
 - Wer sich über einen allgemeinen Link einträgt oder ein Konto erstellt, bestätigt mit einem Häkchen, wofür die Angaben verwendet werden (mit Link zur Datenschutzerklärung). Die E-Mail ist beim Eintragen neu freiwillig – mit E-Mail kommen Einladungen und Aktualisierungen automatisch.
 - Unter «Mein Konto › Mitteilungen» wählst du, wie oft die Sammelmail kommt (sofort, täglich oder wöchentlich an einem Wochentag) und welche Arten per E-Mail kommen. Mit dem Glocken-Knopf blendest du eine Art auch in der Glocke aus.
-- Die Update-Prüfung funktioniert auch, wenn GitHub das Abfragelimit eines Servers erreicht, und meldet sonst klar, was los ist.
+- Allgemeine Darstellungs-Anpassungen.
 
 ## 1.5.12
 - Ein Klick auf ein Gremium in «Meine Gremien» öffnet direkt die Gremium-Seite. Mitglieder sehen dort zuerst die «Übersicht» mit Terminfindungen, Sitzungen und Pendenzen, daneben die Reiter, die ihre Rolle erlaubt (Kurzsitzungen, Mitglieder & Rollen, Protokoll-Einstellungen, Teilen, Zugriffe). Den Knopf «Gremium verwalten» gibt es nicht mehr.

@@ -40,7 +40,7 @@ export default {
         <p v-if="updateStand.fehler" class="small text-err">{{ updateStand.fehler }}</p>
         <div v-if="updateStand.verfuegbar" class="banner">
           <div class="grow"><strong>Update auf Version {{ updateStand.aktuell }} verfügbar.</strong>
-            <span class="muted small">Die Dateien werden von {{ quelle }} geladen und ersetzt; Daten, Passwort und Kontaktangabe bleiben erhalten.</span></div>
+            <span class="muted small">Die Programmdateien werden ersetzt; Daten, Passwort und Kontaktangabe bleiben erhalten.</span></div>
           <button class="btn btn-primary" :disabled="laeuft" @click="installieren">Update installieren</button>
         </div>
         <p v-else-if="updateStand.aktuell && !updateStand.fehler" class="small text-ok">Ormeet ist auf dem neusten Stand.</p>
@@ -196,7 +196,7 @@ export default {
     </div>
   `,
   data() {
-    return { updateStand, verlauf: [], laeuft: false, schritt: '', ergebnis: null, quelle: 'GitHub (orki-ch/ormeet)', sso: null, ssoMeldung: '', ssoFehler: false, testAn: '', mailMeldung: '', mailFehler: false, kopiert: '', cronOffen: false, pruefend: false, ZUSTAND }
+    return { updateStand, verlauf: [], laeuft: false, schritt: '', ergebnis: null, sso: null, ssoMeldung: '', ssoFehler: false, testAn: '', mailMeldung: '', mailFehler: false, kopiert: '', cronOffen: false, pruefend: false, ZUSTAND }
   },
   computed: {
     cron() {
@@ -210,7 +210,7 @@ export default {
         { id: 'leer', label: 'Argumente', wert: '' },
       ]
     },
-    // Neuerungen der verfügbaren Version (Text des Releases auf GitHub)
+    // Neuerungen der verfügbaren Version (Text des Releases)
     async neuerungen() {
       return punkte(updateStand.neuerungen || '')
     },
