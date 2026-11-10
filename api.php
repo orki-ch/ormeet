@@ -1869,15 +1869,18 @@ function linkZugriff($token) {
 }
 
 // Zugriff für einen Konto-Token. Das mit dem Superadmin verknüpfte Konto (Benutzer & Links › «Das bin ich») meldet ihn
-// gleichzeitig als Superadmin an: dieselbe Sicht und dieselben Rechte wie mit dem Superadmin-Passwort
+// gleichzeitig als Superadmin an: dieselbe Sicht und dieselben Rechte wie mit dem Superadmin-Passwort. Mit dem Schalter
+// «Superadmin-Ansicht» im Menü (Kopfzeile X-Superadmin-Ansicht: aus) gilt es als gewöhnliches Konto; superadminKonto
+// zeigt dem Client in beiden Fällen den Schalter.
 function kontoZugriff($token, array $benutzer) {
   foreach ($benutzer as $b) {
     foreach ($b['anmeldungen'] as $a) {
       if (hash_equals($a['token'], $token)) {
-        if (($b['id'] ?? '') !== '' && (superadminLesen()['benutzerId'] ?? null) === $b['id']) {
-          return ['rolle' => 'admin', 'konto' => benutzerOeffentlich($b) + ['benutzerId' => $b['id'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
+        $superadminKonto = ($b['id'] ?? '') !== '' && (superadminLesen()['benutzerId'] ?? null) === $b['id'];
+        if ($superadminKonto && ($_SERVER['HTTP_X_SUPERADMIN_ANSICHT'] ?? '') !== 'aus') {
+          return ['rolle' => 'admin', 'superadminKonto' => true, 'konto' => benutzerOeffentlich($b) + ['benutzerId' => $b['id'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
         }
-        return ['rolle' => 'benutzer', 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
+        return ['rolle' => 'benutzer', 'superadminKonto' => $superadminKonto, 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
                 'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']),
                 'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'mailsAus' => !empty($b['mailsAus']), 'gremien' => benutzerGremien($b['id'], $b['email'])];
       }

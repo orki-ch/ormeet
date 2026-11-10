@@ -1,4 +1,24 @@
 const TOKEN_KEY = 'ormeet-token'
+const SUPERADMIN_ANSICHT_KEY = 'ormeet-superadmin-ansicht' // «aus»: Konto des Superadmins nur als gewöhnliches Konto (pro Gerät)
+
+// Schalter «Superadmin-Ansicht» im Menü: nur bei der Anmeldung mit dem Konto, das mit dem Superadmin verknüpft ist
+export const superadminAnsicht = {
+  get aus() {
+    try {
+      return localStorage.getItem(SUPERADMIN_ANSICHT_KEY) === 'aus'
+    } catch {
+      return false
+    }
+  },
+  setzen(an) {
+    try {
+      if (an) localStorage.removeItem(SUPERADMIN_ANSICHT_KEY)
+      else localStorage.setItem(SUPERADMIN_ANSICHT_KEY, 'aus')
+    } catch {
+      // ohne Speicher bleibt die Superadmin-Ansicht an
+    }
+  },
+}
 const ANSICHT_KEY = 'ormeet-ansicht' // «Ansehen als …»: Ansicht-Schlüssel nur in diesem Tab (sessionStorage)
 const FREISCHALTUNG_KEY = 'ormeet-freischaltungen' // passwortgeschützte Links: { [token]: Freischaltung } für dieses Gerät
 
@@ -44,7 +64,7 @@ export const api = {
   async anfrage(aktion, gremiumId = '', body = null) {
     const antwort = await fetch(`api.php?aktion=${aktion}&gremium=${gremiumId}`, {
       method: body ? 'POST' : 'GET',
-      headers: { 'X-Token': api.token, 'X-Freischaltung': freischaltungen()[api.token] || '', 'Content-Type': 'application/json' },
+      headers: { 'X-Token': api.token, 'X-Freischaltung': freischaltungen()[api.token] || '', 'X-Superadmin-Ansicht': superadminAnsicht.aus ? 'aus' : '', 'Content-Type': 'application/json' },
       body: body && JSON.stringify(body),
     })
     const serverVersion = antwort.headers.get('X-Ormeet-Version')

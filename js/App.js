@@ -1,5 +1,5 @@
 import { sync, abmelden } from './stores/sync.js'
-import { api, appStand } from './api.js'
+import { api, appStand, superadminAnsicht } from './api.js'
 import { bestaetigen } from './utils/dialog.js'
 import { updateStand, updatePruefen } from './stores/updates.js'
 import { startPfad } from './router.js'
@@ -45,6 +45,10 @@ export default {
                   <strong>{{ rolleText }}</strong>
                   <span v-if="speichert" class="small" :class="'text-' + statusKlasse">● {{ statusText }}</span>
                 </div>
+                <button v-if="sync.zugriff.superadminKonto" type="button" class="menu-item menu-schalter" role="switch" :aria-checked="sync.zugriff.rolle === 'admin'" @click="superadminUmschalten">
+                  <span>Superadmin-Ansicht</span>
+                  <span class="schalter-knopf" :class="{ an: sync.zugriff.rolle === 'admin' }" aria-hidden="true"></span>
+                </button>
                 <router-link v-if="sync.zugriff.rolle === 'benutzer' || (sync.zugriff.rolle === 'admin' && sync.zugriff.konto)" to="/konto" class="menu-item">Mein Konto</router-link>
                 <router-link v-if="istAdmin" to="/benutzer" class="menu-item">Benutzer & Links</router-link>
                 <router-link v-if="istAdmin" to="/einstellungen" class="menu-item">Einstellungen <span v-if="updateStand.verfuegbar" class="badge gelb">Update verfügbar</span></router-link>
@@ -141,6 +145,12 @@ export default {
   },
   methods: {
     // Über einen Link angemeldet: zurück geht es nur mit dem Link – vorher fragen und Kopieren anbieten
+    // Konto des Superadmins: Superadmin-Ansicht ein/aus (pro Gerät); neu laden, damit Daten und Rechte passen
+    superadminUmschalten() {
+      superadminAnsicht.setzen(sync.zugriff.rolle !== 'admin')
+      location.hash = '#/'
+      location.reload()
+    },
     async abmeldenFragen() {
       this.menuOffen = false
       if (sync.zugriff?.ansicht) return this.ansichtSchliessen() // «Ansehen als …»: nur die Ansicht beenden, nicht abmelden

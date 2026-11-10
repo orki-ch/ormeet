@@ -1,5 +1,8 @@
 # Änderungsverlauf
 
+## 1.5.10
+- Neu im Menü oben rechts: der Schalter «Superadmin-Ansicht». Er erscheint, wenn du mit dem Konto angemeldet bist, das mit dem Superadmin verknüpft ist. Ausgeschaltet arbeitest du wie ein gewöhnliches Konto; die Wahl gilt auf diesem Gerät.
+
 ## 1.5.09
 - Ist der Superadmin mit einem Konto verknüpft, gilt die Anmeldung mit diesem Konto – mit E-Mail und Passwort oder über Orki – gleichzeitig als Superadmin-Anmeldung. Du siehst dann alles wie als Superadmin. Das Konto braucht deshalb ein ebenso sicheres Passwort.
 
