@@ -1,5 +1,8 @@
 # Änderungsverlauf
 
+## 1.5.09
+- Ist der Superadmin mit einem Konto verknüpft, gilt die Anmeldung mit diesem Konto – mit E-Mail und Passwort oder über Orki – gleichzeitig als Superadmin-Anmeldung. Du siehst dann alles wie als Superadmin. Das Konto braucht deshalb ein ebenso sicheres Passwort.
+
 ## 1.5.08
 - Ist der Superadmin mit einem eigenen Konto verknüpft, findet er im Menü jetzt «Mein Konto». Dort verknüpft er zum Beispiel Orki mit diesem Konto und bleibt dabei als Superadmin angemeldet.
 - Nach dem Verknüpfen eines Anbieters geht es direkt zurück zu «Mein Konto».

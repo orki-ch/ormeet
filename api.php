@@ -1868,11 +1868,15 @@ function linkZugriff($token) {
   return null;
 }
 
-// Zugriff für einen Konto-Token
+// Zugriff für einen Konto-Token. Das mit dem Superadmin verknüpfte Konto (Benutzer & Links › «Das bin ich») meldet ihn
+// gleichzeitig als Superadmin an: dieselbe Sicht und dieselben Rechte wie mit dem Superadmin-Passwort
 function kontoZugriff($token, array $benutzer) {
   foreach ($benutzer as $b) {
     foreach ($b['anmeldungen'] as $a) {
       if (hash_equals($a['token'], $token)) {
+        if (($b['id'] ?? '') !== '' && (superadminLesen()['benutzerId'] ?? null) === $b['id']) {
+          return ['rolle' => 'admin', 'konto' => benutzerOeffentlich($b) + ['benutzerId' => $b['id'], 'gremien' => benutzerGremien($b['id'], $b['email'])]];
+        }
         return ['rolle' => 'benutzer', 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
                 'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']),
                 'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'mailsAus' => !empty($b['mailsAus']), 'gremien' => benutzerGremien($b['id'], $b['email'])];
@@ -2938,11 +2942,14 @@ if ($aktion === 'abmelden') {
     $superadmin['anmeldungen'] = array_values(array_filter($superadmin['anmeldungen'], fn($a) => !hash_equals($a['token'], $token)));
     jsonSchreiben(SUPERADMIN_DATEI, $superadmin);
   }
-  if ($konto) {
+  $abmeldenKonto = $konto ?? ($zugriff['konto'] ?? null); // auch das mit dem Superadmin verknüpfte Konto
+  if ($abmeldenKonto) {
     $benutzer = benutzerLesen();
-    $i = benutzerById($benutzer, $konto['benutzerId']);
-    $benutzer[$i]['anmeldungen'] = array_values(array_filter($benutzer[$i]['anmeldungen'], fn($a) => !hash_equals($a['token'], $token)));
-    benutzerSchreiben($benutzer);
+    $i = benutzerById($benutzer, $abmeldenKonto['benutzerId']);
+    if ($i !== null) {
+      $benutzer[$i]['anmeldungen'] = array_values(array_filter($benutzer[$i]['anmeldungen'], fn($a) => !hash_equals($a['token'], $token)));
+      benutzerSchreiben($benutzer);
+    }
   }
   antwort(['ok' => true]);
 }
