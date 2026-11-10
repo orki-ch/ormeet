@@ -15,6 +15,7 @@ import { istIrgendwoBerechtigt } from '../utils/traktanden.js'
 import { PENDENZ_STATUS, PENDENZ_STATUS_KLASSE, SITZUNG_STATUS, SITZUNG_STATUS_KLASSE, formatDatum, sitzungStatus } from '../utils/labels.js'
 import { bestaetigen } from '../utils/dialog.js'
 import InfoKnopf from '../components/InfoKnopf.js'
+import Einwilligung from '../components/Einwilligung.js'
 
 const AKTIV_KEY = 'ormeet-aktives-gremium'
 
@@ -22,7 +23,7 @@ const AKTIV_KEY = 'ormeet-aktives-gremium'
 // «Übersicht» auf der Gremium-Seite (eingebettet); die Verwaltungsreiter daneben je nach Rechten.
 export default {
   name: 'PersonSeite',
-  components: { InfoKnopf, GremiumSuche, KalenderAbo, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
+  components: { Einwilligung, InfoKnopf, GremiumSuche, KalenderAbo, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
     eingebettet: { type: Boolean, default: false }, // als Reiter auf der Gremium-Seite (deren Kopf zeigt den Gremiumsnamen)
@@ -58,9 +59,10 @@ export default {
             <input v-if="kontoModus === 'neu'" v-model.trim="kontoForm.name" class="input" placeholder="Name" required />
             <input v-model.trim="kontoForm.email" class="input" type="email" placeholder="E-Mail" required autocomplete="username" />
             <input v-model="kontoForm.passwort" class="input" type="password" :placeholder="kontoModus === 'neu' ? 'Passwort (mindestens 8 Zeichen)' : 'Passwort'" required :autocomplete="kontoModus === 'neu' ? 'new-password' : 'current-password'" />
+            <Einwilligung v-if="kontoModus === 'neu'" v-model="kontoForm.einwilligung" zweck="in den Gremien und Sitzungen, an denen ich teilnehme," />
             <p v-if="kontoFehler" class="small text-err">{{ kontoFehler }}</p>
             <button class="btn btn-primary" :disabled="kontoLaeuft">{{ kontoModus === 'neu' ? 'Konto erstellen und verknüpfen' : 'Anmelden und verknüpfen' }}</button>
-            <SsoButtons :verknuepfen="api.token" :text="kontoModus === 'neu' ? 'registrieren' : 'anmelden'" />
+            <SsoButtons v-if="kontoModus !== 'neu' || kontoForm.einwilligung" :verknuepfen="api.token" :text="kontoModus === 'neu' ? 'registrieren' : 'anmelden'" />
           </form>
         </template>
       </section>
@@ -143,7 +145,7 @@ export default {
       sync,
       api,
       kontoModus: 'neu',
-      kontoForm: { name: sync.zugriff.personName || '', email, passwort: '' },
+      kontoForm: { name: sync.zugriff.personName || '', email, passwort: '', einwilligung: false },
       kontoFehler: '',
       kontoLaeuft: false,
       sitzungDialog: false,

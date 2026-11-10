@@ -2,6 +2,7 @@ import { api } from '../api.js'
 import { sync, laden } from '../stores/sync.js'
 import SsoButtons from '../components/SsoButtons.js'
 import InfoKnopf from '../components/InfoKnopf.js'
+import { MITTEILUNGS_GRUPPEN } from '../stores/benachrichtigungen.js'
 
 // Eigenes Konto: Name, Passwort, SSO-Verknüpfungen, Geräte
 export default {
@@ -37,8 +38,31 @@ export default {
       </section>
 
       <section class="card stack">
-        <h2 class="card-title">E-Mails <InfoKnopf titel="Sammelmail" :text="'Gibt es Neues – eine Sitzung steht bevor, deine Stimme fehlt, eine Pendenz ist fällig –, erhältst du höchstens eine Sammelmail pro Tag an ' + konto.email + '.'" /></h2>
+        <h2 class="card-title">Mitteilungen <InfoKnopf titel="Mitteilungen" :text="'Gibt es Neues – eine Sitzung steht bevor, deine Stimme fehlt, eine Pendenz ist fällig –, erhältst du eine Sammelmail an ' + konto.email + ' im gewählten Rhythmus. Pro Art stellst du ein, ob sie per E-Mail kommt; mit der Glocke daneben blendest du sie auch in Ormeet (Glocke oben rechts) aus.'" /></h2>
         <label class="check small"><input type="checkbox" :checked="!konto.mailsAus" :disabled="laeuft" @change="speichern({ mailsAus: !$event.target.checked })" /> Mitteilungen per E-Mail erhalten</label>
+        <div v-if="!konto.mailsAus" class="row">
+          <span class="label">Rhythmus</span>
+          <select v-model="mitteilungen.rhythmus" class="input klein w-md" :disabled="laeuft" @change="mitteilungenSpeichern">
+            <option value="sofort">Sofort</option>
+            <option value="taeglich">Täglich</option>
+            <option value="woechentlich">Wöchentlich</option>
+          </select>
+          <select v-if="mitteilungen.rhythmus === 'woechentlich'" v-model.number="mitteilungen.wochentag" class="input klein w-sm" :disabled="laeuft" @change="mitteilungenSpeichern">
+            <option v-for="(tag, i) in WOCHENTAGE" :key="i" :value="i + 1">am {{ tag }}</option>
+          </select>
+        </div>
+        <div class="liste">
+          <div v-for="(gruppe, key) in MITTEILUNGS_GRUPPEN" :key="key" class="liste-zeile">
+            <div class="grow">
+              <strong class="small">{{ gruppe.name }}</strong>
+              <div class="leise small">{{ gruppe.beschreibung }}</div>
+            </div>
+            <label class="check small" :class="{ aus: konto.mailsAus }"><input type="checkbox" :checked="!konto.mailsAus && !mitteilungen.mailAus.includes(key)" :disabled="laeuft || konto.mailsAus" @change="umschalten('mailAus', key)" /> E-Mail</label>
+            <button type="button" class="glocke-knopf" :class="{ aus: mitteilungen.glockeAus.includes(key) }" :disabled="laeuft" :aria-pressed="!mitteilungen.glockeAus.includes(key)" :aria-label="glockeText(key)" :data-tip="glockeText(key)" @click="umschalten('glockeAus', key)">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15z"/><path d="M10 21a2 2 0 0 0 4 0"/><path v-if="mitteilungen.glockeAus.includes(key)" d="M4 3l16 18"/></svg>
+            </button>
+          </div>
+        </div>
       </section>
 
       <section class="card stack">
@@ -51,13 +75,20 @@ export default {
     </div>
   `,
   data() {
-    return { name: (sync.zugriff.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff).name, passwortAlt: '', passwortNeu: '', laeuft: false, meldung: '', fehler: false }
+    return { MITTEILUNGS_GRUPPEN, WOCHENTAGE: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'], name: (sync.zugriff.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff).name, passwortAlt: '', passwortNeu: '', laeuft: false, meldung: '', fehler: false }
   },
   computed: {
     // Konto-Anmeldung: der Zugriff selbst; Superadmin mit verknüpftem Konto: dieses Konto
     konto() {
       return sync.zugriff.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff
     },
+    // Rhythmus und ausgeschaltete Gruppen (E-Mail / Glocke); ältere Server liefern noch nichts
+    mitteilungen() {
+      return this.konto.mitteilungen
+    },
+  },
+  created() {
+    this.konto.mitteilungen ??= { rhythmus: 'taeglich', wochentag: 1, mailAus: [], glockeAus: [] }
   },
   methods: {
     async speichern(daten) {
@@ -73,6 +104,18 @@ export default {
         this.meldung = fehler.message
       }
       this.laeuft = false
+    },
+    mitteilungenSpeichern() {
+      return this.speichern({ mitteilungen: this.mitteilungen })
+    },
+    umschalten(feld, gruppe) {
+      const liste = this.mitteilungen[feld]
+      this.mitteilungen[feld] = liste.includes(gruppe) ? liste.filter((g) => g !== gruppe) : [...liste, gruppe]
+      return this.mitteilungenSpeichern()
+    },
+    glockeText(gruppe) {
+      const name = MITTEILUNGS_GRUPPEN[gruppe].name
+      return this.mitteilungen.glockeAus.includes(gruppe) ? `${name}: in der Glocke ausgeblendet – Klick blendet ein` : `${name}: in der Glocke sichtbar – Klick blendet aus`
     },
     async passwortAendern() {
       await this.speichern({ passwortAlt: this.passwortAlt, passwortNeu: this.passwortNeu })

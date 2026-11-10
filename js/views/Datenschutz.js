@@ -22,7 +22,7 @@ export default {
         <p>Ormeet ist ein Werkzeug zur Führung von Sitzungsprotokollen. Dabei werden folgende Personendaten erfasst und gespeichert:</p>
         <ul>
           <li><strong>Mitglieder eines Gremiums:</strong> Name, E-Mail-Adresse (optional), Rolle, Stimmrecht.</li>
-          <li><strong>Gäste einer Sitzung:</strong> Name und Organisation; wer sich über einen allgemeinen Link einträgt, zusätzlich Vor- und Nachname und E-Mail-Adresse.</li>
+          <li><strong>Gäste einer Sitzung:</strong> Name und Organisation; wer sich über einen allgemeinen Link einträgt, Vor- und Nachname und freiwillig die E-Mail-Adresse.</li>
           <li><strong>Sitzungsinhalte:</strong> Anwesenheit, Traktanden, Informationen, Anträge und Beschlüsse, Pendenzen mit zugewiesener Person und Frist, freie Notizen.</li>
           <li><strong>Zugangsdaten:</strong> zufällig erzeugte Link-Schlüssel für Gremien, Vorprotokolle und Protokolle; bei geschützten Links ein Passwort (nur als Hash gespeichert) und ein Ablaufdatum.</li>
           <li><strong>Zuletzt genutzt:</strong> pro Zugang (Link oder Konto) das Datum der letzten Nutzung – ohne Uhrzeit, IP-Adresse oder Gerät. Es dient der Zugriffsübersicht, damit die Verwaltenden nicht mehr gebrauchte Zugänge erkennen und entziehen können.</li>
@@ -35,12 +35,13 @@ export default {
       <section class="card">
         <h2 class="card-title">3. Zweck und Rechtsgrundlage</h2>
         <p>Die Daten werden ausschliesslich zur Vorbereitung, Durchführung und Dokumentation von Sitzungen des jeweiligen Gremiums bearbeitet (Art. 6 DSG: Rechtmässigkeit, Verhältnismässigkeit, Zweckbindung). Die Erfassung von Mitgliedern und Gästen erfolgt durch das Gremium selbst im Rahmen seiner Tätigkeit; die betroffenen Personen sind in der Regel Mitglieder oder Gäste dieses Gremiums.</p>
+        <p>Wer sich über einen allgemeinen Link selbst einträgt oder ein Konto erstellt, willigt ausdrücklich ein, dass Name und (falls angegeben) E-Mail-Adresse für die Zusammenarbeit im jeweiligen Gremium bzw. an der jeweiligen Sitzung verwendet werden – nur in Ormeet für Sitzungen, Protokolle und die gemeinsame Terminfindung, ohne Weitergabe an Dritte. Das Datum der Einwilligung wird gespeichert. Wird eine solche Person aus einer Sitzung entfernt, löscht Ormeet ihre Angaben und Beiträge bei dieser Sitzung vollständig.</p>
       </section>
 
       <section class="card">
         <h2 class="card-title">4. Speicherort und Sicherheit</h2>
         <p>Alle Daten werden auf dem Server gespeichert, auf dem diese Installation läuft: <code>{{ speicherort }}</code>. Es findet keine Übermittlung an andere Server oder ins Ausland durch die Anwendung statt. Einzige Ausnahme ist die freiwillige Anmeldung über einen Anbieter (Sublevia, Orki): Dabei bestätigt der Anbieter Ihre Identität und übermittelt Name und E-Mail-Adresse an diese Installation; es gilt zusätzlich die Datenschutzerklärung des Anbieters.</p>
-        <p>Inhaberinnen und Inhaber eines Kontos erhalten E-Mails, wenn sie ein neues Passwort anfordern, und – sofern eingerichtet – höchstens eine Sammelmail pro Tag mit ihren Mitteilungen aus Ormeet. Die Mails gehen über den Mailserver dieser Installation bzw. den von der Betreiberin eingerichteten Versanddienst. Jede Sammelmail enthält einen Link zum Abbestellen; unter «Mein Konto» lassen sie sich ebenfalls ein- und ausschalten.</p>
+        <p>Inhaberinnen und Inhaber eines Kontos erhalten E-Mails, wenn sie ein neues Passwort anfordern, und – sofern eingerichtet – Sammelmails mit ihren Mitteilungen aus Ormeet – in dem Rhythmus und für die Arten, die sie unter «Mein Konto» gewählt haben. Die Mails gehen über den Mailserver dieser Installation bzw. den von der Betreiberin eingerichteten Versanddienst. Jede Sammelmail enthält einen Link zum Abbestellen; unter «Mein Konto» lassen sie sich ebenfalls ein- und ausschalten.</p>
         <p v-if="verschluesselt">Die Verbindung zwischen Ihrem Browser und {{ domain }} ist verschlüsselt (HTTPS).</p>
         <p v-else class="text-err">Hinweis: Diese Installation wird derzeit ohne HTTPS aufgerufen. Daten werden unverschlüsselt übertragen. Die Betreiberin sollte eine verschlüsselte Verbindung einrichten.</p>
         <p>Die Daten werden auf dem Server verschlüsselt abgelegt (AES-256); der Schlüssel liegt getrennt von den Daten. Der Zugriff ist durch ein Passwort (Superadmin) sowie durch geheime, zufällig erzeugte Links geschützt. Wer einen Link kennt, erhält den dazugehörigen Zugriff. Die Betreiberin trifft angemessene technische und organisatorische Massnahmen zur Datensicherheit (Art. 8 DSG); Links sollten nur an berechtigte Personen weitergegeben und bei Bedarf erneuert werden.</p>

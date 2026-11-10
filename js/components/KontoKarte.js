@@ -3,6 +3,7 @@ import { sync, laden } from '../stores/sync.js'
 import { sitzungenStore } from '../stores/sitzungen.js'
 import SsoButtons from './SsoButtons.js'
 import InfoKnopf from './InfoKnopf.js'
+import Einwilligung from './Einwilligung.js'
 
 const NAMEN_KEY = 'ormeet-namen'
 
@@ -31,10 +32,10 @@ export function namenVergessen() {
 // weitere Person zu dieser Sitzung; Stimmen und Kommentare unter einem gemerkten Namen gehen auf das Konto über.
 export default {
   name: 'KontoKarte',
-  components: { InfoKnopf, SsoButtons },
+  components: { Einwilligung, InfoKnopf, SsoButtons },
   template: `
     <section class="card konto mb-2">
-      <h2 class="card-title">Eigenes Konto <InfoKnopf titel="Eigenes Konto" :text="'Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto meldest du dich überall gleich an und siehst diese Sitzung jederzeit wieder.' + (gast ? ' Dein Name und deine E-Mail sind schon eingetragen, es fehlt nur ein Passwort.' : '')" /></h2>
+      <h2 class="card-title">Eigenes Konto <InfoKnopf titel="Eigenes Konto" :text="'Ein Konto braucht es nicht – dein Link genügt. Mit einem Konto meldest du dich überall gleich an und siehst diese Sitzung jederzeit wieder.' + (gast ? (gast.email ? ' Dein Name und deine E-Mail sind schon eingetragen, es fehlt nur ein Passwort.' : ' Dein Name ist schon eingetragen; für ein Konto brauchst du noch eine E-Mail und ein Passwort.') : '')" /></h2>
       <button v-if="!offen" class="btn btn-primary" @click="oeffnen">Konto erstellen oder anmelden</button>
       <template v-if="offen">
         <div class="row" style="gap: 0.5rem 1.5rem">
@@ -43,17 +44,18 @@ export default {
         </div>
         <form class="stack" style="max-width: 24rem" @submit.prevent="senden">
           <input v-if="modus === 'neu'" v-model.trim="form.name" class="input" placeholder="Name" required :readonly="!!gast" />
-          <input v-model.trim="form.email" class="input" type="email" placeholder="E-Mail" required autocomplete="username" :readonly="!!gast && modus === 'neu'" />
+          <input v-model.trim="form.email" class="input" type="email" placeholder="E-Mail" required autocomplete="username" :readonly="!!gast?.email && modus === 'neu'" />
           <input v-model="form.passwort" class="input" type="password" :placeholder="modus === 'neu' ? 'Passwort (mindestens 8 Zeichen)' : 'Passwort'" required :autocomplete="modus === 'neu' ? 'new-password' : 'current-password'" />
+          <Einwilligung v-if="modus === 'neu'" v-model="form.einwilligung" zweck="in den Gremien und Sitzungen, an denen ich teilnehme," />
           <p v-if="fehler" class="small text-err">{{ fehler }}</p>
           <button class="btn btn-primary" :disabled="laeuft">{{ modus === 'neu' ? 'Konto erstellen' : 'Anmelden' }}</button>
-          <SsoButtons :verknuepfen="api.token" :text="modus === 'neu' ? 'registrieren' : 'anmelden'" />
+          <SsoButtons v-if="modus !== 'neu' || form.einwilligung" :verknuepfen="api.token" :text="modus === 'neu' ? 'registrieren' : 'anmelden'" />
         </form>
       </template>
     </section>
   `,
   data() {
-    return { api, offen: false, modus: 'neu', form: { name: '', email: '', passwort: '' }, fehler: '', laeuft: false }
+    return { api, offen: false, modus: 'neu', form: { name: '', email: '', passwort: '', einwilligung: false }, fehler: '', laeuft: false }
   },
   computed: {
     // Über den allgemeinen Link eingetragene Person (eigener Link)

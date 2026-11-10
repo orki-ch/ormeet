@@ -9,6 +9,7 @@ import LinkSchutzDialog, { ablaufText } from './LinkSchutzDialog.js'
 import MenuDropdown from './MenuDropdown.js'
 import Modal from './Modal.js'
 import RechteFenster from './RechteFenster.js'
+import EinladungFenster from './EinladungFenster.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
 
 const DOKUMENTE = { terminfindung: 'Terminfindung', vorprotokoll: 'Vorprotokoll', protokoll: 'Protokoll' }
@@ -20,7 +21,7 @@ const RECHTE_KURZ = { keine: '–', lesen: 'lesen', bearbeiten: 'bearbeiten' }
 // Mitglieder sperren oder entfernen Eigentümer und Superadmin fürs ganze Gremium; die Leitung einer Sitzung nur für diese.
 export default {
   name: 'ZugriffeListe',
-  components: { LinkSchutzDialog, MenuDropdown, Modal, RechteFenster },
+  components: { EinladungFenster, LinkSchutzDialog, MenuDropdown, Modal, RechteFenster },
   props: {
     gremiumId: { type: String, required: true },
     sitzungId: { type: String, default: '' },
@@ -144,10 +145,13 @@ export default {
           </div>
         </template>
       </Modal>
+
+      <!-- Sperre aufgehoben: die Person erneut einladen -->
+      <EinladungFenster v-if="einladungFuer" :sitzung-id="sitzungId" :nur="[einladungFuer]" @schliessen="einladungFuer = null" />
     </div>
   `,
   data() {
-    return { aufnahme: null, laeuftAufnahme: false, schutz: null, fusion: null, kopiert: false, rechteFuer: '', rechteLink: null, neuerLink: { name: '', dokument: '' }, FREIGABE_STUFEN }
+    return { einladungFuer: '', aufnahme: null, laeuftAufnahme: false, schutz: null, fusion: null, kopiert: false, rechteFuer: '', rechteLink: null, neuerLink: { name: '', dokument: '' }, FREIGABE_STUFEN }
   },
   computed: {
     gremium() {
@@ -299,7 +303,7 @@ export default {
       if (s && this.verwaltet && !leitung) {
         aktionen.push(...this.sperrAktionen(m, 'Für diese Sitzung '))
         const gesperrt = s.gesperrt?.includes(m.id)
-        if (!gesperrt || !s.terminfindung?.entfernt?.includes(m.id)) aktionen.push({ text: 'Aus dieser Sitzung entfernen', gefahr: true, tun: () => this.ausSitzungEntfernen(m) })
+        if (!gesperrt) aktionen.push({ text: 'Aus dieser Sitzung entfernen', gefahr: true, tun: () => this.ausSitzungEntfernen(m) })
       }
       if (this.admin) {
         if (m.zugangsKey) aktionen.push({ text: 'Persönlichen Link kopieren', tun: () => this.kopieren('/zugang/', m.zugangsKey) })
@@ -446,24 +450,32 @@ export default {
       const s = this.sitzung
       if (stufe === 'ganz' && !(await bestaetigen(`${person.name} für diese Sitzung ganz sperren? ${person.name} sieht die Sitzung danach nicht mehr – auch das Protokoll nicht.`, { titel: 'Ganz sperren', ja: 'Sperren', gefahr: true }))) return
       if (stufe === 'lesen' && !(await bestaetigen(`${person.name} für diese Sitzung auf «nur lesen» setzen? ${person.name} sieht Vorprotokoll und Protokoll, kann aber nichts mehr ändern.`, { titel: 'Nur lesen', ja: 'Nur lesen' }))) return
+      const warGesperrt = s.gesperrt?.includes(person.id)
       const ohne = (liste) => (liste || []).filter((id) => id !== person.id)
       s.gesperrt = stufe === 'ganz' ? [...ohne(s.gesperrt), person.id] : ohne(s.gesperrt)
       s.nurLesen = stufe === 'lesen' ? [...ohne(s.nurLesen), person.id] : ohne(s.nurLesen)
+      if (!warGesperrt || stufe) return
+      // Sperre aufgehoben: wer an der Sitzung erwartet ist, ist wieder anwesend – und erhält eine neue Einladung
+      const erwartet = gremienStore.erwarteteMitglieder(this.gremiumId).some((m) => m.id === person.id)
+      if (erwartet && this.vorprotokoll && !this.protokoll && !this.vorprotokoll.anwesendeMitgliederIds.includes(person.id)) this.vorprotokoll.anwesendeMitgliederIds.push(person.id)
+      if (!this.protokoll) this.einladungFuer = person.id // ohne E-Mail zeigt das Fenster das an
     },
-    // Aus dieser Sitzung entfernen: entschuldigt (wie ✕ in der Terminfindung) und gesperrt
-    async ausSitzungEntfernen(m) {
-      if (!(await bestaetigen(`${m.name} aus dieser Sitzung entfernen? ${m.name} ist entschuldigt und sieht die Sitzung nicht mehr.`, { gefahr: true }))) return
-      const s = this.sitzung
-      s.gesperrt = [...new Set([...(s.gesperrt || []), m.id])]
-      if (s.terminfindung && !s.terminfindung.entfernt.includes(m.id)) s.terminfindung.entfernt.push(m.id)
-      if (this.vorprotokoll && !this.protokoll) this.vorprotokoll.anwesendeMitgliederIds = this.vorprotokoll.anwesendeMitgliederIds.filter((id) => id !== m.id)
+    // Ganz aus dieser Sitzung entfernen (wie ✕ in der Terminfindung): Stimmen, Kommentare, Einladung und Zuweisungen
+    // fallen weg, ein Mitglied ist für die Sitzung gesperrt, ein Gast wird mit Name, E-Mail und Link gelöscht
+    async ganzEntfernen(person, text) {
+      if (!(await bestaetigen(text, { titel: 'Aus dieser Sitzung entfernen', ja: 'Entfernen', gefahr: true }))) return
+      try {
+        await api.anfrage('person_aus_sitzung_entfernen', this.gremiumId, { sitzungId: this.sitzungId, personId: person.id })
+        await laden()
+      } catch (fehler) {
+        hinweis(fehler.message)
+      }
     },
-    async gastEntfernen(g) {
-      if (!(await bestaetigen(`${g.name} aus der Sitzung entfernen? Der Link von ${g.name} wird ungültig.`, { gefahr: true }))) return
-      const vp = this.vorprotokoll
-      vp.gaeste = vp.gaeste.filter((x) => x.id !== g.id)
-      delete vp.personenKeys[g.id]
-      for (const [key, id] of Object.entries(vp.aliasKeys || {})) if (id === g.id) delete vp.aliasKeys[key]
+    ausSitzungEntfernen(m) {
+      return this.ganzEntfernen(m, `${m.name} ganz aus dieser Sitzung entfernen? Stimmen, Kommentare, Einladung und Zuweisungen von ${m.name} bei dieser Sitzung werden gelöscht, und ${m.name} sieht die Sitzung nicht mehr. Mit «Für diese Sitzung entsperren» lässt sich das aufheben – mit einer neuen Einladung.`)
+    },
+    gastEntfernen(g) {
+      return this.ganzEntfernen(g, `${g.name} aus der Sitzung entfernen? Stimmen, Kommentare, selbst hinzugefügte Traktanden sowie Name, E-Mail und Link von ${g.name} werden gelöscht.${g.benutzerId ? ' Das Konto bleibt bestehen.' : ''}`)
     },
     async zugangSperren(m) {
       if (!m.gesperrt && !(await bestaetigen(`Zugang von ${m.name} sperren? Weder der persönliche Link noch das Konto öffnen das Gremium danach. ${m.name} bleibt Mitglied.`, { gefahr: true }))) return

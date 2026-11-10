@@ -284,10 +284,40 @@ function versuchMerken() {
 }
 
 // Konto ohne Geheimnisse (für Superadmin und Kontoinhaber)
+// Mitteilungen in sechs Gruppen (Präfix der Mitteilungs-ID, wie in js/stores/benachrichtigungen.js). Pro Konto:
+// Rhythmus der Sammelmail (sofort = bei jedem Cron-Lauf, täglich, wöchentlich am gewählten Wochentag) und welche Gruppen
+// nicht per E-Mail bzw. nicht in der Glocke erscheinen.
+const MITTEILUNGS_GRUPPEN = [
+  'terminfindung' => ['abstimmen', 'abgestimmt', 'kommentar', 'termin'],
+  'sitzungen' => ['protokoll', 'bald', 'leitung'],
+  'traktanden' => ['traktandum'],
+  'antraege' => ['aenderung'],
+  'pendenzen' => ['pendenz', 'faellig', 'ueberfaellig'],
+  'personen' => ['vorschlag'],
+];
+
+function mitteilungsGruppe($id) {
+  $praefix = explode(':', $id)[0];
+  foreach (MITTEILUNGS_GRUPPEN as $gruppe => $praefixe) if (in_array($praefix, $praefixe, true)) return $gruppe;
+  return null;
+}
+
+function mitteilungsEinstellungen(array $b) {
+  $m = (array) ($b['mitteilungen'] ?? []);
+  $gruppen = fn($liste) => array_values(array_intersect(array_keys(MITTEILUNGS_GRUPPEN), (array) $liste));
+  return [
+    'rhythmus' => in_array($m['rhythmus'] ?? '', ['sofort', 'taeglich', 'woechentlich'], true) ? $m['rhythmus'] : 'taeglich',
+    'wochentag' => max(1, min(7, (int) ($m['wochentag'] ?? 1))), // 1 = Montag … 7 = Sonntag
+    'mailAus' => $gruppen($m['mailAus'] ?? []),
+    'glockeAus' => $gruppen($m['glockeAus'] ?? []),
+  ];
+}
+
 function benutzerOeffentlich(array $b) {
   return ['id' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
           'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']), 'hatPasswort' => $b['passwortHash'] !== '',
-          'sso' => array_keys($b['sso']), 'erstelltAm' => $b['erstelltAm'], 'letzteAnmeldung' => $b['letzteAnmeldung'], 'geraete' => count($b['anmeldungen']), 'mailsAus' => !empty($b['mailsAus'])];
+          'sso' => array_keys($b['sso']), 'erstelltAm' => $b['erstelltAm'], 'letzteAnmeldung' => $b['letzteAnmeldung'], 'geraete' => count($b['anmeldungen']), 'mailsAus' => !empty($b['mailsAus']),
+          'mitteilungen' => mitteilungsEinstellungen($b)];
 }
 
 function einstellungenLesen() {
@@ -1345,14 +1375,14 @@ function schluesselBewahren(array $alt, array $neu) {
   return $neu;
 }
 
-// Herkunft, Konto und Vorschlag zum Zusammenführen von Gästen setzt nur der Server (Eintragen, Zusammenführen)
+// Herkunft, Konto, Einwilligung und Vorschlag zum Zusammenführen von Gästen setzt nur der Server (Eintragen, Zusammenführen)
 function gastFelderBewahren(array $bundle, array $aenderungen) {
   $alt = indexById($bundle['vorprotokolle']);
   foreach ($aenderungen['vorprotokolle'] ?? [] as $k => $vp) {
     $altGaeste = indexById($alt[$vp['id']]['gaeste'] ?? []);
     foreach ($vp['gaeste'] ?? [] as $i => $g) {
       $vorher = $altGaeste[$g['id'] ?? ''] ?? [];
-      foreach (['ueberLink', 'vorschlag', 'weiterePerson', 'benutzerId'] as $feld) {
+      foreach (['ueberLink', 'vorschlag', 'weiterePerson', 'benutzerId', 'einwilligung'] as $feld) {
         if (array_key_exists($feld, $vorher)) $aenderungen['vorprotokolle'][$k]['gaeste'][$i][$feld] = $vorher[$feld];
         else unset($aenderungen['vorprotokolle'][$k]['gaeste'][$i][$feld]);
       }
@@ -1904,7 +1934,8 @@ function kontoZugriff($token, array $benutzer) {
         }
         return ['rolle' => 'benutzer', 'superadminKonto' => $superadminKonto, 'benutzerId' => $b['id'], 'name' => $b['name'], 'email' => $b['email'], 'darfGremienAnlegen' => $b['darfGremienAnlegen'],
                 'darfKurzsitzungenAnlegen' => !empty($b['darfKurzsitzungenAnlegen']),
-                'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'mailsAus' => !empty($b['mailsAus']), 'gremien' => benutzerGremien($b['id'], $b['email'])];
+                'hatPasswort' => $b['passwortHash'] !== '', 'sso' => array_keys($b['sso']), 'mailsAus' => !empty($b['mailsAus']), 'mitteilungen' => mitteilungsEinstellungen($b),
+                'gremien' => benutzerGremien($b['id'], $b['email'])];
       }
     }
   }
@@ -2061,9 +2092,11 @@ if ($aktion === 'registrieren') {
   if (!filter_var($email, FILTER_VALIDATE_EMAIL)) antwort(['fehler' => 'Bitte eine gültige E-Mail-Adresse angeben'], 400);
   if ($name === '') antwort(['fehler' => 'Bitte einen Namen angeben'], 400);
   if (strlen($passwort) < 8) antwort(['fehler' => 'Das Passwort braucht mindestens 8 Zeichen'], 400);
+  if ($zugriff['rolle'] !== 'admin' && empty($eingabe['einwilligung'])) antwort(['fehler' => 'Bitte bestätige, dass deine Angaben verwendet werden dürfen'], 400);
   $benutzer = benutzerLesen();
   if (benutzerByEmail($benutzer, $email) !== null) antwort(['fehler' => 'Mit dieser E-Mail gibt es schon ein Konto – bitte anmelden'], 409);
   $neu = neuerBenutzer($name, $email);
+  if ($zugriff['rolle'] !== 'admin') $neu['einwilligung'] = date('c');
   $neu['passwortHash'] = password_hash($passwort, PASSWORD_DEFAULT);
   $benutzer[] = $neu;
   linkVerknuepfen($zugriff, $neu['id'], $name, $email, array_map('strval', (array) ($eingabe['namen'] ?? [])));
@@ -2259,16 +2292,19 @@ function cronLauf() {
   $jetzt = new DateTimeImmutable('now', new DateTimeZone('Europe/Zurich'));
   $heute = $jetzt->format('Y-m-d');
   $status = ['letzterLauf' => $jetzt->format('c'), 'mails' => 0, 'fehler' => ''];
-  if ((int) $jetzt->format('G') < (int) ($e['mailStunde'] ?? 7)) {
-    jsonSchreiben(CRON_DATEI, $status + ['hinweis' => 'Vor der Versandzeit – noch nichts verschickt']);
-    return $status;
-  }
+  $nachVersandzeit = (int) $jetzt->format('G') >= (int) ($e['mailStunde'] ?? 7);
   $mails = jsonLesen(MAILS_DATEI, []);
   $bundles = [];
   foreach (alleBundles() as $b) $bundles[$b['gremium']['id']] = $b;
   foreach (benutzerLesen() as $b) {
     $stand = $mails[$b['id']] ?? null;
-    if (!empty($b['mailsAus']) || ($stand['tag'] ?? '') === $heute) continue;
+    if (!empty($b['mailsAus'])) continue;
+    // Rhythmus: sofort bei jedem Lauf; täglich bzw. wöchentlich (am gewählten Wochentag) einmal ab der Versandzeit
+    $einst = mitteilungsEinstellungen($b);
+    if ($einst['rhythmus'] !== 'sofort') {
+      if (!$nachVersandzeit || ($stand['tag'] ?? '') === $heute) continue;
+      if ($einst['rhythmus'] === 'woechentlich' && (int) $jetzt->format('N') !== $einst['wochentag']) continue;
+    }
     $neu = [];
     foreach (benutzerGremien($b['id'], $b['email']) as $g) {
       $bundle = $bundles[$g['gremiumId']] ?? null;
@@ -2283,15 +2319,19 @@ function cronLauf() {
       $mails[$b['id']] = $stand;
     }
     $bekannt = array_flip($stand['gesendet']);
-    $offen = array_diff_key($neu, $bekannt);
-    if (!$offen) continue;
+    // Ausgeschaltete Gruppen: nicht mailen, aber als bekannt vermerken (sonst kämen sie beim Einschalten alle nach)
+    $offen = array_filter(array_diff_key($neu, $bekannt), fn($k) => !in_array(mitteilungsGruppe(explode('|', $k, 2)[1]), $einst['mailAus'], true), ARRAY_FILTER_USE_KEY);
+    if (!$offen) {
+      if (array_diff_key($neu, $bekannt)) $mails[$b['id']]['gesendet'] = array_slice(array_keys($neu + $bekannt), -3000);
+      continue;
+    }
     $text = "Hallo {$b['name']}\n\n" . ($erster ? 'Das steht in Ormeet für dich an:' : 'Das ist neu in Ormeet:') . "\n";
     $gruppe = null;
     foreach ($offen as [$gremiumName, $mitteilung, $pfad]) {
       if ($gremiumName !== $gruppe) $text .= "\n" . ($gruppe = $gremiumName) . "\n";
       $text .= "- $mitteilung\n  $basis#$pfad\n";
     }
-    $text .= "\nE-Mails von Ormeet abbestellen: {$basis}api.php?aktion=abbestellen&k={$b['id']}." . abbestellSignatur($b['id']) . "\n";
+    $text .= "\nWelche Mitteilungen und wie oft: {$basis}#/konto\nE-Mails von Ormeet abbestellen: {$basis}api.php?aktion=abbestellen&k={$b['id']}." . abbestellSignatur($b['id']) . "\n";
     $fehler = mailSenden($b['email'], 'Ormeet: ' . count($offen) . (count($offen) === 1 ? ' neue Mitteilung' : ' neue Mitteilungen'), $text);
     if ($fehler) { $status['fehler'] = $fehler; continue; }
     $status['mails']++;
@@ -2919,11 +2959,23 @@ if ($aktion === 'update_pruefen' || $aktion === 'update_installieren') {
   if (!$istSuperadmin) antwort(['fehler' => 'Nur der Superadmin kann Updates verwalten'], 403);
   $lokal = lokaleVersion();
   $releaseText = holen('https://api.github.com/repos/' . GITHUB_REPO . '/releases/latest');
-  if ($releaseText === null) antwort(['fehler' => 'GitHub ist nicht erreichbar'], 502);
-  $release = json_decode($releaseText, true);
-  $tag = $release['tag_name'] ?? '';
+  $release = json_decode($releaseText ?? '', true);
+  $tag = is_array($release) ? ($release['tag_name'] ?? '') : '';
   $aktuell = ltrim($tag, 'v');
-  if (!preg_match('/^\d+\.\d+\.\d+$/', $aktuell)) antwort(['fehler' => 'Ungültige Versionsangabe bei GitHub'], 502);
+  if (!preg_match('/^\d+\.\d+\.\d+$/', $aktuell)) {
+    // Ersatzweg ohne Abfragelimit: version.md und changelog.md direkt aus dem Repository (Tags tragen die Versionsnummer)
+    $rohVersion = trim((string) holen('https://raw.githubusercontent.com/' . GITHUB_REPO . '/main/version.md'));
+    if (preg_match('/^\d+\.\d+\.\d+$/', $rohVersion)) {
+      $aktuell = $tag = $rohVersion;
+      $changelog = (string) holen('https://raw.githubusercontent.com/' . GITHUB_REPO . '/main/changelog.md');
+      $release = ['body' => preg_match('/^## ' . preg_quote($aktuell, '/') . '\s*\n(.*?)(?=^## |\z)/ms', $changelog, $m) ? trim($m[1]) : ''];
+    } else {
+      $meldung = is_array($release) ? trim((string) ($release['message'] ?? '')) : '';
+      if ($releaseText === null) antwort(['fehler' => 'GitHub ist nicht erreichbar'], 502);
+      if (stripos($meldung, 'rate limit') !== false) antwort(['fehler' => 'GitHub hat das Abfragelimit für diesen Server erreicht. Bitte in einer Stunde nochmals versuchen.'], 502);
+      antwort(['fehler' => 'GitHub liefert keine gültige Version' . ($meldung !== '' ? " (Meldung von GitHub: $meldung)" : '')], 502);
+    }
+  }
   $verfuegbar = version_compare($aktuell, $lokal, '>');
 
   if ($aktion === 'update_pruefen') antwort(['lokal' => $lokal, 'aktuell' => $aktuell, 'verfuegbar' => $verfuegbar, 'neuerungen' => $release['body'] ?? '']);
@@ -3035,13 +3087,14 @@ if ($aktion === 'konto_aendern') {
   }
   if (!empty($eingabe['alleAbmelden'])) $b['anmeldungen'] = array_values(array_filter($b['anmeldungen'], fn($a) => hash_equals($a['token'], $token)));
   if (isset($eingabe['mailsAus'])) $b['mailsAus'] = (bool) $eingabe['mailsAus'];
+  if (isset($eingabe['mitteilungen']) && is_array($eingabe['mitteilungen'])) $b['mitteilungen'] = mitteilungsEinstellungen(['mitteilungen' => $eingabe['mitteilungen']]);
   if (!empty($eingabe['ssoLoesen']) && ($b['passwortHash'] !== '' || count($b['sso']) > 1)) unset($b['sso'][$eingabe['ssoLoesen']]);
   unset($b);
   benutzerSchreiben($benutzer);
   antwort(['ok' => true, 'benutzer' => benutzerOeffentlich($benutzer[$i])]);
 }
 
-// Allgemeiner Link: Wer ihn öffnet, trägt sich mit Vor- und Nachnamen und E-Mail ein und erhält einen eigenen Link
+// Allgemeiner Link: Wer ihn öffnet, trägt sich mit Vor- und Nachnamen und (freiwillig) E-Mail ein und erhält einen eigenen Link
 // (Gast der Sitzung, als «weitere Person» gekennzeichnet, mit den Rechten des allgemeinen Links). Gleicher Name oder
 // gleiche E-Mail wie ein Mitglied oder ein Gast der Sitzung: Vorschlag zum Zusammenführen an die Verwaltenden.
 if ($aktion === 'link_eintragen') {
@@ -3050,16 +3103,17 @@ if ($aktion === 'link_eintragen') {
   $nachname = trim((string) ($eingabe['nachname'] ?? ''));
   $email = trim((string) ($eingabe['email'] ?? ''));
   if ($vorname === '' || $nachname === '') antwort(['fehler' => 'Bitte Vor- und Nachnamen angeben'], 400);
-  if (!filter_var($email, FILTER_VALIDATE_EMAIL)) antwort(['fehler' => 'Bitte eine gültige E-Mail-Adresse angeben'], 400);
+  if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) antwort(['fehler' => 'Bitte eine gültige E-Mail-Adresse angeben – oder das Feld leer lassen'], 400); // E-Mail freiwillig
+  if (empty($eingabe['einwilligung'])) antwort(['fehler' => 'Bitte bestätige, dass deine Angaben für diese Sitzung verwendet werden dürfen'], 400);
   $namen = array_map('strval', (array) ($eingabe['namen'] ?? []));
   $key = bundleAendern($zugriff['gremiumId'], function (array &$bundle) use ($zugriff, $rolle, $vorname, $nachname, $email, $namen) {
     $vpIndex = vorprotokollFuer($bundle, $zugriff['sitzungId']);
-    if (personMitEmail($bundle, $bundle['vorprotokolle'][$vpIndex], $email)) return null; // schon erfasst: keine doppelte Person
+    if ($email !== '' && personMitEmail($bundle, $bundle['vorprotokolle'][$vpIndex], $email)) return null; // schon erfasst: keine doppelte Person
     $vp = &$bundle['vorprotokolle'][$vpIndex];
     $gastId = uuid();
     $name = "$vorname $nachname";
     $gast = ['id' => $gastId, 'name' => $name, 'vorname' => $vorname, 'nachname' => $nachname, 'organisation' => '', 'email' => $email, 'benutzerId' => null,
-             'weiterePerson' => true, 'ueberLink' => $rolle === 'link' ? $zugriff['linkId'] : 'freigabe', 'eingetragen' => date('Y-m-d')];
+             'weiterePerson' => true, 'ueberLink' => $rolle === 'link' ? $zugriff['linkId'] : 'freigabe', 'eingetragen' => date('Y-m-d'), 'einwilligung' => date('c')];
     $vorschlag = doppelteSuchen($bundle, $vp, $name, $email);
     if ($vorschlag) $gast['vorschlag'] = $vorschlag;
     $vp['gaeste'][] = $gast;
@@ -3171,6 +3225,7 @@ if ($aktion === 'einladung_senden') {
     if ($p['name'] === '') continue;
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $fehler[] = ['name' => $p['name'], 'grund' => 'keine E-Mail-Adresse']; continue; }
     if (in_array(strtolower($email), $aus, true)) { $fehler[] = ['name' => $p['name'], 'grund' => 'hat Einladungen abbestellt']; continue; }
+    if (in_array($pid, $s['gesperrt'] ?? [], true)) { $fehler[] = ['name' => $p['name'], 'grund' => 'für diese Sitzung gesperrt']; continue; }
     $link = einladungLink($bundle, $vp, $pid, $basis);
     if ($link === '') { $fehler[] = ['name' => $p['name'], 'grund' => 'kein persönlicher Link']; continue; }
     $antwortLink = $basis . '#/einladung/' . einladungCode($gremiumId, $sitzungId, $pid);
@@ -3227,6 +3282,77 @@ if ($aktion === 'link_passwort') {
 // Gast (meist eine weitere Person) in ein Mitglied oder einen anderen Gast derselben Sitzung überführen: Stimmen und
 // Kommentare der Terminfindung gehen über (ohne eigene Stimme des Ziels), Freigaben und Sperren des Gasts fallen weg, sein
 // bisheriger Link öffnet künftig als das Ziel (aliasKeys), und der Gast verschwindet aus dem Vorprotokoll.
+// Person ganz aus einer Sitzung entfernen (vor dem Protokoll): als wäre sie nie dabei gewesen. Stimmen, Kommentare,
+// Einladung und Antwort, Rechte, Anwesenheit, selbst hinzugefügte Traktanden und Zuweisungen in Traktanden fallen weg. Ein Gast (über einen Link
+// dazugekommen oder eingeladen) wird mit Name, E-Mail und Link gelöscht – ein Konto bleibt bestehen, ist aber nicht mehr
+// dabei. Ein Mitglied bleibt Mitglied und wird für diese Sitzung gesperrt ($sperren); aufheben unter «Zugriffe».
+function personAusSitzungEntfernen(array &$bundle, $sitzungId, $personId, bool $sperren) {
+  foreach ($bundle['sitzungen'] as &$s) {
+    if ($s['id'] !== $sitzungId) continue;
+    if (!empty($s['terminfindung'])) {
+      $tf = &$s['terminfindung'];
+      $tf['stimmen'] = array_values(array_filter($tf['stimmen'], fn($st) => ($st['personId'] ?? null) !== $personId));
+      $tf['kommentare'] = array_values(array_filter($tf['kommentare'], fn($k) => ($k['personId'] ?? null) !== $personId));
+      $tf['entfernt'] = array_values(array_diff($tf['entfernt'] ?? [], [$personId]));
+      $tf['freigabe'] = array_values(array_diff($tf['freigabe'] ?? [], [$personId]));
+      unset($tf);
+    }
+    foreach ($s['freigaben'] ?? [] as $dokument => $liste) if (is_array($liste)) unset($s['freigaben'][$dokument][$personId]);
+    $s['nurLesen'] = array_values(array_diff($s['nurLesen'] ?? [], [$personId]));
+    $s['gesperrt'] = array_values(array_diff($s['gesperrt'] ?? [], [$personId]));
+    if ($sperren) $s['gesperrt'][] = $personId;
+  }
+  unset($s);
+  if (isset($bundle['einladungen'][$sitzungId])) unset($bundle['einladungen'][$sitzungId][$personId]);
+  $ohnePerson = function (array $liste) use (&$ohnePerson, $personId) {
+    $liste = array_values(array_filter($liste, fn($t) => ($t['hinzugefuegtVon'] ?? null) !== $personId)); // selbst hinzugefügte Traktanden
+    foreach ($liste as &$t) {
+      foreach (['verantwortliche', 'bearbeiter'] as $feld) {
+        if (isset($t[$feld]) && is_array($t[$feld])) $t[$feld] = array_values(array_filter($t[$feld], fn($p) => ($p['id'] ?? null) !== $personId));
+      }
+      if (!empty($t['untertraktanden'])) $t['untertraktanden'] = $ohnePerson($t['untertraktanden']);
+    }
+    unset($t);
+    return $liste;
+  };
+  foreach ($bundle['vorprotokolle'] as &$vp) {
+    if ($vp['sitzungId'] !== $sitzungId) continue;
+    $vp['anwesendeMitgliederIds'] = array_values(array_diff($vp['anwesendeMitgliederIds'] ?? [], [$personId]));
+    $vp['traktanden'] = $ohnePerson($vp['traktanden'] ?? []);
+    $vp['gaeste'] = array_values(array_filter($vp['gaeste'], fn($g) => $g['id'] !== $personId));
+    foreach ($vp['gaeste'] as &$g) if (($g['vorschlag']['personId'] ?? null) === $personId) unset($g['vorschlag']);
+    unset($g);
+    $keys = (array) $vp['personenKeys'];
+    unset($keys[$personId]);
+    $vp['personenKeys'] = $keys ?: new stdClass();
+    $alias = array_filter((array) ($vp['aliasKeys'] ?? []), fn($id) => $id !== $personId);
+    $vp['aliasKeys'] = $alias ?: new stdClass();
+  }
+  unset($vp);
+}
+
+// Person ganz aus der Sitzung entfernen (✕ in der Terminfindung): wer die Terminfindung bearbeitet oder die Sitzung
+// verwaltet – oder die Person selbst (ohne Sperre). Nur solange es kein Protokoll gibt.
+if ($aktion === 'person_aus_sitzung_entfernen') {
+  $sitzungId = (string) ($eingabe['sitzungId'] ?? '');
+  $personId = (string) ($eingabe['personId'] ?? '');
+  $fehler = bundleAendern($gremiumId, function (array &$bundle) use ($zugriff, $sitzungId, $personId) {
+    $sitzung = sitzungVon($bundle, $sitzungId);
+    if (!$sitzung || $personId === '') return 'Diese Sitzung oder Person wurde nicht gefunden';
+    if (in_array($sitzungId, array_column($bundle['protokolle'], 'sitzungId'), true)) return 'Die Sitzung hat schon ein Protokoll';
+    $selbst = ($zugriff['personId'] ?? null) === $personId;
+    $ich = null;
+    foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === ($zugriff['personId'] ?? null)) $ich = $m;
+    $darf = verwaltetSitzung($zugriff, $sitzung, $bundle['gremium']) || ($ich && $zugriff['rolle'] === 'person' && darfTerminfindung($sitzung, $ich));
+    if (!$darf && !$selbst) return 'Keine Berechtigung';
+    $mitglied = in_array($personId, array_column($bundle['gremium']['mitglieder'], 'id'), true);
+    personAusSitzungEntfernen($bundle, $sitzungId, $personId, $mitglied && !$selbst);
+    return null;
+  });
+  if ($fehler) antwort(['fehler' => $fehler], 403);
+  antwort(['ok' => true]);
+}
+
 function gastUeberfuehren(array &$bundle, $vpIndex, $gastId, $zielId, $name, $istMitglied) {
   $vp = $bundle['vorprotokolle'][$vpIndex];
   $sitzungId = $vp['sitzungId'];

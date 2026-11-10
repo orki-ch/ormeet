@@ -17,6 +17,7 @@ export default {
   components: { InfoKnopf, Modal },
   props: {
     sitzungId: { type: String, required: true },
+    nur: { type: Array, default: null }, // nur diese Personen (z. B. nach dem Aufheben einer Sperre), auch wenn nicht erwartet
   },
   emits: ['schliessen'],
   template: `
@@ -71,9 +72,10 @@ export default {
     personen() {
       const gremiumId = this.sitzung.gremiumId
       const aus = zugriffsDaten[gremiumId]?.einladungenAus || []
-      const mitglieder = gremienStore.erwarteteMitglieder(gremiumId).map((m) => ({ ...m, art: 'Mitglied' }))
+      const gesperrt = this.sitzung.gesperrt || [] // ganz aus der Sitzung entfernt
+      const mitglieder = (this.nur ? gremienStore.byId(gremiumId).mitglieder : gremienStore.erwarteteMitglieder(gremiumId)).map((m) => ({ ...m, art: 'Mitglied' }))
       const gaeste = (this.vorprotokoll?.gaeste || []).map((g) => ({ ...g, art: 'Gast' }))
-      return [...mitglieder, ...gaeste].map((p) => {
+      return [...mitglieder, ...gaeste].filter((p) => (this.nur ? this.nur.includes(p.id) : !gesperrt.includes(p.id))).map((p) => {
         const e = einladungVon(gremiumId, this.sitzungId, p.id)
         const zuletzt = [...(e?.gesendet || [])].reverse()
         const gleicheArt = zuletzt.find((g) => g.art === this.art)
@@ -101,7 +103,7 @@ export default {
     art: {
       immediate: true,
       handler() {
-        this.auswahl = this.personen.filter((p) => !p.gesperrt && !p.schonGesendet && !p.abgesagt).map((p) => p.id)
+        this.auswahl = this.personen.filter((p) => !p.gesperrt && (this.nur || (!p.schonGesendet && !p.abgesagt))).map((p) => p.id)
       },
     },
   },

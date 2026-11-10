@@ -133,7 +133,17 @@ Bearbeiten (Vorschläge, Einstellungen, Termin festlegen) dürfen Superadmin / E
 Bearbeitungsrecht, die Person `sitzung.erstelltVon` (ohne Angabe: die Sitzungsleitung) und `terminfindung.freigabe`
 (Personen-IDs oder `rolle:<id>`); freigeben darf nur die erstellende Person (`terminfindungMerge`). `terminfindung.entfernt`:
 entfernte Personen sind für diese Sitzung entschuldigt – `abmeldungenUebertragen` nimmt sie aus der Anwesenheit des
-Vorprotokolls (bzw. wieder auf); jede Person darf sich selbst entfernen oder wieder aufnehmen.
+Vorprotokolls (bzw. wieder auf); jede Person darf sich selbst entfernen oder wieder aufnehmen. Entschuldigen bietet die
+Oberfläche nur erwarteten Mitgliedern an. Ganz entfernen (`person_aus_sitzung_entfernen`, vor dem Protokoll; wer die
+Terminfindung bearbeitet oder die Sitzung verwaltet, oder die Person selbst): `personAusSitzungEntfernen` löscht Stimmen,
+Kommentare, Einladung, Freigaben, Anwesenheit, selbst hinzugefügte Traktanden (`hinzugefuegtVon`) und Zuweisungen
+(`verantwortliche`, `bearbeiter`); ein Gast wird samt `personenKeys` / `aliasKeys` gelöscht, ein Mitglied kommt in
+`sitzung.gesperrt` (nicht, wenn es sich selbst entfernt). Entsperren in der Zugriffsübersicht öffnet die Einladung an
+diese Person; `einladung_senden` überspringt Gesperrte.
+
+E-Mail beim Eintragen über einen allgemeinen Link ist freiwillig (ohne E-Mail keine Doppelten-Prüfung per Adresse).
+Einwilligung: `link_eintragen` und `registrieren` (ausser durch den Superadmin) verlangen `einwilligung: true` und
+speichern das Datum (`gaeste[].einwilligung`, `benutzer[].einwilligung`; `gastFelderBewahren` schützt das Feld).
 
 Konto über einen allgemeinen Link (Freigabe-Link ohne Person oder zusätzlicher Link): `registrieren` / `anmelden` / SSO
 legen die Person als Gast der Sitzung an (`weiterePerson: true`, `benutzerId`; fehlt das Vorprotokoll, entsteht ein leeres).
@@ -207,8 +217,11 @@ gelesene IDs liegen in `localStorage`. Für die Sammelmails leitet `kontoMitteil
 
 `mailSenden` nutzt den SMTP-Server aus den Einstellungen (`smtpSenden`: STARTTLS / SSL, AUTH LOGIN), sonst `mail()`.
 *Passwort vergessen* (`passwort_vergessen` / `passwort_zuruecksetzen`): Link `#/passwort/<code>`, eine Stunde gültig,
-gespeichert nur als Hash. `cron.php` (stündlich) verschickt ab `mailStunde` einmal am Tag pro Konto eine Sammelmail mit
-den noch nicht gemeldeten Mitteilungen (`data/mails.json`, erster Lauf merkt sich nur den Stand; Status in
+gespeichert nur als Hash. `cron.php` (stündlich) verschickt pro Konto eine Sammelmail mit den noch nicht gemeldeten
+Mitteilungen – im Rhythmus aus `benutzer.mitteilungen` (`mitteilungsEinstellungen`): `sofort` bei jedem Lauf, `taeglich`
+ab `mailStunde`, `woechentlich` ab `mailStunde` am `wochentag` (1 = Montag). Gruppen in `mailAus` werden nicht gemailt,
+aber als gemeldet vermerkt; `glockeAus` blendet sie in der Glocke aus (`MITTEILUNGS_GRUPPEN` in `api.php` und
+`js/stores/benachrichtigungen.js`, nach ID-Präfix) (`data/mails.json`, erster Lauf merkt sich nur den Stand; Status in
 `data/cron.json`). Abbestellen: signierter Link (`abbestellen`) oder *Mein Konto* (`mailsAus`). Erinnerung «Sitzung steht
 bevor»: `gremium.erinnerungTage` (Standard 3). Die erste Sammelmail an ein Konto enthält gleich das Wichtige (bevorstehende
 Sitzungen, fehlende Stimmen, Pendenzen, zugewiesene Traktanden); Älteres gilt als gemeldet.

@@ -10,7 +10,7 @@ import MiniKalender from '../components/MiniKalender.js'
 import KurzTeilnehmende from '../components/KurzTeilnehmende.js'
 import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
 import EinladungFenster from '../components/EinladungFenster.js'
-import { bestaetigen, hinweis } from '../utils/dialog.js'
+import { bestaetigen, hinweis, waehlen } from '../utils/dialog.js'
 import InfoKnopf from '../components/InfoKnopf.js'
 
 const WERTE = ['ja', 'vielleicht', 'nein']
@@ -124,7 +124,7 @@ export default {
                   <button class="stimme" :class="z.wahl[o.id] || 'leer'" :disabled="!darfStimmen(z)" :title="z.wahl[o.id] || '–'" @click="stimmen(z, o.id)">{{ STIMME[z.wahl[o.id]] || '' }}</button>
                 </td>
                 <td v-if="spalteAktion" class="right">
-                  <button v-if="z.personId && darfEntfernen(z) && tf.status === 'offen'" class="btn btn-ghost btn-icon" :title="z.eigene ? 'Ich kann nicht teilnehmen – entschuldigen' : 'Aus der Terminfindung entfernen (entschuldigt)'" @click="entfernen(z)">✕</button>
+                  <button v-if="z.personId && darfEntfernen(z) && tf.status === 'offen'" class="btn btn-ghost btn-icon" :title="z.eigene ? 'Ich kann nicht teilnehmen' : 'Aus dieser Sitzung entfernen'" @click="entfernen(z)">✕</button>
                   <button v-else-if="!z.personId && voll" class="btn btn-danger btn-icon" title="Zeile löschen" @click="zeileLoeschen(z)">✕</button>
                 </td>
               </tr>
@@ -279,7 +279,7 @@ export default {
       const gaeste = sitzungenStore.vorprotokollVonSitzung(this.sitzungId)?.gaeste || []
       // Kurzsitzung eines Gremiums: nur die Teilnehmenden
       const teilnehmende = this.sitzung.kurz && !this.gremium.kurz ? sitzungenStore.teilnehmende(this.sitzung) : null
-      const entfernt = this.tf.entfernt || []
+      const entfernt = [...(this.tf.entfernt || []), ...(this.sitzung.gesperrt || [])] // gesperrt: ganz aus der Sitzung entfernt
       const personen = [...this.gremium.mitglieder.filter((m) => !teilnehmende || teilnehmende.includes(m.id)), ...gaeste].filter((p) => !entfernt.includes(p.id))
       if (this.ich && !entfernt.includes(this.ich.id) && !personen.some((p) => p.id === this.ich.id)) personen.push(this.ich)
       const stimmeVon = (personId, name) => this.tf.stimmen.find((s) => (personId ? s.personId === personId : s.name === name))
@@ -333,11 +333,50 @@ export default {
     darfEntfernen(person) {
       return this.voll || (!!this.ich && (person.personId || person.id) === this.ich.id)
     },
+    // ✕: An der Sitzung erwartete Mitglieder (laut Rolle) lassen sich entschuldigen oder ganz entfernen; alle anderen
+    // (Gäste, über einen Link dazugekommen, nicht erwartete Mitglieder) werden ganz entfernt – als wären sie nie dabei gewesen
     async entfernen(zeile) {
-      const text = zeile.eigene ? 'Du wirst aus der Terminfindung entfernt und bist für diese Sitzung entschuldigt.' : `${zeile.name} wird aus der Terminfindung entfernt und ist für diese Sitzung entschuldigt.`
-      if (!(await bestaetigen(text + ' Fortfahren?'))) return
-      this.tf.entfernt.push(zeile.personId)
-      if (this.vorprotokoll && !this.protokoll) this.vorprotokoll.anwesendeMitgliederIds = this.vorprotokoll.anwesendeMitgliederIds.filter((id) => id !== zeile.personId)
+      const erwartet = gremienStore.erwarteteMitglieder(this.gremium.id).some((m) => m.id === zeile.personId)
+      const mitglied = this.gremium.mitglieder.some((m) => m.id === zeile.personId)
+      if (zeile.eigene) {
+        if (erwartet) {
+          if (await bestaetigen('Du wirst aus der Terminfindung entfernt und bist für diese Sitzung entschuldigt. Fortfahren?')) this.entschuldigen(zeile.personId)
+          return
+        }
+        const folge = mitglied ? 'Deine Stimmen und Kommentare bei dieser Sitzung werden gelöscht.' : 'Deine Stimmen, Kommentare und Angaben (Name, E-Mail) bei dieser Sitzung werden gelöscht, und dein Link gilt nicht mehr. Willst du später doch teilnehmen, trägst du dich über den Link der Sitzung neu ein.'
+        if (await bestaetigen(`Du nimmst an dieser Sitzung nicht teil. ${folge} Fortfahren?`, { titel: 'Nicht teilnehmen', ja: 'Nicht teilnehmen', gefahr: true })) await this.ganzEntfernen(zeile, true)
+        return
+      }
+      const ganzText = mitglied
+        ? `Ganz entfernen: Stimmen, Kommentare, Einladung und Zuweisungen bei dieser Sitzung werden gelöscht, und ${zeile.name} ist für die Sitzung gesperrt (aufheben unter «Zugriffe», mit neuer Einladung).`
+        : `${zeile.name} wird ganz aus dieser Sitzung entfernt: Stimmen, Kommentare, selbst hinzugefügte Traktanden sowie Name, E-Mail und Link werden gelöscht.${this.hatKonto(zeile.personId) ? ' Das Konto bleibt bestehen.' : ''} Will ${zeile.name} doch teilnehmen, trägt sich die Person über den Link der Sitzung neu ein.`
+      if (erwartet) {
+        const wahl = await waehlen(`${zeile.name} ist an dieser Sitzung erwartet.\n\nEntschuldigen: bleibt als «Entschuldigt» stehen, ↺ nimmt wieder auf.\n\n${ganzText}`, {
+          titel: 'Aus dieser Sitzung entfernen',
+          optionen: [{ wert: 'ganz', text: 'Ganz entfernen', gefahr: true }, { wert: 'entschuldigen', text: 'Entschuldigen' }],
+        })
+        if (wahl === 'entschuldigen') this.entschuldigen(zeile.personId)
+        if (wahl === 'ganz') await this.ganzEntfernen(zeile, false)
+        return
+      }
+      if (await bestaetigen(ganzText, { titel: 'Aus dieser Sitzung entfernen', ja: 'Entfernen', gefahr: true })) await this.ganzEntfernen(zeile, false)
+    },
+    entschuldigen(personId) {
+      this.tf.entfernt.push(personId)
+      if (this.vorprotokoll && !this.protokoll) this.vorprotokoll.anwesendeMitgliederIds = this.vorprotokoll.anwesendeMitgliederIds.filter((id) => id !== personId)
+    },
+    hatKonto(personId) {
+      return !!(this.vorprotokoll?.gaeste || []).find((g) => g.id === personId)?.benutzerId
+    },
+    async ganzEntfernen(zeile, selbst) {
+      try {
+        await api.anfrage('person_aus_sitzung_entfernen', this.gremium.id, { sitzungId: this.sitzungId, personId: zeile.personId })
+      } catch (fehler) {
+        return hinweis(fehler.message)
+      }
+      // Ein Gast hat sich selbst entfernt: sein Link gilt nicht mehr
+      if (selbst && !this.gremium.mitglieder.some((m) => m.id === zeile.personId)) return location.reload()
+      await laden()
     },
     aufnehmen(person) {
       this.tf.entfernt = this.tf.entfernt.filter((id) => id !== person.id)

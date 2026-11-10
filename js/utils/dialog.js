@@ -43,6 +43,25 @@ export function bestaetigen(nachricht, { titel = 'Bitte bestätigen', ja = 'Ja',
   })
 }
 
+// Auswahl aus mehreren Knöpfen -> wert des gewählten Knopfs, oder null bei Abbrechen.
+// optionen: [{ wert, text, gefahr }] – der letzte steht ganz rechts
+export function waehlen(nachricht, { titel = 'Bitte wählen', optionen = [], nein = 'Abbrechen' } = {}) {
+  return new Promise((fertig) => {
+    const buttons = { abbrechen: { text: html(nein), action: () => fertig(null) } }
+    optionen.forEach((o, i) => {
+      buttons['wahl' + i] = { text: html(o.text), btnClass: o.gefahr ? 'btn-red' : 'btn-blue', action: () => fertig(o.wert) }
+    })
+    $.confirm({
+      ...STANDARD,
+      boxWidth: 'min(36rem, calc(100vw - 2rem))',
+      title: html(titel),
+      content: html(nachricht),
+      escapeKey: 'abbrechen',
+      buttons,
+    })
+  })
+}
+
 // Hinweis mit OK (z. B. Fehlermeldungen)
 export function hinweis(nachricht, titel = 'Hinweis') {
   return new Promise((fertig) => {

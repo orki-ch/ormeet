@@ -9,6 +9,22 @@ import { formatDatum } from '../utils/labels.js'
 // Benachrichtigungen werden aus den geladenen Daten abgeleitet (kein Serverzustand nötig);
 // jede hat eine ID, die sich mit dem Zustand ändert – gelesene IDs merkt sich der Browser.
 const GELESEN_KEY = 'ormeet-gelesen'
+
+// Mitteilungen in sechs Gruppen (Präfix der ID, wie MITTEILUNGS_GRUPPEN in api.php). Im Konto lässt sich pro Gruppe
+// einstellen, ob sie per E-Mail kommt und ob sie in der Glocke erscheint.
+export const MITTEILUNGS_GRUPPEN = {
+  terminfindung: { name: 'Terminfindung', beschreibung: 'Stimme fehlt, alle haben abgestimmt, neue Kommentare, Termin festgelegt', praefixe: ['abstimmen', 'abgestimmt', 'kommentar', 'termin'] },
+  sitzungen: { name: 'Sitzungen', beschreibung: 'Sitzung steht bevor, Protokoll abgeschlossen, du leitest oder protokollierst', praefixe: ['protokoll', 'bald', 'leitung'] },
+  traktanden: { name: 'Traktanden', beschreibung: 'Traktandum oder Unterpunkt dir zugewiesen', praefixe: ['traktandum'] },
+  antraege: { name: 'Änderungsanträge', beschreibung: 'Neue Anträge und Entscheide über deine', praefixe: ['aenderung'] },
+  pendenzen: { name: 'Pendenzen', beschreibung: 'Neue Pendenz, bald fällig, überfällig', praefixe: ['pendenz', 'faellig', 'ueberfaellig'] },
+  personen: { name: 'Personen', beschreibung: 'Eingetragene Person ist vielleicht schon erfasst', praefixe: ['vorschlag'] },
+}
+
+export function mitteilungsGruppe(id) {
+  const praefix = id.split(':')[0]
+  return Object.keys(MITTEILUNGS_GRUPPEN).find((g) => MITTEILUNGS_GRUPPEN[g].praefixe.includes(praefix)) || null
+}
 export const gelesen = Vue.reactive({ ids: JSON.parse(localStorage.getItem(GELESEN_KEY) || '[]') })
 
 function merken() {
@@ -141,5 +157,8 @@ export function benachrichtigungen() {
   }
 
   const ungelesen = (n) => !gelesen.ids.includes(n.id)
-  return liste.map((n) => ({ ...n, neu: ungelesen(n) })).sort((a, b) => b.neu - a.neu)
+  // Im Konto für die Glocke ausgeschaltete Gruppen
+  const konto = sync.zugriff?.rolle === 'admin' ? sync.zugriff.konto : sync.zugriff
+  const aus = konto?.mitteilungen?.glockeAus || []
+  return liste.filter((n) => !aus.includes(mitteilungsGruppe(n.id))).map((n) => ({ ...n, neu: ungelesen(n) })).sort((a, b) => b.neu - a.neu)
 }

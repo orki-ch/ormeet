@@ -1270,6 +1270,15 @@ input[type="radio"] {
   &.aus {
     opacity: 0.45;
   }
+  /* Einwilligung: mehrzeiliger Text, Häkchen oben */
+  &.einwilligung {
+    align-items: flex-start;
+    line-height: 1.45;
+    input {
+      margin-top: 0.2rem;
+      flex-shrink: 0;
+    }
+  }
 }
 
 .chip {
@@ -3194,5 +3203,41 @@ select.btn-pille {
     &::after {
       transform: translateX(0.9rem);
     }
+  }
+}
+
+/* Mein Konto › Mitteilungen: Glocke pro Gruppe ein- / ausblenden */
+.glocke-knopf {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50px;
+  color: var(--text);
+  transition: var(--tc);
+  svg {
+    width: 1.2rem;
+    height: 1.2rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  &:hover {
+    background-color: var(--tint-10);
+  }
+  &.aus {
+    color: var(--text-leise);
+  }
+  &[data-tip]::after {
+    left: auto;
+    right: 0;
+    transform: translateY(-4px);
+  }
+  &[data-tip]:hover::after,
+  &[data-tip]:focus-visible::after {
+    transform: translateY(0);
   }
 }
