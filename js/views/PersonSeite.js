@@ -1,11 +1,11 @@
 import { gremienStore } from '../stores/gremien.js'
 import { fristText, sitzungenStore } from '../stores/sitzungen.js'
-import { sync, laden, gremiumSeiteErlaubt } from '../stores/sync.js'
+import { sync, laden, recht } from '../stores/sync.js'
 import { api } from '../api.js'
-import { darfEintragenVergeben, darfSitzungenEintragen, istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
+import { darfSitzungenEintragen, istLeitung, personIdIm, uebersichtsKonto } from '../utils/rechte.js'
 import GremiumSuche from '../components/GremiumSuche.js'
 import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
-import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
+import KalenderAbo from '../components/KalenderAbo.js'
 import MenuDropdown from '../components/MenuDropdown.js'
 import SitzungDialog from '../components/SitzungDialog.js'
 import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
@@ -18,26 +18,27 @@ import InfoKnopf from '../components/InfoKnopf.js'
 
 const AKTIV_KEY = 'ormeet-aktives-gremium'
 
-// Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel)
+// Persönliche Übersicht über den zentralen Link eines Mitglieds oder ein Konto (mit Gremium-Wechsel). Steht als Reiter
+// «Übersicht» auf der Gremium-Seite (eingebettet); die Verwaltungsreiter daneben je nach Rechten.
 export default {
   name: 'PersonSeite',
-  components: { InfoKnopf, GremiumSuche, KurzsitzungDialog, KurzsitzungenListe, MehrfachAuswahl, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
+  components: { InfoKnopf, GremiumSuche, KalenderAbo, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, SitzungDialog, SsoButtons, ThemenbereichLinks },
   props: {
     gremiumId: { type: String, default: '' },
+    eingebettet: { type: Boolean, default: false }, // als Reiter auf der Gremium-Seite (deren Kopf zeigt den Gremiumsnamen)
   },
   template: `
     <div v-if="person" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
         <div class="row between top">
           <div>
-            <p class="kicker">{{ gremium.name }} · {{ rolleName }}</p>
+            <p class="kicker">{{ eingebettet ? rolleName : gremium.name + ' · ' + rolleName }}</p>
             <h1 class="title">Hallo {{ person.name }} <InfoKnopf titel="Deine Übersicht" text="Deine Sitzungen, Terminfindungen und Pendenzen. Bearbeiten kannst du, was deine Rolle erlaubt – mit einer Aufgabe (Sitzungsleitung, Protokollführung) das ganze Dokument." /></h1>
           </div>
-          <router-link v-if="gremiumVerwalten" :to="'/gremium/' + gremium.id" class="btn">Gremium verwalten</router-link>
           <label v-if="konto && konto.gremien.length > 1" class="wechsel">
             <span class="label">Gremium</span>
             <select class="input" :value="gremium.id" @change="wechseln($event.target.value)">
-              <option v-for="g in konto.gremien" :key="g.gremiumId" :value="g.gremiumId">{{ g.name }}{{ g.rolle === 'eigentuemer' ? ' (verwalten)' : '' }}</option>
+              <option v-for="g in konto.gremien.filter((g) => g.rolle !== 'gast')" :key="g.gremiumId" :value="g.gremiumId">{{ g.name }}</option>
             </select>
           </label>
         </div>
@@ -95,7 +96,7 @@ export default {
             <span><span class="badge" :class="SITZUNG_STATUS_KLASSE[sitzungStatus(s)]">{{ SITZUNG_STATUS[sitzungStatus(s)] }}</span></span>
             <div class="aktionen">
               <router-link v-if="s.terminfindung?.status === 'offen'" :to="'/sitzung/' + s.id + '/terminfindung'" class="btn btn-ghost">Terminfindung</router-link>
-              <router-link v-if="vorprotokollVon(s) || istLeitung(s, person.id)" :to="'/sitzung/' + s.id + '/vorprotokoll'" class="btn btn-ghost">Vorprotokoll</router-link>
+              <router-link v-if="vorprotokollVon(s) || istLeitung(s, person.id) || verwaltet" :to="'/sitzung/' + s.id + '/vorprotokoll'" class="btn btn-ghost">Vorprotokoll</router-link>
               <router-link v-if="s.datum && protokollVon(s)" :to="'/sitzung/' + s.id + '/protokoll'" class="btn btn-ghost">Protokoll</router-link>
               <MenuDropdown v-if="darfLoeschen(s)">
                 <button class="menu-item menu-item-danger" @click="sitzungLoeschen(s)">Sitzung löschen</button>
@@ -108,12 +109,6 @@ export default {
       <section v-if="kurzsitzungen.length" class="card">
         <h2 class="card-title">Kurzsitzungen</h2>
         <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
-      </section>
-
-      <!-- Rolle mit Recht «Sitzungen eintragen»: das Recht an weitere Mitglieder vergeben -->
-      <section v-if="darfVergeben" class="card">
-        <h2 class="card-title">Sitzungen eintragen dürfen <InfoKnopf titel="Sitzungen eintragen" text="Mitglieder, deren Rolle es erlaubt, dürfen immer. Weitere Mitglieder kannst du hier berechtigen." /></h2>
-        <MehrfachAuswahl :model-value="eintragende" :optionen="eintragendeOptionen" placeholder="+ Person berechtigen …" @update:model-value="eintragendeSetzen" />
       </section>
 
       <SitzungDialog v-if="sitzungDialog" :gremium-id="gremium.id" @schliessen="sitzungDialog = false" />
@@ -135,14 +130,8 @@ export default {
         <p v-if="pendenzen.length" class="muted small mt-2">Den Status kannst du hier direkt ändern; erfüllte Pendenzen verschwinden bei der nächsten Sitzung aus dem Übertrag.</p>
       </section>
 
-      <section class="card">
-        <h2 class="card-title">Kalender-Abo <InfoKnopf titel="Kalender-Abo" text="Abonniere diesen Link in deinem Kalender (Apple, Google, Outlook …): Sitzungstermine, deine Pendenzen mit Frist und provisorische Termine aus Abstimmungen, bei denen du «Ja» oder «Vielleicht» gewählt hast. Jeder Termin enthält den Link zum Vorprotokoll." /></h2>
-        <div class="row">
-          <code class="input grow truncate" style="line-height: 1.5">{{ kalenderLink }}</code>
-          <button class="btn" @click="kalenderKopieren">{{ kalenderKopiert ? 'Kopiert ✓' : 'Link kopieren' }}</button>
-          <a :href="kalenderLink.replace(/^https?:/, 'webcal:')" class="btn btn-primary">Abonnieren</a>
-        </div>
-      </section>
+      <!-- Zentrales Kalender-Abo; bei mehreren Gremien steht es auf der Gremienliste -->
+      <KalenderAbo v-if="kalenderHier" :konto="!!konto" :gremium-id="gremium.id" />
 
       <ThemenbereichLinks :gremium="gremium" />
     </div>
@@ -153,7 +142,6 @@ export default {
     return {
       sync,
       api,
-      kalenderKopiert: false,
       kontoModus: 'neu',
       kontoForm: { name: sync.zugriff.personName || '', email, passwort: '' },
       kontoFehler: '',
@@ -174,14 +162,17 @@ export default {
     // Konto: gewünschtes, zuletzt gewähltes oder erstes Gremium mit Mitgliedschaft
     aktivesGremiumId() {
       if (!this.konto) return sync.zugriff?.gremiumId
-      const mitglied = this.konto.gremien.filter((g) => g.rolle === 'mitglied').map((g) => g.gremiumId)
+      const mitglied = this.konto.gremien.filter((g) => g.personId && g.rolle !== 'gast').map((g) => g.gremiumId) // auch Eigentümer, die Mitglied sind
       const gewuenscht = this.gremiumId || localStorage.getItem(AKTIV_KEY)
       return mitglied.includes(gewuenscht) ? gewuenscht : mitglied[0]
     },
-    // Konto: mit dem persönlichen Link des Mitglieds statt dem Konto-Token (der Kalender-Dienst erhält so keinen Konto-Zugang)
-    kalenderLink() {
-      const key = this.konto?.gremien.find((g) => g.gremiumId === this.gremium.id)?.zugangsKey || api.token
-      return location.origin + location.pathname.replace(/[^/]*$/, '') + 'api.php?aktion=ical&token=' + key + '&gremium=' + this.gremium.id
+    // Kalender-Abo hier nur ohne Gremienliste: persönlicher Link oder Konto mit einem einzigen Gremium bzw. einer Kurzsitzung
+    kalenderHier() {
+      return !this.konto || this.konto.gremien.length <= 1
+    },
+    // Verwaltet die Sitzungen des Gremiums (Superadmin, Eigentümer): alle Sitzungen öffnen und löschen
+    verwaltet() {
+      return recht('sitzungen', this.gremium.id) === 'bearbeiten'
     },
     gremium() {
       return gremienStore.byId(this.aktivesGremiumId)
@@ -197,22 +188,8 @@ export default {
     darfEintragen() {
       return darfSitzungenEintragen(this.gremium.id)
     },
-    darfVergeben() {
-      return darfEintragenVergeben(this.gremium.id)
-    },
-    // Mitglieder, deren Rolle das Recht «Sitzungen eintragen» nicht schon hat
-    eintragendeOptionen() {
-      return this.gremium.mitglieder.filter((m) => !gremienStore.hatFesteRolle(this.gremium.id, m)).map((m) => ({ wert: m.id, label: m.name }))
-    },
-    eintragende() {
-      return this.gremium.mitglieder.filter((m) => m.darfSitzungenEintragen && this.eintragendeOptionen.some((o) => o.wert === m.id)).map((m) => m.id)
-    },
     rolleName() {
       return gremienStore.rolleName(this.gremium.id, this.person.rolleId)
-    },
-    // Gremiumsrechte der Rolle (Mitglieder, Einstellungen, Teilen, Kurzsitzungen, Zugriffe): Gremium-Seite öffnen
-    gremiumVerwalten() {
-      return gremiumSeiteErlaubt(this.gremium.id)
     },
     sitzungen() {
       return sitzungenStore.sitzungenVonGremium(this.gremium.id)
@@ -241,8 +218,7 @@ export default {
     sitzungStatus,
     istLeitung,
     wechseln(gremiumId) {
-      const g = this.konto.gremien.find((g) => g.gremiumId === gremiumId)
-      this.$router.push(g.rolle === 'eigentuemer' ? '/gremium/' + gremiumId : '/meine/' + gremiumId)
+      this.$router.push('/gremium/' + gremiumId)
     },
     // Konto über den persönlichen Link erstellen bzw. bestehendes Konto anmelden – der Link wird mit dem Konto verknüpft
     async kontoSenden() {
@@ -254,16 +230,11 @@ export default {
         api.setToken(daten.token)
         sync.zugriff = null
         await laden()
-        this.$router.push('/meine/' + gremiumId)
+        this.$router.push('/gremium/' + gremiumId)
       } catch (fehler) {
         this.kontoFehler = fehler.message
       }
       this.kontoLaeuft = false
-    },
-    kalenderKopieren() {
-      navigator.clipboard.writeText(this.kalenderLink)
-      this.kalenderKopiert = true
-      setTimeout(() => (this.kalenderKopiert = false), 2000)
     },
     vorprotokollVon(s) {
       return sitzungenStore.vorprotokollVonSitzung(s.id)
@@ -271,17 +242,12 @@ export default {
     protokollVon(s) {
       return sitzungenStore.protokollVonSitzung(s.id)
     },
-    // Eigene Sitzungen ohne Protokoll darf wieder löschen, wer Sitzungen eintragen darf
+    // Löschen: wer die Sitzungen verwaltet, sonst eigene Sitzungen ohne Protokoll mit dem Recht «Sitzungen eintragen»
     darfLoeschen(s) {
-      return this.darfEintragen && s.erstelltVon === this.person.id && !this.protokollVon(s)
+      return this.verwaltet || (this.darfEintragen && s.erstelltVon === this.person.id && !this.protokollVon(s))
     },
     async sitzungLoeschen(s) {
       if (await bestaetigen(`Sitzung «${s.titel || 'Sitzung'}» ${s.datum ? 'vom ' + formatDatum(s.datum) + ' ' : ''}löschen?`, { gefahr: true })) sitzungenStore.loescheSitzung(s.id)
-    },
-    eintragendeSetzen(ids) {
-      this.gremium.mitglieder.forEach((m) => {
-        if (this.eintragendeOptionen.some((o) => o.wert === m.id)) m.darfSitzungenEintragen = ids.includes(m.id)
-      })
     },
     abgestimmt(s) {
       return s.terminfindung.stimmen.some((st) => st.personId === this.person.id)

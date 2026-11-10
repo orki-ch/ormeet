@@ -1,5 +1,10 @@
 # Änderungsverlauf
 
+## 1.5.12
+- Ein Klick auf ein Gremium in «Meine Gremien» öffnet direkt die Gremium-Seite. Mitglieder sehen dort zuerst die «Übersicht» mit Terminfindungen, Sitzungen und Pendenzen, daneben die Reiter, die ihre Rolle erlaubt (Kurzsitzungen, Mitglieder & Rollen, Protokoll-Einstellungen, Teilen, Zugriffe). Den Knopf «Gremium verwalten» gibt es nicht mehr.
+- Wer Sitzungen eintragen darf, legst du nur noch in den Rechten der Rolle fest. Die Karte «Sitzungen eintragen dürfen» und das Häkchen im Mitglieder-Dialog sind weg; bisher gesetzte Häkchen gelten nicht mehr.
+- Neu: ein zentrales Kalender-Abo für dein Konto mit allen Gremien und Kurzsitzungen, in denen du dabei bist. Bei mehreren Gremien steht es auf «Meine Gremien», sonst in der Übersicht. Bisherige Abos funktionieren weiter.
+
 ## 1.5.11
 - Rollen können neu auch die Gremium-Seite bekommen: Unter den Einzelrechten gibt es die Gruppe «Gremium» mit den Reitern Kurzsitzungen, Mitglieder & Rollen, Protokoll-Einstellungen und Teilen. «Alles» enthält sie; «Zugriffe verwalten» öffnet den Reiter Zugriffe. Wer solche Rechte hat, findet in der eigenen Übersicht «Gremium verwalten».
 - Ist ein Gast mit demselben Konto verknüpft wie ein Mitglied, führt Ormeet beide automatisch zusammen. Niemand steht mehr doppelt in Terminfindung oder Anwesenheit.

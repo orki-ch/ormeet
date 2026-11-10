@@ -4,6 +4,7 @@ import { sync } from '../stores/sync.js'
 import { rolleIm } from '../utils/rechte.js'
 import { formatDatum } from '../utils/labels.js'
 import { gastPfad } from '../router.js'
+import KalenderAbo from '../components/KalenderAbo.js'
 import KurzsitzungDialog from '../components/KurzsitzungDialog.js'
 import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 
@@ -11,7 +12,7 @@ import KurzsitzungenListe from '../components/KurzsitzungenListe.js'
 // ihm verknüpfte Konto – genau wie ein Konto sie sieht (sein Superadmin-Zugriff spielt dort keine Rolle).
 export default {
   name: 'GremiumListe',
-  components: { KurzsitzungDialog, KurzsitzungenListe },
+  components: { KalenderAbo, KurzsitzungDialog, KurzsitzungenListe },
   props: {
     persoenlich: { type: Boolean, default: false },
   },
@@ -19,7 +20,7 @@ export default {
     <div class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
         <h1 class="title">{{ konto ? 'Meine Gremien' : 'Gremien' }}</h1>
-        <p v-if="konto" class="muted small mt-1">Gremien, in denen du Mitglied bist, öffnen deine persönliche Übersicht; selbst angelegte Gremien verwaltest du vollständig.</p>
+        <p v-if="konto" class="muted small mt-1">Ein Gremium öffnet deine Übersicht; was du verwalten darfst, findest du dort in den Reitern daneben.</p>
       </header>
 
       <form v-if="darfAnlegen" class="card row" @submit.prevent="erstellen">
@@ -57,6 +58,9 @@ export default {
           <KurzsitzungenListe :sitzungen="kurzsitzungen" :darf-loeschen="darfLoeschen" />
         </section>
       </template>
+
+      <!-- Zentrales Kalender-Abo des Kontos für alle Gremien und Kurzsitzungen (mit nur einem steht es in der Übersicht) -->
+      <KalenderAbo v-if="konto && konto.gremien.length > 1" konto />
 
       <KurzsitzungDialog v-if="dialog" @schliessen="dialog = false" />
     </div>
@@ -101,8 +105,7 @@ export default {
       return this.konto?.gremien.find((g) => g.gremiumId === gremiumId)
     },
     ziel(gremium) {
-      if (this.persoenlich) return this.eintrag(gremium.id)?.rolle === 'mitglied' ? '/meine/' + gremium.id : '/gremium/' + gremium.id
-      return rolleIm(gremium.id) === 'person' ? '/meine/' + gremium.id : '/gremium/' + gremium.id
+      return '/gremium/' + gremium.id // eine Gremium-Seite für alle: Übersicht (wer Mitglied ist) und Reiter je nach Rechten
     },
     // Löschen darf, wer die Kurzsitzung verwaltet (Superadmin, Eigentümer); in der persönlichen Übersicht nur das Konto
     darfLoeschen(s) {

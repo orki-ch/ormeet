@@ -1,5 +1,5 @@
 import { api } from './api.js'
-import { laden, sync, recht, gremiumSeiteErlaubt } from './stores/sync.js'
+import { laden, sync, recht } from './stores/sync.js'
 import { sitzungenStore } from './stores/sitzungen.js'
 import { gremienStore } from './stores/gremien.js'
 import { darfAenderungStellen, darfStarten, rolleIm, vollzugriff } from './utils/rechte.js'
@@ -107,13 +107,13 @@ router.beforeEach(async (to) => {
     if (key.length === 16 && api.token && api.token !== key && (await angemeldet()) && sync.zugriff.rolle === 'benutzer') {
       // Eigener, schon verknüpfter Link (z. B. aus dem Kalender-Abo): direkt weiter
       const eigenes = sync.zugriff.gremien.find((g) => g.zugangsKey === key)
-      if (eigenes) return to.query.weiter?.startsWith('/') ? to.query.weiter : `/meine/${eigenes.gremiumId}`
+      if (eigenes) return to.query.weiter?.startsWith('/') ? to.query.weiter : `/gremium/${eigenes.gremiumId}`
       if (await bestaetigen(`Du bist mit dem Konto ${sync.zugriff.email} angemeldet. Persönlichen Link mit diesem Konto verknüpfen?`, { titel: 'Link verknüpfen', ja: 'Verknüpfen', nein: 'Ohne Konto öffnen' })) {
         const verknuepft = await api.anfrage('verknuepfen', '', { key }).catch(() => null)
         if (verknuepft) {
           sync.zugriff = null
           await angemeldet()
-          return `/meine/${verknuepft.gremiumId}`
+          return `/gremium/${verknuepft.gremiumId}`
         }
       }
     }
@@ -178,8 +178,14 @@ router.beforeEach(async (to) => {
   // Wirksame Rolle im betroffenen Gremium (Konto: je Gremium Eigentümer oder Mitglied)
   const gremiumId = sitzung?.gremiumId || to.params.gremiumId || zugriff.gremiumId
   const rolle = rolleIm(gremiumId)
-  if (zugriff.rolle === 'person' && to.path === '/meine') return gremienStore.byId(zugriff.gremiumId)?.kurz ? startPfad() : true
-  if (zugriff.rolle === 'benutzer' && (to.path === '/' || to.path.startsWith('/meine'))) return to.params.gremiumId && rolle !== 'person' ? '/' : true
+  // Frühere Adressen der persönlichen Übersicht: sie ist jetzt der Reiter «Übersicht» der Gremium-Seite
+  if (zugriff.rolle === 'person' && to.path === '/meine') return gremienStore.byId(zugriff.gremiumId)?.kurz ? startPfad() : `/gremium/${zugriff.gremiumId}`
+  if (['benutzer', 'admin'].includes(zugriff.rolle) && to.path.startsWith('/meine')) {
+    const gremien = zugriff.rolle === 'benutzer' ? zugriff.gremien : zugriff.konto?.gremien || []
+    const id = to.params.gremiumId || gremien.find((g) => g.personId && g.rolle !== 'gast' && !g.kurz)?.gremiumId
+    return id ? `/gremium/${id}` : '/'
+  }
+  if (zugriff.rolle === 'benutzer' && to.path === '/') return true
   // Konto als weitere Person (Gast einer Sitzung): nur diese Sitzung
   if (zugriff.rolle === 'benutzer' && rolle === 'freigabe') {
     const gast = zugriff.gremien.find((g) => g.gremiumId === gremiumId)
@@ -187,7 +193,7 @@ router.beforeEach(async (to) => {
   }
   if (rolle === 'person') {
     if (to.path.includes('/themenbereich/')) return true
-    if (to.path === `/gremium/${gremiumId}`) return gremiumSeiteErlaubt(gremiumId) ? true : startPfad() // Gremiumsrechte der Rolle
+    if (to.path === `/gremium/${gremiumId}`) return true // Reiter «Übersicht» und die Verwaltungsreiter der Rolle
     if (!sitzungsPfad) return startPfad()
     // Ein Protokoll eröffnen (Sitzung starten) darf nur, wer es ganz bearbeiten darf: Sitzungsleitung, Protokollführung, Freigabe «Alles»
     if (to.path.endsWith('/protokoll') && !sitzungenStore.protokollVonSitzung(to.params.sitzungId) && !(sitzung && (vollzugriff(sitzung, 'protokoll') || darfStarten(sitzung)))) return `/sitzung/${to.params.sitzungId}/vorprotokoll`
@@ -214,7 +220,7 @@ export function startPfad() {
   if (zugriff.rolle === 'person') {
     // Eingeladene einer Kurzsitzung ohne Gremium: direkt zur Kurzsitzung
     const kurz = gremienStore.byId(zugriff.gremiumId)?.kurz && sitzungenStore.kurzsitzungen(zugriff.gremiumId)[0]
-    return kurz ? kurzPfad(kurz) : '/meine'
+    return kurz ? kurzPfad(kurz) : `/gremium/${zugriff.gremiumId}`
   }
   if (zugriff.rolle === 'benutzer') {
     // Nur als weitere Person bei einer Sitzung dabei: direkt dorthin
@@ -222,7 +228,7 @@ export function startPfad() {
     const gremien = zugriff.gremien.filter((g) => !g.kurz && g.rolle !== 'gast')
     const mitglied = gremien.filter((g) => g.rolle === 'mitglied')
     const nurEines = mitglied.length === gremien.length && mitglied.length === 1 && gremien.length === zugriff.gremien.length
-    if (nurEines && !zugriff.darfGremienAnlegen && !zugriff.darfKurzsitzungenAnlegen) return `/meine/${mitglied[0].gremiumId}`
+    if (nurEines && !zugriff.darfGremienAnlegen && !zugriff.darfKurzsitzungenAnlegen) return `/gremium/${mitglied[0].gremiumId}`
     return '/'
   }
   if (zugriff.rolle === 'gremium') return `/gremium/${zugriff.gremiumId}`

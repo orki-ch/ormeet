@@ -131,7 +131,7 @@ export function benachrichtigungen() {
 
   if (zugriff.rolle === 'benutzer') {
     for (const g of zugriff.gremien) {
-      const ziel = g.rolle === 'eigentuemer' ? `/gremium/${g.gremiumId}` : `/meine/${g.gremiumId}`
+      const ziel = `/gremium/${g.gremiumId}`
       melde(`gremium:${g.gremiumId}`, `Du hast Zugang zum Gremium «${g.name}»${g.rolle === 'eigentuemer' ? ' (verwalten)' : ''}`, ziel)
     }
   }

@@ -139,11 +139,6 @@ export default {
         { wert: 'kurzsitzungen', label: 'Kurzsitzungen ohne Gremium anlegen' },
         { wert: 'superadmin', label: 'Das bin ich (Superadmin)' },
       ]
-      for (const z of this.zuordnungen(k.id)) {
-        if (z.mitglied && !z.gremium.kurz && !gremienStore.hatFesteRolle(z.gremium.id, z.mitglied)) { // sonst schon über die Rolle
-          optionen.push({ wert: 'sitzungen:' + z.gremium.id, label: 'Sitzungen eintragen · ' + z.gremium.name })
-        }
-      }
       return optionen
     },
     rechteVon(k) {
@@ -151,7 +146,6 @@ export default {
       if (k.darfGremienAnlegen) werte.push('gremien')
       if (k.darfKurzsitzungenAnlegen) werte.push('kurzsitzungen')
       if (this.sync.zugriff.konto?.benutzerId === k.id) werte.push('superadmin')
-      for (const z of this.zuordnungen(k.id)) if (z.mitglied?.darfSitzungenEintragen) werte.push('sitzungen:' + z.gremium.id)
       return werte
     },
     rechteSetzen(k, werte) {
@@ -159,7 +153,6 @@ export default {
       if (hat('gremien') !== !!k.darfGremienAnlegen) this.aendern(k, { darfGremienAnlegen: hat('gremien') })
       if (hat('kurzsitzungen') !== !!k.darfKurzsitzungenAnlegen) this.aendern(k, { darfKurzsitzungenAnlegen: hat('kurzsitzungen') })
       if (hat('superadmin') !== (this.sync.zugriff.konto?.benutzerId === k.id)) this.superadminVerknuepfen(hat('superadmin') ? k.id : null)
-      for (const z of this.zuordnungen(k.id)) if (z.mitglied) z.mitglied.darfSitzungenEintragen = hat('sitzungen:' + z.gremium.id)
     },
     // Gremien, in denen ein Konto Eigentümer oder verknüpftes Mitglied ist
     zuordnungen(benutzerId) {

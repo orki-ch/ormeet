@@ -387,7 +387,12 @@ function benutzerGremien($benutzerId, $email = '') {
   foreach (alleBundles() as $bundle) {
     $g = $bundle['gremium'];
     if (($g['eigentuemerId'] ?? null) === $benutzerId) {
-      $liste[] = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'eigentuemer', 'kurz' => !empty($g['kurz'])];
+      // Eigentümer, der auch Mitglied ist: mit seiner Person (für die persönliche Übersicht auf der Gremium-Seite)
+      $eintrag = ['gremiumId' => $g['id'], 'name' => $g['name'], 'rolle' => 'eigentuemer', 'kurz' => !empty($g['kurz'])];
+      foreach ($g['mitglieder'] as $m) {
+        if (($m['benutzerId'] ?? null) === $benutzerId) $eintrag += ['personId' => $m['id'], 'personName' => $m['name'], 'zugangsKey' => $m['zugangsKey'] ?? ''];
+      }
+      $liste[] = $eintrag;
       continue;
     }
     $mitglied = false;
@@ -1406,19 +1411,13 @@ function personRechteAnwenden(array $bundle, array $aenderungen, array $zugriff)
   $mitglied = null;
   foreach ($bundle['gremium']['mitglieder'] as $m) if ($m['id'] === ($zugriff['personId'] ?? null) && !$nurVorprotokollId) $mitglied = $m;
   $festeRolle = $mitglied && hatFesteRolle($bundle['gremium'], $mitglied);
-  $darfEintragen = $festeRolle || !empty($mitglied['darfSitzungenEintragen']);
+  $darfEintragen = $festeRolle; // Sitzungen eintragen nur über die Rolle
   // Gremiumsrechte der Rolle (Reiter der Gremium-Seite): nur Mitglieder, nie über einen Gast-Link
   $gremiumsrecht = fn($recht) => $mitglied && gremiumsrecht($bundle['gremium'], $mitglied['id'], $recht);
-  if ($gremiumNeu && ($festeRolle || $gremiumsrecht('mitglieder') || $gremiumsrecht('einstellungen') || $gremiumsrecht('teilen'))) {
+  if ($gremiumNeu && ($gremiumsrecht('mitglieder') || $gremiumsrecht('einstellungen') || $gremiumsrecht('teilen'))) {
     $gremium = $bundle['gremium'];
     if ($gremiumsrecht('mitglieder')) {
       foreach (['mitglieder', 'rollen', 'aufgaben'] as $feld) $gremium[$feld] = $gremiumNeu[$feld] ?? $gremium[$feld] ?? null;
-    } elseif ($festeRolle) {
-      $neuMitglieder = indexById($gremiumNeu['mitglieder'] ?? []);
-      foreach ($gremium['mitglieder'] as &$m) {
-        if (isset($neuMitglieder[$m['id']])) $m['darfSitzungenEintragen'] = !empty($neuMitglieder[$m['id']]['darfSitzungenEintragen']);
-      }
-      unset($m);
     }
     if ($gremiumsrecht('einstellungen')) {
       foreach (['name', 'beschreibung', 'fusstext', 'themenbereiche', 'vorlagen', 'erinnerungTage'] as $feld) $gremium[$feld] = $gremiumNeu[$feld] ?? $gremium[$feld] ?? null;
@@ -2577,7 +2576,38 @@ if ($aktion === 'sso_callback') {
   exit;
 }
 
+// Zentrales Kalender-Abo eines Kontos (eigener Schlüssel, kein Anmelde-Token): alle Gremien und Kurzsitzungen, in denen das
+// Konto dabei ist; die Links in den Terminen öffnen Ormeet mit Anmeldung
+if ($aktion === 'ical' && !$zugriff && $token !== '') {
+  foreach (benutzerLesen() as $b) {
+    if (empty($b['kalenderKey']) || !hash_equals($b['kalenderKey'], $token)) continue;
+    $basis = basisUrl();
+    $link = fn($pfad) => $basis . '#' . $pfad;
+    $events = '';
+    foreach (benutzerGremien($b['id'], $b['email']) as $g) {
+      if (empty($g['personId'])) continue;
+      $bundle = lesen(dateiVon($g['gremiumId']));
+      if ($bundle) $events .= icalEreignisse($bundle, $g['personId'], $link, $g['rolle'] === 'gast' ? $g['sitzungId'] : null);
+    }
+    icalAusgeben('Ormeet', $events);
+  }
+}
+
 if (!$zugriff) antwort(['fehler' => 'Passwort oder Link ungültig'], 401);
+
+// Adresse des zentralen Kalender-Abos des Kontos (auch des mit dem Superadmin verknüpften); erneuern macht die alte ungültig
+if ($aktion === 'kalender_link') {
+  $benutzerId = $zugriff['rolle'] === 'benutzer' ? $zugriff['benutzerId'] : ($zugriff['konto']['benutzerId'] ?? null);
+  if (!$benutzerId) antwort(['fehler' => 'Das zentrale Kalender-Abo gibt es nur mit einem Konto'], 403);
+  $benutzer = benutzerLesen();
+  $i = benutzerById($benutzer, $benutzerId);
+  if ($i === null) antwort(['fehler' => 'Konto nicht gefunden'], 404);
+  if (empty($benutzer[$i]['kalenderKey']) || !empty($eingabe['erneuern'])) {
+    $benutzer[$i]['kalenderKey'] = bin2hex(random_bytes(16));
+    benutzerSchreiben($benutzer);
+  }
+  antwort(['link' => basisUrl() . 'api.php?aktion=ical&token=' . $benutzer[$i]['kalenderKey']]);
+}
 
 // Code fürs Verknüpfen eines Anbieters mit dem angemeldeten Konto («Mein Konto»)
 if ($aktion === 'sso_verknuepfen_code') {
@@ -2645,22 +2675,18 @@ function icalEvent($uid, $datum, $von, $bis, $titel, $beschreibung, $ort, $statu
   return implode('', array_map('icalZeile', $z));
 }
 
-if ($aktion === 'ical') {
-  if ($rolle !== 'person') antwort(['fehler' => 'Kalender-Abo nur für persönliche Zugänge'], 403);
-  $bundle = lesen(dateiVon($zugriff['gremiumId']));
-  $personId = $zugriff['personId'];
-  $basis = basisUrl();
-  $link = fn($pfad) => $basis . '#/zugang/' . $token . '?weiter=' . rawurlencode($pfad); // öffnet direkt über den persönlichen Link bzw. das Konto
+// Kalender-Abo: Sitzungstermine, provisorische Termine (Ja / Vielleicht der Person) und ihre offenen Pendenzen mit Frist
+// in einem Gremium; $nurSitzungId: weitere Person (Gast) nur ihrer Sitzung
+function icalEreignisse(array $bundle, $personId, callable $link, $nurSitzungId = null) {
   $gremiumName = $bundle['gremium']['name'];
   $events = '';
-
   foreach ($bundle['sitzungen'] as $s) {
+    if ($nurSitzungId !== null && $s['id'] !== $nurSitzungId) continue;
     $titel = ($s['titel'] ?: 'Sitzung') . ' – ' . $gremiumName;
     $vp = empty($s['kurz']) ? "Vorprotokoll: " . $link('/sitzung/' . $s['id'] . '/vorprotokoll') : 'Kurzsitzung'; // Kurzsitzungen haben nur ein Protokoll
     if ($s['datum']) {
       $events .= icalEvent('sitzung-' . $s['id'], $s['datum'], $s['zeit'] ?: null, null, $titel, $vp . "\nProtokoll: " . $link('/sitzung/' . $s['id'] . '/protokoll'), $s['ort'], 'CONFIRMED');
     } elseif (!empty($s['terminfindung']) && $s['terminfindung']['status'] === 'offen') {
-      // Provisorische Termine: Vorschläge, bei denen die Person mit Ja oder Vielleicht gestimmt hat
       foreach ($s['terminfindung']['stimmen'] as $st) {
         if (($st['personId'] ?? null) !== $personId) continue;
         foreach ($st['wahl'] as $w) {
@@ -2676,6 +2702,7 @@ if ($aktion === 'ical') {
     }
   }
   foreach ($bundle['protokolle'] as $p) {
+    if ($nurSitzungId !== null && $p['sitzungId'] !== $nurSitzungId) continue;
     foreach ($p['eintraege'] as $e) {
       $frist = fristDatum($bundle, $e, $p['sitzungId']);
       if ($e['typ'] !== 'pendenz' || ($e['zugewiesenAn'] ?? null) !== $personId || $e['pendenzStatus'] === 'erfuellt' || $frist === '') continue;
@@ -2683,12 +2710,24 @@ if ($aktion === 'ical') {
         ($e['inhalt'] ? $e['inhalt'] . "\n" : '') . "Protokoll: " . $link('/sitzung/' . $p['sitzungId'] . '/protokoll'), '', 'CONFIRMED');
     }
   }
+  return $events;
+}
 
+function icalAusgeben($name, $events) {
   header('Content-Type: text/calendar; charset=utf-8');
   header('Content-Disposition: inline; filename="ormeet.ics"');
   echo "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Ormeet//Sitzungsprotokolle//DE\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
-    . icalZeile('X-WR-CALNAME:' . icalText("Ormeet – $gremiumName")) . "X-WR-TIMEZONE:Europe/Zurich\r\n" . $events . "END:VCALENDAR\r\n";
+    . icalZeile('X-WR-CALNAME:' . icalText($name)) . "X-WR-TIMEZONE:Europe/Zurich\r\n" . $events . "END:VCALENDAR\r\n";
   exit;
+}
+
+// Kalender-Abo eines persönlichen Links: dieses Gremium
+if ($aktion === 'ical') {
+  if ($rolle !== 'person') antwort(['fehler' => 'Kalender-Abo nur für persönliche Zugänge'], 403);
+  $bundle = lesen(dateiVon($zugriff['gremiumId']));
+  $basis = basisUrl();
+  $link = fn($pfad) => $basis . '#/zugang/' . $token . '?weiter=' . rawurlencode($pfad); // öffnet direkt über den persönlichen Link
+  icalAusgeben('Ormeet – ' . $bundle['gremium']['name'], icalEreignisse($bundle, $zugriff['personId'], $link));
 }
 
 // --- Laden ------------------------------------------------------

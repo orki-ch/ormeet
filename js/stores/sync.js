@@ -98,10 +98,6 @@ export function recht(bereich, gremiumId) {
   return rechte.gremium.includes(bereich) ? 'bearbeiten' : 'keine'
 }
 
-// Darf der Zugang die Gremium-Seite öffnen (mindestens ein Reiter)?
-export function gremiumSeiteErlaubt(gremiumId) {
-  return ['sitzungen', 'kurzsitzungen', 'mitglieder', 'einstellungen', 'teilen', 'zugriffe'].some((b) => recht(b, gremiumId) !== 'keine')
-}
 
 export async function laden() {
   const daten = await api.anfrage('laden')

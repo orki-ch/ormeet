@@ -17,6 +17,7 @@ import RechteSchalter from '../components/RechteSchalter.js'
 import ThemenbereichLinks from '../components/ThemenbereichLinks.js'
 import TraktandenListe from '../components/TraktandenListe.js'
 import InfoKnopf from '../components/InfoKnopf.js'
+import PersonSeite from './PersonSeite.js'
 import MehrfachAuswahl from '../components/MehrfachAuswahl.js'
 import { bestaetigen, hinweis } from '../utils/dialog.js'
 
@@ -42,12 +43,14 @@ const AUFGABEN_INFO = [
 ]
 
 // Kurzsitzungen: eigener Reiter neben den Sitzungen, mit denselben Rechten wie die Sitzungen
-const TABS = { sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen', zugriffe: 'Zugriffe' }
+// Mitglieder (auch Superadmin und Eigentümer, die Mitglied sind) sehen zuerst ihre «Übersicht», alle anderen «Sitzungen»;
+// danach die Verwaltungsreiter je nach Rechten (recht() in sync.js)
+const TABS = { uebersicht: 'Übersicht', sitzungen: BEREICHE.sitzungen, kurzsitzungen: 'Kurzsitzungen', ...BEREICHE, teilen: 'Teilen', zugriffe: 'Zugriffe' }
 const RECHTE = { keine: 'Nicht sichtbar', lesen: 'Nur lesen', bearbeiten: 'Bearbeiten' }
 
 export default {
   name: 'GremiumDetail',
-  components: { GremiumSuche, InfoKnopf, MehrfachAuswahl, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonenInput, RechteSchalter, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
+  components: { GremiumSuche, InfoKnopf, MehrfachAuswahl, KurzsitzungDialog, KurzsitzungenListe, MenuDropdown, Modal, PersonSeite, PersonenInput, RechteSchalter, SitzungDialog, ThemenbereichLinks, TraktandenListe, ZugriffeListe },
   mixins: [bearbeitenMixin],
   props: {
     gremiumId: { type: String, required: true },
@@ -55,23 +58,25 @@ export default {
   template: `
     <div v-if="gremium" class="stack-lg">
       <header class="page-header" style="margin-bottom: 0">
-        <router-link v-if="sync.zugriff?.rolle !== 'gremium'" to="/" class="rueck">← Alle Gremien</router-link>
+        <router-link v-if="!['gremium', 'person'].includes(sync.zugriff?.rolle)" to="/" class="rueck">← Alle Gremien</router-link>
         <div class="row-nowrap top between">
           <div class="grow" style="max-width: 40rem">
             <input v-model.trim="gremium.name" class="input-inline title" :disabled="!darf('einstellungen')" />
-            <input v-model.trim="gremium.beschreibung" class="input-inline muted mt-1" placeholder="Beschreibung" :disabled="!darf('einstellungen')" />
+            <input v-if="darf('einstellungen') || gremium.beschreibung" v-model.trim="gremium.beschreibung" class="input-inline muted mt-1" placeholder="Beschreibung" :disabled="!darf('einstellungen')" />
           </div>
           <MenuDropdown v-if="istAdmin">
             <button class="menu-item menu-item-danger" @click="loeschen">Gremium löschen</button>
           </MenuDropdown>
         </div>
 
-        <nav class="tabs">
+        <nav v-if="Object.keys(sichtbareTabs).length > 1" class="tabs">
           <button v-for="(label, id) in sichtbareTabs" :key="id" class="tab" :class="{ aktiv: tab === id }" @click="tab = id">{{ label }}</button>
         </nav>
       </header>
 
       <!-- Tab: Sitzungen -->
+      <PersonSeite v-if="tab === 'uebersicht'" :gremium-id="gremiumId" eingebettet />
+
       <GremiumSuche v-if="tab === 'sitzungen'" :gremium-id="gremiumId" />
       <fieldset v-if="tab === 'sitzungen'" :disabled="!darf('sitzungen')" class="card">
         <div class="card-head">
@@ -300,7 +305,6 @@ export default {
             </select>
           </div>
           <label class="check"><input v-model="mitglied.hatStimmrecht" type="checkbox" /> Stimmberechtigt</label>
-          <label v-if="!gremienStore.hatFesteRolle(gremiumId, mitglied)" class="check"><input v-model="mitglied.darfSitzungenEintragen" type="checkbox" /> Darf Sitzungen eintragen (zusätzlich zur Rolle)</label>
           <div v-if="kontenVerwalten" class="block-soft stack-sm">
             <span class="label" style="margin: 0">Konto <InfoKnopf titel="Konto" text="Mit einem Konto sieht die Person dieses Gremium in ihrer Übersicht – zusätzlich zum persönlichen Link. Name und E-Mail kommen dann vom Konto. Ein verknüpfter persönlicher Link öffnet nur noch nach der Anmeldung." /></span>
             <select v-model="mitglied.benutzerId" class="input" @change="kontoGewaehlt">
@@ -405,7 +409,7 @@ export default {
     sichtbareTabs() {
       const tabs = {}
       for (const [id, label] of Object.entries(TABS)) {
-        if (recht(id, this.gremiumId) !== 'keine') tabs[id] = label
+        if (id === 'uebersicht' ? !!this.eigenePersonId : id === 'sitzungen' ? !this.eigenePersonId && recht(id, this.gremiumId) !== 'keine' : recht(id, this.gremiumId) !== 'keine') tabs[id] = label
       }
       return tabs
     },

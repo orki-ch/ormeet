@@ -34,7 +34,8 @@ in `js/api.js`).
   SSO-`state` ist HMAC-signiert und zusätzlich an ein Cookie (`ormeet_sso`, SameSite=Lax) gebunden.
 - **CSP** als Header aus `index.php` (`script-src 'self' 'unsafe-eval' 'nonce-…'` – Vue kompiliert Templates zur
   Laufzeit; keine Inline-Scripts ausser der Import Map mit Nonce).
-- **Kalender-Abo** eines Kontos verwendet den persönlichen Link des Mitglieds, nie den Konto-Token.
+- **Kalender-Abo** eines Kontos hat einen eigenen Schlüssel (`benutzer.kalenderKey`, Aktion `kalender_link`), nie den
+  Konto-Token; es umfasst alle Gremien und Kurzsitzungen des Kontos (`icalEreignisse`). Ein persönlicher Link ist sein eigener Schlüssel.
 - Gremium-Links erhalten Schlüssel nur für Bereiche, die sie bearbeiten dürfen (`bereinigen()`).
 
 Das Routing läuft über `#/…`, es sind keine Server-Regeln nötig.
@@ -122,8 +123,8 @@ diese Sitzung (`nurSitzung`).
 ### Sitzungen eintragen
 
 Mitglieder, deren Rolle `sitzung:eintragen` hat (oder «Alles», z. B. die Vorlagen), dürfen in ihrem Gremium Sitzungen und
-Kurzsitzungen eintragen – über den persönlichen Link wie mit Konto –, weitere mit `mitglied.darfSitzungenEintragen` (vergeben
-durch Superadmin unter Benutzer & Links, Eigentümer im Mitglieder-Dialog oder wer es über die Rolle hat, in der Übersicht). Neue Sitzungen
+Kurzsitzungen eintragen – über den persönlichen Link wie mit Konto. Das Recht gibt es nur über die Rolle (das frühere
+`mitglied.darfSitzungenEintragen` wird nicht mehr beachtet). Neue Sitzungen
 tragen `erstelltVon`; ihre Ersteller dürfen sie ohne Protokoll wieder löschen (`personRechteAnwenden`).
 
 ### Terminfindung
@@ -253,12 +254,12 @@ js/
     EinladungAntwort.js       Zusagen / Absagen auf eine Einladung per E-Mail (ohne Anmeldung)
     PasswortNeu.js            Neues Passwort über den Link aus der E-Mail
     GremiumListe.js           Dashboard aller Gremien
-    GremiumDetail.js          Gremium pflegen: Suche, Sitzungen, Themenbereiche, Mitglieder, Rollen, Vorlagen
+    GremiumDetail.js          Gremium-Seite für alle: Übersicht (Mitglieder) bzw. Sitzungen, dazu die Reiter nach Rechten
     VorprotokollEditor.js     Kopfdaten, Anwesenheit, Gäste, Traktanden, Freigabe-Link
     ProtokollEditor.js        Live-Protokoll mit Auto-Save / Ctrl+S, nächster Termin
     ThemenbereichSummary.js   Historische Aggregation pro Themenbereich (ID «ohne»: ohne Themenbereich)
     ProtokollAnsicht.js       Live-Ansicht über den Verfolger-Link (nur lesen)
-    PersonSeite.js            Persönliche Übersicht (persönlicher Link / Konto mit Gremium-Wechsel, Konto anlegen)
+    PersonSeite.js            Persönliche Übersicht (Reiter «Übersicht» der Gremium-Seite; Gremium-Wechsel, Konto anlegen)
     TerminfindungSeite.js     Terminfindung (Abstimmung)
     Einstellungen.js          Superadmin: Updates, SSO-Anbieter, E-Mail-Versand, Cronjob
     Hilfe.js                  Dokumentation in einfacher Sprache
@@ -282,6 +283,7 @@ js/
     Zusatztraktanden.js       Im Protokoll hinzugekommene Haupttraktanden (protokoll.zusatztraktanden, ohne Nummer, mit Begründung)
     KurzsitzungDialog.js      Neue Kurzsitzung (mit/ohne Gremium), Termin standardmässig heute zur nächsten Viertelstunde
     KurzsitzungenListe.js     Zeilen einer Kurzsitzungs-Liste (Übersicht, Gremium-Reiter, persönliche Übersicht)
+    KalenderAbo.js            Kalender-Abo: zentral fürs Konto (alle Gremien) bzw. für einen persönlichen Link
     KurzTeilnehmende.js       Teilnehmende einer Kurzsitzung wählen bzw. einladen (Behälter: Name, E-Mail, Link)
     InfoKnopf.js              Hinweis als (i)-Knopf oder graue Pille, Tooltip mit Titel und Punkten
     ProzessKarte.js           Ablaufgrafik mit Schwimmbahnen in der Hilfe (Daten in js/utils/prozesse.js), Knoten anklickbar

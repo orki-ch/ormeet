@@ -24,8 +24,9 @@ export function uebersichtsKonto() {
 export function personIdIm(gremiumId) {
   const zugriff = sync.zugriff
   if (!zugriff) return null
-  if (zugriff.rolle !== 'benutzer') return zugriff.personId || null
-  return zugriff.gremien.find((g) => g.gremiumId === gremiumId)?.personId || null
+  const gremien = zugriff.rolle === 'benutzer' ? zugriff.gremien : zugriff.rolle === 'admin' ? zugriff.konto?.gremien : null // Superadmin: sein verknüpftes Konto
+  if (!gremien) return zugriff.personId || null
+  return gremien.find((g) => g.gremiumId === gremiumId)?.personId || null
 }
 
 // Mitglied / Gast hinter dem aktuellen Zugang (persönlicher Link, Gast-Link, Konto)
@@ -39,7 +40,7 @@ export function zurueckZu(gremiumId) {
   const rolle = rolleIm(gremiumId)
   // Kurzsitzung ohne Gremium: zurück zur Übersicht (Eingeladene mit Link haben keine)
   if (gremienStore.byId(gremiumId)?.kurz) return ['admin', 'benutzer'].includes(sync.zugriff?.rolle) ? { pfad: '/', text: 'Übersicht' } : { pfad: '', text: '' }
-  if (rolle === 'person') return { pfad: sync.zugriff.rolle === 'benutzer' ? `/meine/${gremiumId}` : '/meine', text: 'Meine Übersicht' }
+  if (rolle === 'person') return { pfad: `/gremium/${gremiumId}`, text: 'Meine Übersicht' }
   if (rolle === 'admin' || rolle === 'gremium') return { pfad: `/gremium/${gremiumId}`, text: gremienStore.byId(gremiumId)?.name || 'Gremium' }
   return { pfad: '', text: '' }
 }
@@ -245,12 +246,7 @@ function eigenesMitglied(gremiumId) {
 export function darfSitzungenEintragen(gremiumId) {
   if (recht('sitzungen', gremiumId) === 'bearbeiten') return true
   const mitglied = eigenesMitglied(gremiumId)
-  return !!mitglied && (gremienStore.hatFesteRolle(gremiumId, mitglied) || !!mitglied.darfSitzungenEintragen)
-}
-
-// Das Recht «Sitzungen eintragen» an andere vergeben: Mitglieder, deren Rolle es hat (Admin im Gremium selbst)
-export function darfEintragenVergeben(gremiumId) {
-  return gremienStore.hatFesteRolle(gremiumId, eigenesMitglied(gremiumId))
+  return !!mitglied && gremienStore.hatFesteRolle(gremiumId, mitglied) // nur über die Rolle (Recht «Sitzungen eintragen»)
 }
 
 // Person, die die Sitzung eingetragen hat; ältere Sitzungen ohne Angabe: die Sitzungsleitung

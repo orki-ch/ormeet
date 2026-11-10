@@ -32,7 +32,6 @@ export function ergaenzeFelder(bundle) {
   gremium.mitglieder.forEach((m) => {
     m.zugangsKey ??= neuerKey() // zentraler persönlicher Link
     m.benutzerId ??= null // verknüpftes Konto
-    m.darfSitzungenEintragen ??= false // darf in diesem Gremium Sitzungen eintragen (zusätzlich zum Recht der Rolle)
     m.gesperrt ??= false // Zugang gesperrt: weder persönlicher Link noch Konto (seit 1.5.03)
   })
   gremium.themenbereiche.forEach((tb) => (tb.freigabeKey ??= neuerKey())) // Übersicht teilen
